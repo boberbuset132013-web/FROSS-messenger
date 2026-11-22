@@ -487,6 +487,7 @@ function subscribeMessages() {
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
   stopMessages=onSnapshot(q,snapshot=>{
     const stick=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+    reactionStops.forEach(stop=>stop());reactionStops=[];
     box.innerHTML="";
     if(snapshot.empty)box.innerHTML='<div class="empty">Пока нет сообщений. Напишите первым!</div>';
     let previous="";
