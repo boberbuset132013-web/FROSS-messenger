@@ -838,6 +838,7 @@ $("gb").onclick=()=>{
     }catch(e){alert(authError(e))}
   };
 };
+$("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click()};
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
