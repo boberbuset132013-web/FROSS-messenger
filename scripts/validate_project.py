@@ -13,10 +13,11 @@ checks = {
     "Google sign-in": "new GoogleAuthProvider()" in js,
     "real email/password login": "signInWithEmailAndPassword(auth,email" in js,
     "required email at signup": 'Email для входа и подтверждения' in js and 'Укажите действующий email для подтверждения.' in js,
-    "legacy username login retained": 'authEmail(identifier)' in js,
+    "legacy username login retained": 'authEmail(identifier)' in js and 'token.claims.legacyAccount' in js,
+    "legacy accounts receive a trusted migration claim": "setCustomUserClaims" in (root / "migration/migrate-d1-to-firebase.mjs").read_text(encoding="utf-8"),
     "Google and password providers have useful setup errors": "auth/unauthorized-domain" in js,
-    "chat access requires verified email or legacy account": "function verified()" in rules and "email_verified == true" in rules and "fross-ca5d6[.]firebaseapp[.]com" in rules,
-    "chat file access requires verified email or legacy account": "request.auth.token.email_verified == true" in storage and "fross-ca5d6[.]firebaseapp[.]com" in storage,
+    "chat access requires verified email or admin-migrated legacy claim": "function verified()" in rules and "email_verified == true" in rules and "legacyAccount == true" in rules,
+    "chat file access requires verified email or admin-migrated legacy claim": "request.auth.token.email_verified == true" in storage and "request.auth.token.legacyAccount == true" in storage,
     "no unsafe diagnostic leakage": 'diagnostic:String(error?.message' not in js,
 }
 for name, passed in checks.items():
