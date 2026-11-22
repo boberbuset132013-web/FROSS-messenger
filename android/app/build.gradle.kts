@@ -33,7 +33,7 @@ android {
         }
         release {
             isMinifyEnabled = false
-            buildConfigField("String", "FPNV_TEST_TOKEN", "\"")
+            buildConfigField("String", "FPNV_TEST_TOKEN", "\"\"")
         }
     }
 
