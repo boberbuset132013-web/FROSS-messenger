@@ -52,3 +52,11 @@ npx wrangler dev
 ```sh
 npm run d1:migrate:prod
 ```
+
+
+## Fix for Workers Builds static-assets detection
+
+The deploy script passes the assets directory explicitly:
+`wrangler deploy --config ./wrangler.toml --assets ./public/`.
+The Cloudflare Workers Builds Deploy command may be set to `npm run deploy`.
+This keeps the Worker entry point and D1 binding from Wrangler config while explicitly pointing Wrangler to the frontend assets folder.
