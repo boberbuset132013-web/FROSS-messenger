@@ -456,7 +456,7 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
           for (const profile of profiles) {
             const data = profile.data() || {};
             const ready = data.phoneVerified === true
-              && data.phoneVerificationTest !== true
+              && (data.phoneVerificationTest !== true || process.env.FROSS_ALLOW_PNV_TEST_TOKENS === "true")
               && Array.isArray(data.trustedDeviceIds)
               && data.trustedDeviceIds.length > 0;
             if (ready) readyUsers++; else unreadyUsers++;
