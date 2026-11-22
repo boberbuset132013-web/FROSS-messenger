@@ -31,7 +31,7 @@ const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","
 const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
-let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null;
+let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
 function authEmail(username) {
@@ -602,7 +602,7 @@ async function openChatSettings(){
   openM('<h3>Настройки чата</h3><p class="mut">'+esc(chat.title||chatInfo(chat).title)+'</p><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
   $("clear-chat").onclick=async()=>{
     try{
-      const snap=await getDocs(query(collection(db,"chats",cur,"messages"),limit(450)));
+      const snap=await getDocs(collection(db,"chats",cur,"messages"));
       let batch=writeBatch(db),count=0;const batches=[];
       for(const d of snap.docs){batch.update(d.ref,{hiddenFor:arrayUnion(me.uid)});count++;if(count===450){batches.push(batch);batch=writeBatch(db);count=0}}
       if(count)batches.push(batch);for(const b of batches)await b.commit();
