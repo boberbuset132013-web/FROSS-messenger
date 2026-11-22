@@ -6,14 +6,9 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-build.yml"
-  push:
-    branches: [feature/fross-phone-app-security-bot]
-    paths:
-      - "android/**"
-      - ".github/workflows/android-build.yml"
 
 concurrency:
-  group: fross-android-build-${{ github.ref }}
+  group: fross-android-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
