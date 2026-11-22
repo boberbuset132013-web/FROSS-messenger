@@ -11,16 +11,17 @@ service cloud.firestore {
     function trustedDeviceSession() {
       return signedIn()
         && request.auth.token.keys().hasAny(["frossDeviceId"])
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId)).data.status == "active";
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && "trustedDeviceIds" in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && request.auth.token.frossDeviceId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.trustedDeviceIds;
     }
     function approvedBrowserSession() {
       return signedIn()
         && request.auth.token.keys().hasAny(["frossBrowserSession"])
-        && exists(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession))
-        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.status == "approved"
-        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.sessionExpiresAt > request.time;
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && "approvedBrowserSessions" in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvedBrowserSessions.keys().hasAny([request.auth.token.frossBrowserSession])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvedBrowserSessions[request.auth.token.frossBrowserSession].expiresAt > request.time;
     }
     function verified() {
       return signedIn()
