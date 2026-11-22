@@ -28,7 +28,7 @@ checks = {
     "Android app includes Firebase PNV": (root / "android/app/src/main/java/com/fross/messenger/MainActivity.kt").exists() and "getVerifiedPhoneNumber(this)" in (root / "android/app/src/main/java/com/fross/messenger/MainActivity.kt").read_text(encoding="utf-8") and "com.google.firebase:firebase-pnv" in (root / "android/app/build.gradle.kts").read_text(encoding="utf-8"),
     "PNV token is verified on the server": "JwtVerifier.create" in (root / "functions/phone-security.js").read_text(encoding="utf-8") and "verifyPhoneWithPnv" in (root / "functions/index.js").read_text(encoding="utf-8"),
     "browser sign-in requests approval through FROSS Security": "createBrowserLoginRequest" in js and "waitForBrowserApproval" in js and "FROSS Security" in js,
-    "browser approval is protected by Firestore session rules": "function approvedBrowserSession()" in rules and "sessionExpiresAt > request.time" in rules,
+    "browser approval is protected by Firestore session rules": "function approvedBrowserSession()" in rules and "approvedBrowserSessions" in rules and ".expiresAt > request.time" in rules,
     "Storage also checks trusted FROSS sessions": "function frossSessionApproved()" in storage and "requireBrowserApproval" in storage,
     "browser approval gate is opt-in": "requireBrowserApproval" in (root / "functions/phone-security.js").read_text(encoding="utf-8") and "off by default" in (root / "android/README.md").read_text(encoding="utf-8"),
     "voice calling has Firestore signaling": (root / "public/voice-calls.js").exists() and "callerCandidates" in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
