@@ -5,6 +5,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import * as functionsV1 from "firebase-functions/v1";
 import { JwtVerifier } from "aws-jwt-verify";
 
 if (!getApps().length) initializeApp();
@@ -448,4 +449,14 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
     console.error("FROSS browser approval gate update failed:", error);
     return sendError(res, error.status || 500, error.status ? error.message : "Не удалось изменить режим защиты браузера.");
   }
+});
+
+
+export const initializeSecurityGateForNewUser = functionsV1.auth.user().onCreate(async user => {
+  const config = await db.doc("system/securityConfig").get();
+  if (config.data()?.requireBrowserApproval !== true) return;
+  await db.doc(`users/${user.uid}`).set({
+    requireBrowserApproval: true,
+    securityGateUpdatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 });
