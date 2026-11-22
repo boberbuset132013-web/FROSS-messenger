@@ -18,34 +18,32 @@ permissions:
   contents: read
 
 jobs:
-  deploy-cloudflare:
-    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Deploy Cloudflare Worker and static assets
+      - name: Deploy Cloudflare Worker if credentials are configured
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::Cloudflare deploy skipped; configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Cloudflare Git integration may deploy independently."
+            exit 0
+          fi
           npm install --no-audit --no-fund
           npx wrangler deploy --config ./wrangler.toml --assets ./public/
-
-  deploy-firebase:
-    if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Deploy Firebase rules, indexes and Functions
+      - name: Deploy Firebase rules, indexes and Functions if credentials are configured
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice::Firebase deploy skipped; configure FIREBASE_SERVICE_ACCOUNT."
+            exit 0
+          fi
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
           npm install --global firebase-tools
