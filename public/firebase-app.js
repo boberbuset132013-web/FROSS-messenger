@@ -802,7 +802,8 @@ $("gb").onclick=()=>{
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
     try{
-      await P.avatarReady;\n      const username = P.username.trim().toLowerCase();
+      await P.avatarReady;
+      const username = P.username.trim().toLowerCase();
       if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
       const avatarUrl = await uploadAvatar(me.uid,P.avatarUrl);
       const publicRef = doc(db,"publicUsers",me.uid);
