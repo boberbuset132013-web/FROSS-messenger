@@ -484,7 +484,7 @@ $("gb").onclick=()=>{
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,user=>{
-  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){sendEmailVerification(user).catch(()=>{});signOut(auth);return}bootFromAuth(user)}}
+  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){signOut(auth);return}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
