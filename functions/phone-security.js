@@ -132,6 +132,14 @@ export const verifyPhoneWithPnv = onRequest(async (req, res) => {
       return sendError(res, 403, "PNV не вернул корректный международный номер.");
     }
 
+    const [profileDoc, publicProfileDoc] = await Promise.all([
+      db.doc(`users/${user.uid}`).get(),
+      db.doc(`publicUsers/${user.uid}`).get(),
+    ]);
+    if (!profileDoc.exists || !publicProfileDoc.exists) {
+      return sendError(res, 403, "Сначала создайте аккаунт FROSS на сайте, затем подтвердите номер в приложении.");
+    }
+
     const tokenFingerprint = createHash("sha256").update(pnvToken).digest("hex");
     const consumedTokenRef = db.doc(`consumedPnvTokens/${tokenFingerprint}`);
     try {
