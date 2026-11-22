@@ -12,7 +12,7 @@ checks = {
     "email verification on registration": "sendEmailVerification(credential.user)" in js,
     "Google sign-in": "new GoogleAuthProvider()" in js,
     "real email/password login": "signInWithEmailAndPassword(auth,email" in js,
-    "required email at signup": 'type="email" autocomplete="email" required' in js or 'type="email" autocomplete="email"' in js,
+    "required email at signup": 'Email для входа и подтверждения' in js and 'Некорректный email.' in js,
     "legacy username login retained": 'authEmail(identifier)' in js,
     "Google and password providers have useful setup errors": "auth/unauthorized-domain" in js,
     "chat access requires verified email": "function verified()" in rules and "return verified()" in rules,
