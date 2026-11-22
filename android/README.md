@@ -21,7 +21,7 @@ In Firebase Console → Security → Phone Verification → Settings → Testing
 fpnv.testToken=PASTE_TEST_TOKEN_HERE
 ```
 
-The token expires after 7 days. Test mode returns a fake number; it is only for development and must never be enabled in production. The backend rejects test tokens unless the Cloud Functions environment variable `FROSS_ALLOW_PNV_TEST_TOKENS=true` is explicitly set for a test deployment.
+The token expires after 7 days. Test mode returns a fake number; it is only for development and must never be enabled in production. For a test deployment only, set `FROSS_ALLOW_PNV_TEST_TOKENS=true` in `functions/.env.fross-ca5d6` before deploying Functions. Never set this variable in production.
 
 ## Browser approval rollout
 
@@ -37,7 +37,7 @@ Content-Type: application/json
 {"enabled": true}
 ```
 
-Use `{"enabled": false}` to turn the gate off. The function requires the `frossAdmin` custom claim and updates the security flag on every Auth user's private profile before writing the global Firestore setting.
+Use `{"enabled": false}` to turn the gate off. The function requires the `frossAdmin` custom claim. Before enabling, it checks every active account and refuses with HTTP 409 if any account has not completed a real PNV verification and registered a trusted Android device. It then updates the per-user security flag on every Auth user's private profile before writing the global Firestore setting.
 
 Once enabled:
 - Users must have a phone verified through the Android app and at least one active trusted Android device.
@@ -62,4 +62,4 @@ Cloud Functions in `functions/phone-security.js`:
 - `setBrowserApprovalGate` (administrator-only rollout switch)
 - `initializeSecurityGateForNewUser` (marks newly created accounts when the gate is enabled)
 
-All endpoints require a Firebase ID token. PNV JWTs are verified server-side against Google's published JWKS, issuer and audience. Test tokens are rejected unless an explicit test-only environment flag is set.
+All HTTP endpoints require a Firebase ID token. The expiry job and new-user initializer are server-triggered. PNV JWTs are verified server-side against Google's published JWKS, issuer and audience, and each token can be consumed only once. Test tokens are rejected unless an explicit test-only environment flag is set.
