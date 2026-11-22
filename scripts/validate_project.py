@@ -15,8 +15,8 @@ checks = {
     "required email at signup": 'Email для входа и подтверждения' in js and 'Некорректный email.' in js,
     "legacy username login retained": 'authEmail(identifier)' in js,
     "Google and password providers have useful setup errors": "auth/unauthorized-domain" in js,
-    "chat access requires verified email": "function verified()" in rules and "return verified()" in rules,
-    "chat file access requires verified email": "request.auth.token.email_verified == true" in storage,
+    "chat access requires verified email or legacy account": "function verified()" in rules and "email_verified == true" in rules and "fross-ca5d6[.]firebaseapp[.]com" in rules,
+    "chat file access requires verified email or legacy account": "request.auth.token.email_verified == true" in storage and "fross-ca5d6[.]firebaseapp[.]com" in storage,
     "no unsafe diagnostic leakage": 'diagnostic:String(error?.message' not in js,
 }
 for name, passed in checks.items():
