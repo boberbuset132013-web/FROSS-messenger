@@ -16,6 +16,10 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -53,6 +57,22 @@ class MainActivity : ComponentActivity() {
     private val deviceId by lazy { DevicePrefs.deviceId(this) }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                        .getResult(ApiException::class.java)
+                    val credential = GoogleAuthProvider.getCredential(account.idToken, null)
+                    auth.signInWithCredential(credential).await()
+                    renewingSession = true
+                    try { establishExistingDevice() } finally { renewingSession = false }
+                } catch (error: Exception) {
+                    status.text = error.message ?: "Не удалось войти через Google."
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -176,6 +196,17 @@ class MainActivity : ComponentActivity() {
                         status.text = error.message ?: "Не удалось войти."
                     }
                 }
+            }
+        }
+        button("Войти через Google") {
+            try {
+                val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(getString(R.string.default_web_client_id))
+                    .requestEmail()
+                    .build()
+                googleSignInLauncher.launch(GoogleSignIn.getClient(this, options).signInIntent)
+            } catch (error: Exception) {
+                status.text = error.message ?: "Не удалось открыть Google Sign-In."
             }
         }
     }
