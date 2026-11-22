@@ -707,13 +707,13 @@ $("gb").onclick=()=>{
       $("totp-start").onclick=async()=>{
         const status=$("totp-status"),box=$("totp-box");
         try{
-          const qrmod=await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
           const session=await authSdk.multiFactor(currentUser).getSession();
           const secret=await authSdk.TotpMultiFactorGenerator.generateSecret(session);
           const uri=secret.generateQrCodeUrl(currentUser.email||currentUser.uid,"FROSS Messenger");
-          const qr=await qrmod.toDataURL(uri,{width:220,margin:2});
-          box.innerHTML='<p>Отсканируйте QR-код в Google Authenticator, затем введите текущий код.</p><img id="totp-qr" alt="QR-код настройки" style="display:block;width:220px;max-width:100%;margin:12px auto;border-radius:12px"><label>Секретный ключ (если QR недоступен)</label><code id="totp-secret" style="overflow-wrap:anywhere"></code><label>Шестизначный код</label><input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><div class="err" id="totp-error"></div><button class="pr" id="totp-confirm" style="width:100%">Подтвердить и включить</button>';
-          $("totp-qr").src=qr;$("totp-secret").textContent=secret.secretKey;
+          box.innerHTML='<p>Отсканируйте QR-код в Google Authenticator, затем введите текущий код. Если QR не загрузится, добавьте ключ вручную.</p><img id="totp-qr" alt="QR-код настройки" style="display:block;width:220px;max-width:100%;margin:12px auto;border-radius:12px"><label>Секретный ключ (если QR недоступен)</label><code id="totp-secret" style="overflow-wrap:anywhere"></code><label>Шестизначный код</label><input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><div class="err" id="totp-error"></div><button class="pr" id="totp-confirm" style="width:100%">Подтвердить и включить</button>';
+          $("totp-secret").textContent=secret.secretKey;
+          try{const qrmod=await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");$("totp-qr").src=await qrmod.toDataURL(uri,{width:220,margin:2})}
+          catch(qrError){$("totp-qr").remove();$("totp-error").textContent="QR недоступен. Используйте секретный ключ вручную."}
           $("totp-confirm").onclick=async()=>{
             try{
               const assertion=authSdk.TotpMultiFactorGenerator.assertionForEnrollment(secret,$("totp-code").value.trim());
