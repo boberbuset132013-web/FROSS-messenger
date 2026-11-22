@@ -178,6 +178,19 @@ for (const group of chunk(missingAuth, 1000)) {
 }
 console.log("Firebase Auth accounts imported/skipped:", users.length, "new imports:", imported);
 
+// Mark only accounts loaded from the trusted D1 migration as legacy.
+// Security Rules use this server-assigned claim instead of trusting an email suffix.
+for (const group of chunk(users, 100)) {
+  const found = await adminAuth.getUsers(group.map(u => ({ uid: String(u.id) })));
+  for (const item of found.users) {
+    await adminAuth.setCustomUserClaims(item.uid, {
+      ...(item.customClaims || {}),
+      legacyAccount: true
+    });
+  }
+}
+console.log("Legacy account claims assigned:", users.length);
+
 const usersEntries = [];
 const avatarUrlByUid = new Map();
 for (const u of users) {
