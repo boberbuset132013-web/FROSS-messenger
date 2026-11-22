@@ -400,6 +400,9 @@ export const verifyBrowserLoginCode = onRequest({ secrets: [browserOtpSecret] },
     if (!/^[a-f0-9-]{36}$/i.test(requestId) || !/^\d{6}$/.test(code)) {
       return sendError(res, 400, "Введите шестизначный код из приложения FROSS.");
     }
+    if (user.frossBrowserSession !== requestId) {
+      return sendError(res, 403, "Этот код нельзя использовать в другой сессии браузера.");
+    }
     const requestRef = db.doc(`browserLoginRequests/${requestId}`);
     const request = await requestRef.get();
     if (!request.exists || request.data()?.uid !== user.uid) return sendError(res, 404, "Запрос на вход не найден.");
