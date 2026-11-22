@@ -403,77 +403,90 @@ export const verifyBrowserLoginCode = onRequest({ secrets: [browserOtpSecret] },
     if (user.frossBrowserSession !== requestId) {
       return sendError(res, 403, "Этот код нельзя использовать в другой сессии браузера.");
     }
-    const requestRef = db.doc(`browserLoginRequests/${requestId}`);
-    const request = await requestRef.get();
-    if (!request.exists || request.data()?.uid !== user.uid) return sendError(res, 404, "Запрос на вход не найден.");
-    const data = request.data();
-    if (data.status !== "pending") return sendError(res, 409, "Этот запрос уже обработан.");
-    if (!data.expiresAt || data.expiresAt.toMillis() <= Date.now()) {
-      const now = Timestamp.now();
-      const batch = db.batch();
-      batch.update(requestRef, { status: "expired", resolvedAt: now });
-      batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
-        securityRequestStatus: "expired",
-        securityRequestCode: FieldValue.delete(),
-        text: "Время действия кода истекло.",
-        resolvedAt: now,
-      }, { merge: true });
-      await batch.commit();
-      return sendError(res, 410, "Время действия кода истекло. Начните вход заново.");
-    }
 
-    const attempts = Number(data.attempts || 0);
-    const maxAttempts = Math.min(5, Math.max(1, Number(data.maxAttempts || 5)));
-    if (attempts >= maxAttempts) return sendError(res, 429, "Лимит попыток исчерпан. Начните вход заново.");
-    const expected = Buffer.from(String(data.codeHash || ""), "hex");
+    const requestRef = db.doc(\`browserLoginRequests/\${requestId}\`);
+    const profileRef = db.doc(\`users/\${user.uid}\`);
+    const messageRef = db.doc(\`chats/security_\${user.uid}/messages/\${requestId}\`);
     const actual = browserCodeDigest(requestId, code);
-    const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
-    if (!matches) {
-      const nextAttempts = attempts + 1;
-      if (nextAttempts >= maxAttempts) {
-        const now = Timestamp.now();
-        const batch = db.batch();
-        batch.update(requestRef, { status: "denied", attempts: nextAttempts, resolvedAt: now });
-        batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
-          securityRequestStatus: "denied",
+    const result = await db.runTransaction(async transaction => {
+      const [requestSnap, profileSnap] = await Promise.all([
+        transaction.get(requestRef),
+        transaction.get(profileRef),
+      ]);
+      if (!requestSnap.exists || requestSnap.data()?.uid !== user.uid) {
+        return { status: "missing" };
+      }
+      const data = requestSnap.data();
+      if (data.status !== "pending") return { status: "processed" };
+      const now = Timestamp.now();
+      if (!data.expiresAt || data.expiresAt.toMillis() <= now.toMillis()) {
+        transaction.update(requestRef, { status: "expired", resolvedAt: now });
+        transaction.set(messageRef, {
+          securityRequestStatus: "expired",
           securityRequestCode: FieldValue.delete(),
-          text: "Запрос на вход заблокирован после пяти неверных кодов.",
+          text: "Время действия кода истекло.",
           resolvedAt: now,
         }, { merge: true });
-        await batch.commit();
-        return sendError(res, 429, "Слишком много неверных попыток. Запрос заблокирован.");
+        return { status: "expired" };
       }
-      await requestRef.update({ attempts: nextAttempts });
-      return res.status(401).json({ ok: false, error: "Неверный код.", attemptsRemaining: maxAttempts - nextAttempts });
-    }
+      const attempts = Number(data.attempts || 0);
+      const maxAttempts = Math.min(5, Math.max(1, Number(data.maxAttempts || 5)));
+      if (attempts >= maxAttempts) return { status: "locked" };
+      const expected = Buffer.from(String(data.codeHash || ""), "hex");
+      const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
+      if (!matches) {
+        const nextAttempts = attempts + 1;
+        if (nextAttempts >= maxAttempts) {
+          transaction.update(requestRef, { status: "denied", attempts: nextAttempts, resolvedAt: now });
+          transaction.set(messageRef, {
+            securityRequestStatus: "denied",
+            securityRequestCode: FieldValue.delete(),
+            text: "Запрос на вход заблокирован после пяти неверных кодов.",
+            resolvedAt: now,
+          }, { merge: true });
+          return { status: "locked" };
+        }
+        transaction.update(requestRef, { attempts: nextAttempts });
+        return { status: "wrong", attemptsRemaining: maxAttempts - nextAttempts };
+      }
+      if (!profileSnap.exists) return { status: "profile-missing" };
+      const sessionExpiresAt = Timestamp.fromMillis(now.toMillis() + 30 * 24 * 60 * 60 * 1000);
+      transaction.update(requestRef, {
+        status: "approved",
+        resolvedAt: now,
+        sessionExpiresAt,
+        approvedAt: now,
+      });
+      transaction.update(profileRef, {
+        [\`approvedBrowserSessions.\${requestId}\`]: { expiresAt: sessionExpiresAt },
+      });
+      transaction.set(messageRef, {
+        securityRequestStatus: "approved",
+        securityRequestCode: FieldValue.delete(),
+        text: "Вход в FROSS через браузер подтверждён.",
+        resolvedAt: now,
+      }, { merge: true });
+      return { status: "approved" };
+    });
 
-    const resolvedAt = Timestamp.now();
-    const sessionExpiresAt = Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000);
-    const batch = db.batch();
-    batch.update(requestRef, {
-      status: "approved",
-      attempts,
-      resolvedAt,
-      sessionExpiresAt,
-      approvedAt: resolvedAt,
-    });
-    batch.update(db.doc(`users/${user.uid}`), {
-      [`approvedBrowserSessions.${requestId}`]: { expiresAt: sessionExpiresAt },
-    });
-    batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
-      securityRequestStatus: "approved",
-      securityRequestCode: FieldValue.delete(),
-      text: "Вход в FROSS через браузер подтверждён.",
-      resolvedAt,
-    }, { merge: true });
-    await batch.commit();
+    if (result.status === "missing") return sendError(res, 404, "Запрос на вход не найден.");
+    if (result.status === "processed") return sendError(res, 409, "Этот запрос уже обработан.");
+    if (result.status === "expired") return sendError(res, 410, "Время действия кода истекло. Начните вход заново.");
+    if (result.status === "locked") return sendError(res, 429, "Слишком много неверных попыток. Запрос заблокирован.");
+    if (result.status === "profile-missing") return sendError(res, 409, "Профиль FROSS не найден.");
+    if (result.status === "wrong") {
+      return res.status(401).json({
+        ok: false,
+        error: "Неверный код.",
+        attemptsRemaining: result.attemptsRemaining,
+      });
+    }
     return res.status(200).json({ ok: true, status: "approved" });
   } catch (error) {
     console.error("FROSS browser code verification failed:", error);
     return sendError(res, error.status || 500, error.status ? error.message : "Не удалось проверить код входа.");
   }
 });
-
 export const expireBrowserLoginRequests = onSchedule("every 5 minutes", async () => {
   const now = Timestamp.now();
   const expired = await db.collection("browserLoginRequests")
