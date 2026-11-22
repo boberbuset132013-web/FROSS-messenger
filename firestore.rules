@@ -47,6 +47,7 @@ service cloud.firestore {
         && request.resource.data.usernameLower is string
         && request.resource.data.username == request.resource.data.usernameLower
         && request.resource.data.usernameLower.matches('[a-z0-9_]{3,20}')
+        && getAfter(/databases/$(database)/documents/usernameIndex/$(request.resource.data.usernameLower)).data.uid == uid
         && request.resource.data.keys().hasOnly([
           "username", "usernameLower", "displayName", "bio", "avatarUrl", "lastSeenAt"
         ]);
@@ -110,6 +111,8 @@ service cloud.firestore {
         allow read: if canReadChat(chatId);
         allow create: if canReadChat(chatId)
           && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.username == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.username
+          && request.resource.data.displayName == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.displayName
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 4000
