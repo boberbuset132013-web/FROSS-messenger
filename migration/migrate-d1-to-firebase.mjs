@@ -179,10 +179,12 @@ for (const group of chunk(missingAuth, 1000)) {
 console.log("Firebase Auth accounts imported/skipped:", users.length, "new imports:", imported);
 
 const usersEntries = [];
+const avatarUrlByUid = new Map();
 for (const u of users) {
   const uid = String(u.id);
   const username = String(u.username).toLowerCase();
   const avatarUrl = await uploadLegacyAvatar(u, uid);
+  avatarUrlByUid.set(uid, typeof avatarUrl === "string" ? avatarUrl : "");
   const createdAt = Timestamp.fromMillis(asMillis(u.created_at, Date.now()));
   const settings = (() => { try { return JSON.parse(String(u.settings || "{}")); } catch { return {}; } })();
   const publicProfile = {
@@ -242,7 +244,7 @@ for (const message of messages) {
 const profiles = new Map();
 for (const u of users) {
   const uid=String(u.id),username=String(u.username).toLowerCase();
-  profiles.set(uid,{uid,username,displayName:String(u.display_name||u.username).slice(0,40),avatarUrl:""});
+  profiles.set(uid,{uid,username,displayName:String(u.display_name||u.username).slice(0,40),avatarUrl:avatarUrlByUid.get(uid)||""});
 }
 for (const [chatId, data] of chatData) {
   data.memberProfiles=(data.memberUids||[]).map(uid=>profiles.get(uid)).filter(Boolean);
