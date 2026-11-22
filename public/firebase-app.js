@@ -385,6 +385,7 @@ function chatInfo(c) {
   if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
+    if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
     return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:isOnline(other)?"в сети":"@"+(other.username||"")};
   }
   return{title:c.title||"Группа",avatar:{title:c.title||"G"},sub:(c.memberUids||[]).length+" участн."};
@@ -414,7 +415,7 @@ async function searchUsers(term) {
   const q=term.trim().toLowerCase();if(q.length<2){found=[];renderList();return;}
   try{
     const users=await getDocs(query(collection(db,"publicUsers"),orderBy("usernameLower"),startAt(q),endAt(q+"\uf8ff"),limit(20)));
-    found=users.docs.filter(d=>d.id!==me.uid).map(d=>({uid:d.id,...d.data()}));renderList();
+    found=users.docs.filter(d=>d.id!==me.uid&&!d.data().deleted).map(d=>({uid:d.id,...d.data()}));renderList();
   }catch(e){console.error(e)}
 }
 function startChatList() {
@@ -509,6 +510,7 @@ function subscribeMessages() {
         if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=a.url;audio.className="message-audio";b.append(audio)}
         const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
       }
+      if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.text){const body=document.createElement("div");body.textContent=m.text;b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
       r.append(b);box.append(r);
