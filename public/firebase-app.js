@@ -697,7 +697,7 @@ $("gb").onclick=()=>{
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение телефона</b><small class="mut">Номер подтверждается в Android-приложении FROSS через мобильного оператора, без SMS-кода.</small></div></div><div class="mut" id="phoneError" style="margin:10px 0">'+(currentUser.phoneNumber?'Подтверждённый номер: '+esc(currentUser.phoneNumber):'Номер пока не подтверждён. Установите приложение FROSS и подтвердите номер там.')+'</div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -734,31 +734,6 @@ $("gb").onclick=()=>{
             }catch(e){$("totp-error").textContent=authError(e)}
           };
         }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
-      };
-      let phoneConfirmation = null, phoneVerifier = null;
-      $("phoneSend").onclick = async () => {
-        try {
-          const phone = $("phoneNumber").value.trim();
-          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в формате +447700900123.");
-          phoneVerifier = new RecaptchaVerifier(auth,"phone-recaptcha-container",{size:"normal"});
-          phoneConfirmation = await linkWithPhoneNumber(currentUser,phone,phoneVerifier);
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "SMS отправлено. Введите код из сообщения.";
-        } catch(e) {
-          $("phoneError").textContent = authError(e);
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        }
-      };
-      $("phoneConfirm").onclick = async () => {
-        try {
-          if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
-          const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
-          currentUser = linked.user;
-          await updateDoc(doc(db,"users",me.uid),{phoneNumber:linked.user.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        } catch(e) { $("phoneError").textContent = authError(e); }
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {
