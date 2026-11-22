@@ -1,0 +1,72 @@
+name: Build FROSS Android
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+  push:
+    branches: [feature/fross-phone-app-security-bot]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Create temporary Firebase config for compile-only validation
+        working-directory: android
+        run: |
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "200886619645",
+              "project_id": "fross-ca5d6",
+              "storage_bucket": "fross-ca5d6.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:200886619645:android:aaaaaaaaaaaaaaaaaaaaaa",
+                  "android_client_info": {
+                    "package_name": "com.fross.messenger"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": "000000000000-placeholder.apps.googleusercontent.com",
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyDUMMY_COMPILE_ONLY_KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": "000000000000-placeholder.apps.googleusercontent.com",
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+      - name: Compile Android debug APK
+        run: gradle --no-daemon -p android assembleDebug
