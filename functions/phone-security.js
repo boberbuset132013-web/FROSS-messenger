@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
@@ -115,6 +115,23 @@ export const verifyPhoneWithPnv = onRequest(async (req, res) => {
     const phoneNumber = typeof payload.sub === "string" ? payload.sub : "";
     if (!/^\\+[1-9]\\d{7,14}$/.test(phoneNumber)) {
       return sendError(res, 403, "PNV не вернул корректный международный номер.");
+    }
+
+    const tokenFingerprint = createHash("sha256").update(pnvToken).digest("hex");
+    const consumedTokenRef = db.doc(`consumedPnvTokens/${tokenFingerprint}`);
+    try {
+      await db.runTransaction(async transaction => {
+        const consumed = await transaction.get(consumedTokenRef);
+        if (consumed.exists) throw Object.assign(new Error("Этот токен подтверждения уже использован. Запросите новый."), { status: 409 });
+        transaction.create(consumedTokenRef, {
+          uid: user.uid,
+          createdAt: Timestamp.now(),
+          expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000),
+        });
+      });
+    } catch (error) {
+      if (error.status === 409) return sendError(res, 409, error.message);
+      throw error;
     }
 
     const account = await auth.getUser(user.uid);
@@ -397,15 +414,17 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
     let updated = 0;
     do {
       const page = await auth.listUsers(1000, pageToken);
-      const batch = db.batch();
-      for (const account of page.users) {
-        batch.set(db.doc(`users/${account.uid}`), {
-          requireBrowserApproval: enabled,
-          securityGateUpdatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        updated++;
+      for (let offset = 0; offset < page.users.length; offset += 450) {
+        const batch = db.batch();
+        for (const account of page.users.slice(offset, offset + 450)) {
+          batch.set(db.doc(`users/${account.uid}`), {
+            requireBrowserApproval: enabled,
+            securityGateUpdatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+          updated++;
+        }
+        await batch.commit();
       }
-      if (page.users.length) await batch.commit();
       pageToken = page.pageToken;
     } while (pageToken);
 
