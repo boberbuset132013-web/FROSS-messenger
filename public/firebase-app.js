@@ -2,7 +2,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebas
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential,
-  EmailAuthProvider, deleteUser
+  EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup,
+  sendEmailVerification, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
@@ -37,15 +38,41 @@ function authEmail(username) {
 }
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none";
-  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Имя пользователя</label><input id="lu" autocomplete="username" maxlength="20"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button></div><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
+  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email или имя пользователя</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
   $("rg").onclick=()=>{W={username:"",email:"",password:"",display_name:"",bio:"",avatar:"",settings:{...DEF}};wiz(1)};
+  $("gr").onclick=googleLogin;
+  $("reset").onclick=async()=>{const email=$("lu").value.trim();if(!email.includes("@")){$("le").textContent="Сначала введите email.";return}try{await sendPasswordResetEmail(auth,email);$("le").textContent="Письмо для сброса пароля отправлено."}catch(e){$("le").textContent=authError(e)}};
   $("lg").onclick=async()=>{try{
-    const username=$("lu").value.trim().toLowerCase();
-    if(!/^[a-z0-9_]{3,20}$/.test(username))throw Error("Имя: 3–20 символов, латиница, цифры и _.");
-    await signInWithEmailAndPassword(auth,authEmail(username),$("lp").value);
+    const identifier=$("lu").value.trim().toLowerCase();
+    if(!identifier)throw Error("Введите email или имя пользователя.");
+    const email=identifier.includes("@")?identifier:authEmail(identifier);
+    const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
+    if(!result.user.emailVerified){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}
   }catch(e){$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
+
+async function googleLogin(){
+  try{
+    creatingAccount=true;
+    const result=await signInWithPopup(auth,new GoogleAuthProvider());
+    const user=result.user;
+    const profile=await getDoc(doc(db,"publicUsers",user.uid));
+    if(!profile.exists()){
+      const username=(prompt("Придумайте имя пользователя (3–20 символов, латиница, цифры, _):")||"").trim().toLowerCase();
+      if(!/^[a-z0-9_]{3,20}$/.test(username))throw new Error("Некорректное имя пользователя. Войдите через Google ещё раз.");
+      await runTransaction(db,async tx=>{
+        const index=doc(db,"usernameIndex",username),taken=await tx.get(index);
+        if(taken.exists())throw new Error("Это имя пользователя уже занято.");
+        tx.set(index,{uid:user.uid,username,usernameLower:username,createdAt:serverTimestamp()});
+        tx.set(doc(db,"publicUsers",user.uid),{username,usernameLower:username,displayName:user.displayName||username,bio:"",avatarUrl:user.photoURL||"",lastSeenAt:serverTimestamp()});
+        tx.set(doc(db,"users",user.uid),{contactEmail:user.email||"",settings:{...DEF},createdAt:serverTimestamp(),authProvider:"google"});
+      });
+    }
+    creatingAccount=false;await boot(user);
+  }catch(e){creatingAccount=false;await signOut(auth).catch(()=>{});$("le").textContent=authError(e)}
+}
+
 function authError(e) {
   const code=e?.code||"";
   const map={
@@ -56,6 +83,8 @@ function authError(e) {
     "auth/weak-password":"Пароль слишком простой (минимум 8 символов).",
     "auth/too-many-requests":"Слишком много попыток. Попробуйте позже.",
     "auth/operation-not-allowed":"В Firebase Console включите Authentication → Email/Password.",
+    "auth/popup-closed-by-user":"Окно Google было закрыто.",
+    "auth/account-exists-with-different-credential":"Для этого email уже существует аккаунт с другим способом входа.",
     "permission-denied":"Firebase Rules запретили операцию. Проверьте опубликованные правила."
   };
   return map[code] || e?.message || "Неизвестная ошибка Firebase.";
@@ -120,7 +149,7 @@ function bindLook(o,pre) {
 function wiz(n) {
   const bar='<div class="logo">FROSS</div><div class="steps">'+[1,2,3,4].map(i=>'<i class="'+(i<=n?"d":"")+'"></i>').join("")+'</div><b>Шаг '+n+' из 4</b>';
   let h=bar;
-  if(n===1)h+='<label>Имя пользователя</label><input id="u" maxlength="20" placeholder="латиница, цифры, _"><label>Контактный email (необязательно)</label><input id="e" type="email"><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password"><small class="mut">Вход выполняется по имени пользователя. Email хранится отдельно как контакт.</small>';
+  if(n===1)h+='<label>Имя пользователя</label><input id="u" maxlength="20" placeholder="латиница, цифры, _"><label>Email для входа и подтверждения</label><input id="e" type="email" autocomplete="email" required><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password"><small class="mut">На этот адрес придёт письмо со ссылкой подтверждения. После подтверждения можно войти по email и паролю.</small>';
   if(n===2)h+='<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><div class="av big" id="pav"></div><div><button id="up">📷 Загрузить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать</button></div></div><label>Отображаемое имя</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea>';
   if(n===3)h+='<p class="mut">Оформление можно будет поменять в настройках</p>'+look(W.settings,"w");
   if(n===4)h+='<div class="sum"><div class="av big" id="pav"></div><div><b>'+esc(W.display_name||W.username)+'</b><br><span class="mut">@'+esc(W.username)+(W.email?" · "+esc(W.email):"")+'</span><br><span class="mut">'+esc(W.bio)+'</span></div></div><label style="margin-top:14px"><input type="checkbox" id="tos">Принимаю правила тестовой версии</label>';
@@ -150,7 +179,7 @@ function wiz(n) {
     if(n===1){
       const u=$("u").value.trim().toLowerCase(),p=$("p").value,e=$("e").value.trim();
       if(!/^[a-z0-9_]{3,20}$/.test(u))return error("Имя: 3–20 символов, латиница, цифры и _.");
-      if(e&&!/^\S+@\S+\.\S+$/.test(e))return error("Некорректный email.");
+      if(!/^\S+@\S+\.\S+$/.test(e))return error("Укажите действующий email для подтверждения.");
       if(p.length<8)return error("Пароль: минимум 8 символов.");
       if(p!==$("p2").value)return error("Пароли не совпадают.");
       Object.assign(W,{username:u,email:e,password:p});return wiz(2);
@@ -161,8 +190,9 @@ function wiz(n) {
     let credential=null,avatarUrl="";
     try {
       creatingAccount=true;
-      credential=await createUserWithEmailAndPassword(auth,authEmail(W.username),W.password);
+      credential=await createUserWithEmailAndPassword(auth,W.email,W.password);
       const uid=credential.user.uid;
+      await sendEmailVerification(credential.user);
       avatarUrl=await uploadAvatar(uid,W.avatar);
       const usernameLower=W.username.toLowerCase();
       await runTransaction(db,async tx=>{
@@ -175,11 +205,13 @@ function wiz(n) {
           bio:W.bio||"",avatarUrl,lastSeenAt:serverTimestamp()
         });
         tx.set(doc(db,"users",uid),{
-          contactEmail:W.email||"",settings:W.settings,createdAt:serverTimestamp(),authProvider:"password"
+          contactEmail:W.email,settings:W.settings,createdAt:serverTimestamp(),authProvider:"password"
         });
       });
       creatingAccount=false;
-      await boot(credential.user);
+      await signOut(auth);
+      showLogin();
+      $("le").textContent="Аккаунт создан. Откройте письмо от Firebase и подтвердите email, затем войдите.";
     } catch(e) {
       creatingAccount=false;
       if(credential?.user)try{await deleteUser(credential.user)}catch{}
@@ -452,7 +484,7 @@ $("gb").onclick=()=>{
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,user=>{
-  if(user){if(!creatingAccount)bootFromAuth(user)}
+  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){sendEmailVerification(user).catch(()=>{});signOut(auth);return}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
