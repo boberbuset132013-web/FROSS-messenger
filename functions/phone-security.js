@@ -102,6 +102,7 @@ async function ensureSecurityBotMessage(uid, requestId, browserLabel, expiresAt,
     securityRequestId: requestId,
     securityRequestStatus: "pending",
     securityRequestExpiresAt: expiresAt,
+    securityRequestCode: code,
     createdAt: now,
   });
 }
@@ -369,7 +370,8 @@ async function updateBrowserRequest(req, res, status) {
     const messageRef = db.doc(`chats/security_${user.uid}/messages/${requestId}`);
     batch.set(messageRef, {
       securityRequestStatus: status,
-      text: status === "approved" ? "Вход в FROSS через браузер подтверждён." : "Запрос на вход отклонён.",
+      securityRequestCode: FieldValue.delete(),
+      text: "Запрос на вход отклонён в приложении FROSS.",
       resolvedAt,
     }, { merge: true });
     await batch.commit();
@@ -405,6 +407,7 @@ export const verifyBrowserLoginCode = onRequest(async (req, res) => {
       batch.update(requestRef, { status: "expired", resolvedAt: now });
       batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
         securityRequestStatus: "expired",
+        securityRequestCode: FieldValue.delete(),
         text: "Время действия кода истекло.",
         resolvedAt: now,
       }, { merge: true });
@@ -426,6 +429,7 @@ export const verifyBrowserLoginCode = onRequest(async (req, res) => {
         batch.update(requestRef, { status: "denied", attempts: nextAttempts, resolvedAt: now });
         batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
           securityRequestStatus: "denied",
+          securityRequestCode: FieldValue.delete(),
           text: "Запрос на вход заблокирован после пяти неверных кодов.",
           resolvedAt: now,
         }, { merge: true });
@@ -451,6 +455,7 @@ export const verifyBrowserLoginCode = onRequest(async (req, res) => {
     });
     batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
       securityRequestStatus: "approved",
+      securityRequestCode: FieldValue.delete(),
       text: "Вход в FROSS через браузер подтверждён.",
       resolvedAt,
     }, { merge: true });
