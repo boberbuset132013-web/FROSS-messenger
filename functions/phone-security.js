@@ -5,12 +5,14 @@ import { getMessaging } from "firebase-admin/messaging";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import * as functionsV1 from "firebase-functions/v1";
 import { JwtVerifier } from "aws-jwt-verify";
 
 if (!getApps().length) initializeApp();
 
 const PROJECT_NUMBER = "200886619645";
+const browserOtpSecret = defineSecret("FROSS_BROWSER_OTP_SECRET");
 const FPNV_ISSUER = `https://fpnv.googleapis.com/projects/${PROJECT_NUMBER}`;
 const fpnvVerifier = JwtVerifier.create({
   issuer: FPNV_ISSUER,
@@ -72,7 +74,7 @@ function hasValidPnvHeader(token) {
 }
 
 function browserCodeDigest(requestId, code) {
-  const secret = process.env.FROSS_BROWSER_OTP_SECRET || "";
+  const secret = browserOtpSecret.value() || "";
   if (secret.length < 32) {
     throw Object.assign(new Error("FROSS_BROWSER_OTP_SECRET не настроен на сервере."), { status: 503 });
   }
@@ -245,7 +247,7 @@ export const createTrustedDeviceSession = onRequest(async (req, res) => {
   }
 });
 
-export const createBrowserLoginRequest = onRequest(async (req, res) => {
+export const createBrowserLoginRequest = onRequest({ secrets: [browserOtpSecret] }, async (req, res) => {
   if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
@@ -269,7 +271,7 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
     }
     if (devices.empty) return sendError(res, 412, "Сначала зарегистрируйте доверенное Android-устройство в FROSS.");
 
-    if ((process.env.FROSS_BROWSER_OTP_SECRET || "").length < 32) {
+    if ((browserOtpSecret.value() || "").length < 32) {
       return sendError(res, 503, "Сервер подтверждения входа пока не настроен.");
     }
     const requestId = randomUUID();
@@ -387,7 +389,7 @@ async function updateBrowserRequest(req, res, status) {
 
 export const rejectBrowserLogin = onRequest((req, res) => updateBrowserRequest(req, res, "denied"));
 
-export const verifyBrowserLoginCode = onRequest(async (req, res) => {
+export const verifyBrowserLoginCode = onRequest({ secrets: [browserOtpSecret] }, async (req, res) => {
   if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
@@ -542,7 +544,7 @@ export const refreshBrowserLoginSession = onRequest(async (req, res) => {
 });
 
 
-export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "1GiB" }, async (req, res) => {
+export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "1GiB", secrets: [browserOtpSecret] }, async (req, res) => {
   if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
   if (req.method === "OPTIONS") return res.status(204).send("");
   if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
