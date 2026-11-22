@@ -30,7 +30,7 @@ const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","
 const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",enter:true,h24:true,wall:"none",avatars:true};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
-let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null;
+let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null;
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
@@ -160,6 +160,7 @@ function wiz(n) {
     if(!$("tos").checked)return error("Нужно принять правила тестовой версии.");
     let credential=null,avatarUrl="";
     try {
+      creatingAccount=true;
       credential=await createUserWithEmailAndPassword(auth,authEmail(W.username),W.password);
       const uid=credential.user.uid;
       avatarUrl=await uploadAvatar(uid,W.avatar);
@@ -177,7 +178,10 @@ function wiz(n) {
           contactEmail:W.email||"",settings:W.settings,createdAt:serverTimestamp(),authProvider:"password"
         });
       });
+      creatingAccount=false;
+      await boot(credential.user);
     } catch(e) {
+      creatingAccount=false;
       if(credential?.user)try{await deleteUser(credential.user)}catch{}
       error(authError(e));
     }
@@ -310,13 +314,15 @@ async function loadCurrentProfile() {
 }
 function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="@"+me.username}
 async function boot(user) {
+  if(bootedUid===user.uid)return;
+  bootedUid=user.uid;
   currentUser=user;
   try{
     await loadCurrentProfile();$("auth").style.display="none";$("app").style.display="grid";cur="general";
     await ensureGeneral();startChatList();subscribeMessages();
     if(presenceTimer)clearInterval(presenceTimer);
     presenceTimer=setInterval(()=>updateDoc(doc(db,"publicUsers",me.uid),{lastSeenAt:serverTimestamp()}).catch(console.error),60000);
-  }catch(e){console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
+  }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
 async function send() {
   const input=$("inp"),text=input.value.trim();if(!text)return;input.value="";input.style.height="";
@@ -440,9 +446,9 @@ $("gb").onclick=()=>{
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,user=>{
-  if(user){bootFromAuth(user)}
+  if(user){if(!creatingAccount)bootFromAuth(user)}
   else{
-    currentUser=null;me=null;
+    currentUser=null;me=null;bootedUid=null;
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
     showLogin();
   }
