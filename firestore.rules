@@ -4,11 +4,27 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    function securityGateEnabled() {
+      return exists(/databases/$(database)/documents/system/securityConfig)
+        && get(/databases/$(database)/documents/system/securityConfig).data.requireBrowserApproval == true;
+    }
+    function trustedDeviceSession() {
+      return signedIn()
+        && request.auth.token.keys().hasAny(["frossDeviceId"])
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId)).data.status == "active";
+    }
+    function approvedBrowserSession() {
+      return signedIn()
+        && request.auth.token.keys().hasAny(["frossBrowserSession"])
+        && exists(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession))
+        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.status == "approved";
+    }
     function verified() {
-      return signedIn() && (
-        request.auth.token.email_verified == true
-        || request.auth.token.legacyAccount == true
-      );
+      return signedIn()
+        && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
+        && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
     }
     function own(uid) {
       return signedIn() && request.auth.uid == uid;
@@ -42,7 +58,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt"]);
       allow delete: if own(uid);
     }
 
@@ -105,6 +121,7 @@ service cloud.firestore {
       );
 
       allow update: if verified()
+        && resource.data.type != "system"
         && (chatId == "general" || request.auth.uid in resource.data.memberUids)
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["lastMessage", "lastMessageAt", "updatedAt", "memberUids"])
@@ -126,6 +143,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if canReadChat(chatId);
         allow create: if canReadChat(chatId)
+          && get(/databases/$(database)/documents/chats/$(chatId)).data.type != "system"
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.username == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.username
           && request.resource.data.displayName == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.displayName
@@ -238,6 +256,28 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(["uid", "candidate", "createdAt"]);
         allow update, delete: if false;
       }
+    }
+
+    match /browserLoginRequests/{requestId} {
+      allow get: if signedIn()
+        && request.auth.uid == resource.data.uid
+        && (
+          (request.auth.token.keys().hasAny(["frossBrowserSession"])
+            && request.auth.token.frossBrowserSession == resource.data.sessionId)
+          || trustedDeviceSession()
+        );
+      allow list: if trustedDeviceSession()
+        && request.auth.uid == resource.data.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /users/{uid}/trustedDevices/{deviceId} {
+      allow get, list: if own(uid) && trustedDeviceSession();
+      allow create, update, delete: if false;
+    }
+
+    match /system/{document=**} {
+      allow read, write: if false;
     }
 
     match /systemMigrations/{document=**} {
