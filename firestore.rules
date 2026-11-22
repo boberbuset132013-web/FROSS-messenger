@@ -22,7 +22,7 @@ service cloud.firestore {
     }
 
     match /usernameIndex/{usernameLower} {
-      allow get: if signedIn();
+      allow get: if true;
       allow list: if false;
       allow create: if own(request.resource.data.uid)
         && request.resource.data.usernameLower == usernameLower
@@ -42,12 +42,15 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified"]);
       allow delete: if own(uid);
     }
 
     match /publicUsers/{uid} {
-      allow get, list: if verified();
+      // A newly authenticated user may read their own missing profile during registration,
+      // even if the identity provider has not populated email_verified yet.
+      allow get: if own(uid) || verified();
+      allow list: if verified();
       allow create: if own(uid)
         && request.resource.data.username is string
         && request.resource.data.usernameLower is string
@@ -59,9 +62,16 @@ service cloud.firestore {
         ]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["displayName", "bio", "avatarUrl", "lastSeenAt"])
-        && request.resource.data.username == resource.data.username
-        && request.resource.data.usernameLower == resource.data.usernameLower;
+          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "lastSeenAt"])
+        && (
+          (request.resource.data.username == resource.data.username
+            && request.resource.data.usernameLower == resource.data.usernameLower)
+          ||
+          (request.resource.data.username is string
+            && request.resource.data.username == request.resource.data.usernameLower
+            && request.resource.data.usernameLower.matches('[a-z0-9_]{3,20}')
+            && getAfter(/databases/$(database)/documents/usernameIndex/$(request.resource.data.usernameLower)).data.uid == uid)
+        );
       allow delete: if own(uid);
     }
 
@@ -129,6 +139,63 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if canReadChat(chatId)
           && resource.data.senderUid == request.auth.uid;
+      }
+    }
+
+    match /calls/{callId} {
+      function callParticipant() {
+        return verified()
+          && request.auth.uid in resource.data.participantUids;
+      }
+      allow create: if verified()
+        && request.resource.data.callerUid == request.auth.uid
+        && request.resource.data.calleeUid is string
+        && request.resource.data.calleeUid != request.auth.uid
+        && request.resource.data.participantUids is list
+        && request.resource.data.participantUids.size() == 2
+        && request.auth.uid in request.resource.data.participantUids
+        && request.resource.data.calleeUid in request.resource.data.participantUids
+        && request.resource.data.status == "preparing"
+        && exists(/databases/$(database)/documents/chats/$(request.resource.data.chatId))
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
+        && request.resource.data.calleeUid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
+        && request.resource.data.keys().hasOnly([
+          "chatId", "callerUid", "calleeUid", "participantUids", "status", "createdAt"
+        ]);
+      allow get: if callParticipant();
+      allow list: if verified() && resource.data.calleeUid == request.auth.uid;
+      allow update: if callParticipant()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["offer", "answer", "status", "updatedAt", "acceptedAt", "endedAt"])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["offer"])
+          || request.auth.uid == resource.data.callerUid)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["answer"])
+          || request.auth.uid == resource.data.calleeUid)
+        && (!("status" in request.resource.data)
+          || request.resource.data.status in ["preparing", "ringing", "accepted", "declined", "ended"]);
+      allow delete: if false;
+
+      match /{candidateSet}/{candidateId} {
+        function isCallParticipant() {
+          return verified()
+            && exists(/databases/$(database)/documents/calls/$(callId))
+            && request.auth.uid in get(/databases/$(database)/documents/calls/$(callId)).data.participantUids;
+        }
+        allow get, list: if isCallParticipant()
+          && candidateSet in ["callerCandidates", "calleeCandidates"];
+        allow create: if isCallParticipant()
+          && candidateSet in ["callerCandidates", "calleeCandidates"]
+          && request.resource.data.uid == request.auth.uid
+          && (
+            (candidateSet == "callerCandidates"
+              && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.callerUid)
+            ||
+            (candidateSet == "calleeCandidates"
+              && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.calleeUid)
+          )
+          && request.resource.data.candidate is map
+          && request.resource.data.keys().hasOnly(["uid", "candidate", "createdAt"]);
+        allow update, delete: if false;
       }
     }
 

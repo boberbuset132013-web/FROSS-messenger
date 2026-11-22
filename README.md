@@ -35,17 +35,50 @@ Firebase's built-in Email/Password provider sends a verification link, not a num
 ## Enable Firebase services before publishing
 
 1. Open Firebase Console and select project `fross-ca5d6`.
-2. Authentication → Sign-in method → enable **Email/Password** and **Google**. Configure the Google OAuth consent screen if Firebase requests it.
-3. Authentication → Templates → customize the email verification and password-reset templates with FROSS branding.
-4. Firestore Database → create a **Standard** database in the region you prefer. Choose production mode (the repository contains the rules).
-5. Storage → Get started → create the default bucket `fross-ca5d6.firebasestorage.app`.
-   **Cloud Storage for Firebase requires the Blaze pay-as-you-go plan.** Usage may have no-cost quotas, but billing must be linked for Storage access. Check Google's current pricing and set budget alerts before enabling it.
-6. Authentication → Settings → Authorized domains: add the exact hostname of the deployed `workers.dev` site (and your custom domain, if you use one).
+2. Authentication → Sign-in method: enable **Email/Password**, **Google** and **Phone**. In Authentication → Settings → Authorized domains, add the exact deployed `workers.dev` hostname and any custom domain. For Google, finish the OAuth consent/branding setup if Firebase requests it.
+3. Authentication → Settings → SMS region policy: allow the countries where your users will receive verification codes. Phone linking uses Firebase reCAPTCHA and sends a real SMS; test numbers can be configured in Firebase Authentication for development.
+4. Authentication → Templates → customize the email verification and password-reset templates with FROSS branding.
+5. Firestore Database → create a **Standard** database in the region you prefer. Choose production mode (the repository contains the rules).
+6. Storage → Get started → create the default bucket `fross-ca5d6.firebasestorage.app`.
+   **Cloud Storage for Firebase and deployed Cloud Functions require a billed Firebase project.** Phone SMS also has usage costs/limits; check Google's current pricing and set budget alerts before enabling it.
 7. From the repository root run:
    ```sh
    npm run firebase:deploy
    ```
-   This deploys `firestore.rules`, `firestore.indexes.json` and `storage.rules`. Do not use Firebase test mode or permissive rules.
+   This deploys Firestore rules/indexes, Storage rules and the Cloud Functions code. Do not use Firebase test mode or permissive rules.
+
+### Accounts and profile fields
+
+- `username` is the unique public ID. It can be changed in Profile settings and is used for people search.
+- The displayed nickname (`displayName`) is separate, may repeat, and can be changed freely.
+- New email/password registrations and Google registrations both reserve a username in a Firestore transaction. A Firestore permission/network error is shown as an error, not mislabeled as a taken username.
+- New email/password accounts still sign in with their verified email. Username/password compatibility remains for migrated legacy accounts.
+
+### Phone and voice calls
+
+- Phone linking sends an SMS code after the Phone provider and authorized domain are enabled in Firebase Console. Use international E.164 format, for example `+447700900123`.
+- Direct voice calls use WebRTC, Firebase Firestore for signaling, microphone permission and STUN servers. This is a working peer-to-peer baseline, but STUN alone cannot guarantee a connection through every corporate firewall or symmetric NAT. For reliable relay across restrictive networks, configure a TURN provider and add its credentials to `public/voice-calls.js` before treating calls as production-ready.
+
+### Dangerous test reset (optional)
+
+The **Delete ALL test accounts** button is deliberately hidden from ordinary users and disabled by default. It must never be enabled on a production project containing real users.
+
+1. Make sure `fross-ca5d6` is a disposable test Firebase project and that you have a private service-account JSON outside this repository.
+2. Locally create `functions/.env.fross-ca5d6` with:
+   ```env
+   ENABLE_DANGEROUS_TEST_RESET=true
+   ```
+   This file is ignored by Git. Leave the setting unset or `false` outside a deliberate test reset window.
+3. Install the Functions dependencies and assign the admin claim to your own Firebase UID:
+   ```sh
+   cd functions
+   npm install
+   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 node set-fross-admin.mjs YOUR_FIREBASE_UID
+   cd ..
+   ```
+4. Deploy Functions from the repository root with `npm run firebase:functions:deploy`, then sign out and back in so the admin token refreshes.
+5. In Settings → Account, the admin-only button appears. It requires typing `DELETE ALL ACCOUNTS` and a second browser confirmation. It deletes every Firebase Authentication user, all FROSS Firestore data and all files in the project's default Storage bucket, including the administrator account. There is no undo.
+
 
 ## Safe D1 → Firebase migration
 
@@ -105,6 +138,7 @@ After a successful import and verification:
 - `usernameIndex/{lowercaseUsername}`: username reservation and UID.
 - `chats/{chatId}`: chat type, member UIDs and last-message metadata.
 - `chats/{chatId}/messages/{messageId}`: immutable message records.
+- `calls/{callId}` plus `callerCandidates` / `calleeCandidates`: short-lived peer-to-peer voice-call signaling documents.
 
 ## Cloudflare
 
@@ -116,7 +150,7 @@ After a successful import and verification:
 
 - Numeric email OTP on every login is not implemented; the current verified-email flow uses Firebase's signed verification link.
 - Chat attachments are allowed by Storage Rules but the UI currently uploads profile avatars only.
-- Push notifications, voice/video calls, end-to-end encryption, moderation and automated account-recovery are not included yet.
+- Voice calls are implemented as a WebRTC audio baseline with Firestore signaling and public STUN servers. TURN relay credentials are still needed for reliable calling through restrictive NAT/firewall networks. Video calls, push notifications, end-to-end encryption, moderation and automated account-recovery are not included yet.
 - Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
 - Enable Firebase App Check (reCAPTCHA Enterprise for web) after testing it in monitoring mode; App Check complements Auth and Security Rules but does not replace them.
 - Account deletion removes the account/profile and removes the user from chats; historical messages remain visible to other participants as conversation history.

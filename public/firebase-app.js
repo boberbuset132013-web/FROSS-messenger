@@ -1,9 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential,
-  EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup,
-  sendEmailVerification, sendPasswordResetEmail
+  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
+  EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
+  sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
@@ -28,17 +28,18 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",enter:true,h24:true,wall:"none",avatars:true};
+const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null;
+window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
 }
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none";
-  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email или имя пользователя</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
+  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
   $("rg").onclick=()=>{W={username:"",email:"",password:"",display_name:"",bio:"",avatar:"",settings:{...DEF}};wiz(1)};
   $("gr").onclick=googleLogin;
   $("reset").onclick=async()=>{const email=$("lu").value.trim();if(!email.includes("@")){$("le").textContent="Сначала введите email.";return}try{await sendPasswordResetEmail(auth,email);$("le").textContent="Письмо для сброса пароля отправлено."}catch(e){$("le").textContent=authError(e)}};
@@ -52,34 +53,149 @@ function showLogin() {
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
-async function googleLogin(){
-  try{
-    creatingAccount=true;
-    const result=await signInWithPopup(auth,new GoogleAuthProvider());
-    const user=result.user;
-    const profile=await getDoc(doc(db,"publicUsers",user.uid));
-    if(!profile.exists()){
-      const username=(prompt("Придумайте имя пользователя (3–20 символов, латиница, цифры, _):")||"").trim().toLowerCase();
-      if(!/^[a-z0-9_]{3,20}$/.test(username))throw new Error("Некорректное имя пользователя. Войдите через Google ещё раз.");
-      await runTransaction(db,async tx=>{
-        const index=doc(db,"usernameIndex",username),taken=await tx.get(index);
-        if(taken.exists())throw new Error("Это имя пользователя уже занято.");
-        tx.set(index,{uid:user.uid,username,usernameLower:username,createdAt:serverTimestamp()});
-        tx.set(doc(db,"publicUsers",user.uid),{username,usernameLower:username,displayName:user.displayName||username,bio:"",avatarUrl:user.photoURL||"",lastSeenAt:serverTimestamp()});
-        tx.set(doc(db,"users",user.uid),{contactEmail:user.email||"",settings:{...DEF},createdAt:serverTimestamp(),authProvider:"google"});
-      });
-    }
-    creatingAccount=false;await boot(user);
-  }catch(e){creatingAccount=false;await signOut(auth).catch(()=>{});$("le").textContent=authError(e)}
+function askGoogleProfile(user) {
+  return new Promise(resolve => {
+    openM('<h3 style="margin:0">Завершение регистрации</h3><p class="mut">Google подключён. Придумайте уникальный username — по нему вас смогут найти. Никнейм может повторяться.</p><label>Уникальный username</label><input id="gu" maxlength="20" autocomplete="username" placeholder="например, fross_user"><div class="mut" id="gcheck">3–20 символов: латиница, цифры и _</div><label>Никнейм</label><input id="gd" maxlength="40" placeholder="Как вас будут видеть"><div class="err" id="ge"></div><div class="row"><button id="gcancel">Отмена</button><button class="pr" id="gcreate">Продолжить</button></div>');
+    let sequence = 0, available = false;
+    const check = async () => {
+      const name = $("gu").value.trim().toLowerCase(), seq = ++sequence;
+      available = false;
+      if (!/^[a-z0-9_]{3,20}$/.test(name)) {
+        $("gcheck").textContent = "Нужно 3–20 символов: a-z, 0-9 и _.";
+        $("gcheck").style.color = "var(--muted)";
+        return;
+      }
+      $("gcheck").textContent = "Проверяем username…";
+      try {
+        const snap = await getDoc(doc(db,"usernameIndex",name));
+        if (seq !== sequence) return;
+        available = !snap.exists();
+        $("gcheck").textContent = available ? "Это имя свободно." : "Это имя уже занято.";
+        $("gcheck").style.color = available ? "#3ddc84" : "var(--danger)";
+      } catch (e) {
+        if (seq !== sequence) return;
+        $("gcheck").textContent = "Не удалось проверить доступность. " + authError(e);
+        $("gcheck").style.color = "var(--danger)";
+      }
+    };
+    $("gu").oninput = check;
+    $("gu").onblur = check;
+    $("gd").value = user.displayName || "";
+    $("gcancel").onclick = () => { closeM(); resolve(null); };
+    $("gcreate").onclick = async () => {
+      const username = $("gu").value.trim().toLowerCase();
+      const displayName = $("gd").value.trim().slice(0,40) || user.displayName || username;
+      if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+        $("ge").textContent = "Username: 3–20 символов, латиница, цифры и _.";
+        return;
+      }
+      try {
+        const existing = await getDoc(doc(db,"usernameIndex",username));
+        if (existing.exists()) {
+          $("ge").textContent = "Это имя уже занято. Выберите другое.";
+          available = false;
+          return;
+        }
+        closeM();
+        resolve({username,displayName});
+      } catch (e) {
+        $("ge").textContent = authError(e);
+      }
+    };
+  });
 }
 
+async function linkGoogleToExistingAccount(error) {
+  const googleCredential = GoogleAuthProvider.credentialFromError(error);
+  if (!googleCredential) throw error;
+  return new Promise(resolve => {
+    openM('<h3 style="margin:0">Аккаунт уже существует</h3><p class="mut">Для этого Google email уже есть аккаунт FROSS. Войдите в него по паролю, чтобы безопасно привязать Google.</p><label>Email существующего аккаунта</label><input id="linkEmail" type="email" autocomplete="username"><label>Пароль FROSS</label><input id="linkPassword" type="password" autocomplete="current-password"><div class="err" id="linkError"></div><div class="row"><button id="linkCancel">Отмена</button><button class="pr" id="linkContinue">Войти и связать</button></div>');
+    $("linkCancel").onclick=()=>{closeM();resolve(null)};
+    $("linkContinue").onclick=async()=>{
+      const email=$("linkEmail").value.trim(),password=$("linkPassword").value;
+      if(!email||!password){$("linkError").textContent="Введите email и пароль существующего аккаунта.";return;}
+      $("linkContinue").disabled=true;
+      try {
+        const signed=await signInWithEmailAndPassword(auth,email,password);
+        const linked=await linkWithCredential(signed.user,googleCredential);
+        closeM();
+        resolve(linked.user);
+      } catch(linkError) {
+        $("linkError").textContent=authError(linkError);
+        $("linkContinue").disabled=false;
+      }
+    };
+  });
+}
+
+async function googleLogin(){
+  try{
+    creatingAccount = true;
+    const result = await signInWithPopup(auth,new GoogleAuthProvider());
+    const user = result.user;
+    const profile = await getDoc(doc(db,"publicUsers",user.uid));
+    if (!profile.exists()) {
+      const details = await askGoogleProfile(user);
+      if (!details) {
+        creatingAccount = false;
+        await signOut(auth);
+        return;
+      }
+      const usernameLower = details.username.toLowerCase();
+      await runTransaction(db,async tx => {
+        const indexRef = doc(db,"usernameIndex",usernameLower);
+        const taken = await tx.get(indexRef);
+        if (taken.exists()) throw new Error("username-taken");
+        tx.set(indexRef,{uid:user.uid,username:usernameLower,usernameLower,createdAt:serverTimestamp()});
+        tx.set(doc(db,"publicUsers",user.uid),{
+          username:usernameLower,usernameLower,
+          displayName:details.displayName,bio:"",avatarUrl:user.photoURL||"",
+          lastSeenAt:serverTimestamp()
+        });
+        tx.set(doc(db,"users",user.uid),{
+          contactEmail:user.email||"",settings:{...DEF},
+          createdAt:serverTimestamp(),authProvider:"google"
+        });
+      });
+    }
+    creatingAccount = false;
+    await boot(user);
+  }catch(e){
+    if (e?.code === "auth/account-exists-with-different-credential") {
+      try {
+        const linkedUser = await linkGoogleToExistingAccount(e);
+        if (linkedUser) {
+          creatingAccount = false;
+          await boot(linkedUser);
+          return;
+        }
+      } catch (linkError) {
+        if ($("le")) $("le").textContent = authError(linkError);
+      }
+    }
+    creatingAccount = false;
+    const message = e?.message === "username-taken"
+      ? "Это имя пользователя уже занято. Выберите другое."
+      : authError(e);
+    await signOut(auth).catch(()=>{});
+    if ($("le")) $("le").textContent = message;
+  }
+}
 function authError(e) {
   const code=e?.code||"";
   const map={
     "auth/invalid-credential":"Неверное имя пользователя или пароль.",
     "auth/user-not-found":"Аккаунт не найден.",
     "auth/wrong-password":"Неверный пароль.",
-    "auth/email-already-in-use":"Это имя пользователя уже занято.",
+    "auth/email-already-in-use":"Этот email уже зарегистрирован. Войдите в аккаунт или используйте восстановление пароля.",
+    "auth/credential-already-in-use":"Этот способ входа уже привязан к другому аккаунту.",
+    "auth/phone-number-already-exists":"Этот номер телефона уже привязан к другому аккаунту.",
+    "auth/provider-already-linked":"Номер телефона уже привязан к этому аккаунту.",
+    "auth/invalid-phone-number":"Введите номер в международном формате, например +447700900123.",
+    "auth/captcha-check-failed":"Проверка reCAPTCHA не пройдена. Обновите страницу и попробуйте снова.",
+    "auth/quota-exceeded":"Лимит SMS Firebase исчерпан. Попробуйте позже.",
+    "auth/operation-not-allowed":"В Firebase Console включите этот провайдер в Authentication → Sign-in method.",
+    "auth/admin-restricted-operation":"Firebase отклонил операцию настройками проекта или правилами провайдера.",
     "auth/weak-password":"Пароль слишком простой (минимум 8 символов).",
     "auth/too-many-requests":"Слишком много попыток. Попробуйте позже.",
     "auth/operation-not-allowed":"В Firebase Console включите нужный способ входа в Authentication → Sign-in method.",
@@ -98,6 +214,7 @@ function applyS(s) {
   r.style.setProperty("--fs",s.fs+"px");
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
+  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,system-ui,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":"Inter,system-ui,sans-serif");
   if($("msgs"))$("msgs").dataset.w=s.wall;
 }
 function hue(s) {
@@ -134,10 +251,12 @@ async function uploadAvatar(uid,dataUrl) {
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
-  return '<label>Тема</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select><label>Цвет акцента</label>'+swatches(pre+"ac",o.accent)+'<label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="19" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="sq">Прямоугольные</option></select>';
+  return '<label>Тема</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select><label>Цвет акцента</label>'+swatches(pre+"ac",o.accent)+'<label>Свой цвет</label><input id="'+pre+'custom" type="color" value="'+o.accent+'" style="height:42px;padding:4px"><label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="20" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="sq">Прямоугольные</option></select><label>Шрифт интерфейса</label><select id="'+pre+'font"><option value="system">Системный</option><option value="rounded">Мягкий</option><option value="mono">Моноширинный</option></select>';
 }
 function bindLook(o,pre) {
-  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;
+  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";
+  $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};
+  $(pre+"custom").oninput=e=>{o.accent=e.target.value;[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===o.accent));applyS(o)};
   $(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};
   $(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};
   $(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
@@ -151,8 +270,8 @@ function bindLook(o,pre) {
 function wiz(n) {
   const bar='<div class="logo">FROSS</div><div class="steps">'+[1,2,3,4].map(i=>'<i class="'+(i<=n?"d":"")+'"></i>').join("")+'</div><b>Шаг '+n+' из 4</b>';
   let h=bar;
-  if(n===1)h+='<label>Имя пользователя</label><input id="u" maxlength="20" placeholder="латиница, цифры, _"><label>Email для входа и подтверждения</label><input id="e" type="email" autocomplete="email" required><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password"><small class="mut">На этот адрес придёт письмо со ссылкой подтверждения. После подтверждения можно войти по email и паролю.</small>';
-  if(n===2)h+='<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><div class="av big" id="pav"></div><div><button id="up">📷 Загрузить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать</button></div></div><label>Отображаемое имя</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea>';
+  if(n===1)h+='<label>Уникальный username — по нему вас находят</label><input id="u" maxlength="20" autocomplete="username" placeholder="латиница, цифры, _"><div class="mut" id="ua">3–20 символов: латиница, цифры и _</div><label>Email для входа и подтверждения</label><input id="e" type="email" autocomplete="email" required><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password"><small class="mut">На этот адрес придёт письмо со ссылкой подтверждения. После подтверждения можно войти по email и паролю.</small>';
+  if(n===2)h+='<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><div class="av big" id="pav"></div><div><button id="up">📷 Загрузить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать</button></div></div><label>Никнейм (может повторяться)</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea>';
   if(n===3)h+='<p class="mut">Оформление можно будет поменять в настройках</p>'+look(W.settings,"w");
   if(n===4)h+='<div class="sum"><div class="av big" id="pav"></div><div><b>'+esc(W.display_name||W.username)+'</b><br><span class="mut">@'+esc(W.username)+(W.email?" · "+esc(W.email):"")+'</span><br><span class="mut">'+esc(W.bio)+'</span></div></div><label style="margin-top:14px"><input type="checkbox" id="tos">Принимаю правила тестовой версии</label>';
   h+='<div class="err" id="we"></div><div class="row"><button id="wb">'+(n===1?"Отмена":"Назад")+'</button><button class="pr" id="wn">'+(n===4?"Создать аккаунт":"Далее")+'</button></div>';
@@ -160,6 +279,28 @@ function wiz(n) {
   const error=t=>$("we").textContent=t;
   if(n===1){
     $("u").value=W.username;$("e").value=W.email;$("p").value=W.password;$("p2").value=W.password;
+    let checkSequence = 0;
+    const checkUsername = async () => {
+      const name = $("u").value.trim().toLowerCase(), seq = ++checkSequence;
+      $("ua").textContent = "Проверка доступности…";
+      $("ua").style.color = "var(--muted)";
+      if (!/^[a-z0-9_]{3,20}$/.test(name)) {
+        $("ua").textContent = "3–20 символов: латиница, цифры и _.";
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db,"usernameIndex",name));
+        if (seq !== checkSequence) return;
+        $("ua").textContent = snap.exists() ? "Это имя уже занято." : "Это имя свободно.";
+        $("ua").style.color = snap.exists() ? "var(--danger)" : "#3ddc84";
+      } catch (e) {
+        if (seq !== checkSequence) return;
+        $("ua").textContent = "Не удалось проверить: " + authError(e);
+        $("ua").style.color = "var(--danger)";
+      }
+    };
+    $("u").oninput = checkUsername;
+    $("u").onblur = checkUsername;
     $("p").oninput=e=>{
       const v=e.target.value,score=(v.length>=8)+(v.length>=12)+(/[A-Z]/.test(v)?1:0)+(/\d/.test(v)?1:0)+(/\W/.test(v)?1:0);
       $("mt").style.width=score*20+"%";$("mt").style.background=score<3?"#ff6b6b":score<4?"#f59e0b":"#3ddc84";
@@ -184,6 +325,7 @@ function wiz(n) {
       if(!/^\S+@\S+\.\S+$/.test(e))return error("Укажите действующий email для подтверждения.");
       if(p.length<8)return error("Пароль: минимум 8 символов.");
       if(p!==$("p2").value)return error("Пароли не совпадают.");
+      try { const taken = await getDoc(doc(db,"usernameIndex",u)); if(taken.exists())return error("Это имя пользователя уже занято. Выберите другое."); } catch(e) { return error("Не удалось проверить username: "+authError(e)); }
       Object.assign(W,{username:u,email:e,password:p});return wiz(2);
     }
     if(n===2){W.display_name=$("dn").value.trim();W.bio=$("bio").value.trim();return wiz(3);}
@@ -286,9 +428,11 @@ function head() {
   const c=cur==="general"?{id:"general",type:"general"}:chats.find(x=>x.id===cur);
   if(!c)return;
   const i=chatInfo(c);avatar($("hav"),i.avatar,isOnline(i.avatar));$("ht").textContent=i.title;$("hs").textContent=i.sub;
+  if ($("call")) $("call").style.display = c.type==="dm" ? "block" : "none";
 }
 function openChat(id) {
-  cur=id;document.body.classList.add("ch");renderList();head();subscribeMessages();
+  cur=id;
+  document.body.classList.add("ch");renderList();head();subscribeMessages();
 }
 function subscribeMessages() {
   if(stopMessages)stopMessages();
@@ -424,21 +568,21 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||""};
+  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||""};
   openM('<h3 style="margin:0">Настройки</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Оформление</button><button data-i="2">Чат</button><button data-i="3">Аккаунт</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
-  const show=i=>{
+  const show=async i=>{
     document.querySelectorAll("#md .tabs button").forEach((b,j)=>b.classList.toggle("a",i===j));
     const c=$("sc");
     if(i===0){
-      c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Отображаемое имя</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email"><p class="mut">Логин: @'+esc(me.username)+'</p>';
-      $("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
-      $("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
+      c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Уникальный username — меняется и должен быть свободен</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">По username вас находят и открывают чат.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email">';
+      $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
+      $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
       $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>e.target.files[0]&&pickImg(e.target.files[0],d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d})});
       $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
     }
     if(i===1){
-      c.innerHTML=look(o,"s")+'<label>Фон чата</label><select id="sw"><option value="none">Без фона</option><option value="dots">Точки</option><option value="grad">Градиент</option></select>';
+      c.innerHTML=look(o,"s")+'<label>Фон чата</label><select id="sw"><option value="none">Без фона</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
       bindLook(o,"s");$("sw").value=o.wall;$("sw").onchange=e=>{o.wall=e.target.value;applyS(o)};
     }
     if(i===2){
@@ -447,7 +591,9 @@ $("gb").onclick=()=>{
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
     if(i===3){
-      c.innerHTML='<label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>';
+      const tokenInfo = await currentUser.getIdTokenResult();
+      const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
+      c.innerHTML='<div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -457,14 +603,74 @@ $("gb").onclick=()=>{
         }catch(e){$("pe").textContent=authError(e)}
       };
       $("lo").onclick=logout;
-      $("dl").onclick=()=>{$("db").innerHTML='<label>Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.</label><input id="dp" type="password"><div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
+      let phoneConfirmation = null, phoneVerifier = null;
+      $("phoneSend").onclick = async () => {
+        try {
+          const phone = $("phoneNumber").value.trim();
+          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в формате +447700900123.");
+          phoneVerifier = new RecaptchaVerifier(auth,"phone-recaptcha-container",{size:"normal"});
+          phoneConfirmation = await linkWithPhoneNumber(currentUser,phone,phoneVerifier);
+          $("phoneError").style.color = "#3ddc84";
+          $("phoneError").textContent = "SMS отправлено. Введите код из сообщения.";
+        } catch(e) {
+          $("phoneError").textContent = authError(e);
+          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
+        }
+      };
+      $("phoneConfirm").onclick = async () => {
+        try {
+          if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
+          const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
+          currentUser = linked.user;
+          await updateDoc(doc(db,"users",me.uid),{phoneNumber:linked.user.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
+          $("phoneError").style.color = "#3ddc84";
+          $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
+          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
+        } catch(e) { $("phoneError").textContent = authError(e); }
+      };
+      if (adminButton) {
+        $("wipeAll").onclick = () => {
+          $("wipeBox").innerHTML = '<label>Для продолжения введите точно: DELETE ALL ACCOUNTS</label><input id="wipePhrase" autocomplete="off"><div class="err" id="wipeError"></div><button class="dg" id="wipeConfirm" style="width:100%">Подтвердить полное удаление</button>';
+          $("wipeConfirm").onclick = async () => {
+            const phrase = $("wipePhrase").value;
+            if (phrase !== "DELETE ALL ACCOUNTS") { $("wipeError").textContent = "Фраза не совпадает."; return; }
+            if (!confirm("Это необратимо удалит ВСЕ аккаунты Firebase, профили, чаты и файлы. Продолжить?")) return;
+            try {
+              const token = await currentUser.getIdToken(true);
+              const response = await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/testDeleteAllAccounts",{
+                method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+                body:JSON.stringify({confirmation:phrase})
+              });
+              const result = await response.json().catch(()=>({}));
+              if (!response.ok) throw new Error(result.error||("HTTP "+response.status));
+              alert("Удалено аккаунтов: "+result.deletedUsers+". Страницу сейчас перезагрузит.");
+              await signOut(auth);
+              location.reload();
+            } catch(e) { $("wipeError").textContent = e.message||authError(e); }
+          };
+        };
+      }
+      $("dl").onclick=()=>{
+        const hasGoogle = currentUser.providerData.some(provider=>provider.providerId==="google.com");
+        const hasPassword = currentUser.providerData.some(provider=>provider.providerId==="password");
+        const reauthLabel = hasGoogle
+          ? "Подтвердите удаление через окно Google. Ваш профиль будет удалён, история сообщений останется у собеседников."
+          : "Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.";
+        $("db").innerHTML='<label>'+reauthLabel+'</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
         $("dk").onclick=async()=>{
           try{
-            await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            if(hasGoogle) {
+              await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
+            } else if(hasPassword) {
+              await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            } else {
+              throw new Error("Для удаления аккаунта сначала войдите повторно через привязанный способ входа.");
+            }
             const chatsSnap=await getDocs(query(collection(db,"chats"),where("memberUids","array-contains",me.uid)));
             for(const c of chatsSnap.docs)await updateDoc(c.ref,{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});
             await deleteDoc(doc(db,"usernameIndex",me.usernameLower||me.username.toLowerCase()));
-            await deleteDoc(doc(db,"publicUsers",me.uid));await deleteDoc(doc(db,"users",me.uid));
+            await deleteDoc(doc(db,"publicUsers",me.uid));
+            await deleteDoc(doc(db,"users",me.uid));
             if(me.avatarUrl)try{await deleteObject(ref(storage,"avatars/"+me.uid+"/avatar.jpg"))}catch{}
             await deleteUser(currentUser);
           }catch(e){$("de").textContent=authError(e)}
@@ -476,10 +682,32 @@ $("gb").onclick=()=>{
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
     try{
-      const avatarUrl=await uploadAvatar(me.uid,P.avatarUrl);
-      await updateDoc(doc(db,"publicUsers",me.uid),{displayName:P.displayName||me.username,bio:P.bio||"",avatarUrl});
+      const username = P.username.trim().toLowerCase();
+      if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
+      const avatarUrl = await uploadAvatar(me.uid,P.avatarUrl);
+      const publicRef = doc(db,"publicUsers",me.uid);
+      const oldUsername = (me.username||"").toLowerCase();
+      if (username !== oldUsername) {
+        await runTransaction(db,async tx => {
+          const newIndex = doc(db,"usernameIndex",username);
+          const oldIndex = doc(db,"usernameIndex",oldUsername);
+          const taken = await tx.get(newIndex);
+          if (taken.exists() && taken.data().uid !== me.uid) throw new Error("Это имя пользователя уже занято.");
+          const old = await tx.get(oldIndex);
+          if (old.exists() && old.data().uid === me.uid) tx.delete(oldIndex);
+          tx.set(newIndex,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
+          tx.update(publicRef,{
+            username,usernameLower:username,
+            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,lastSeenAt:serverTimestamp()
+          });
+        });
+      } else {
+        await updateDoc(publicRef,{displayName:P.displayName||username,bio:P.bio||"",avatarUrl});
+      }
       await updateDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()});
-      Object.assign(me,{displayName:P.displayName||me.username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});S=o;applyS(S);fillMe();closeM();head();renderList();
+      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});
+      S=o;applyS(S);fillMe();closeM();head();renderList();
+      if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e))}
   };
 };
@@ -493,3 +721,5 @@ onAuthStateChanged(auth,async user=>{
     showLogin();
   }
 });
+
+import("./voice-calls.js").catch(error => console.error("Voice calls failed to load:", error));
