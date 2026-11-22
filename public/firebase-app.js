@@ -47,7 +47,7 @@ function showLogin() {
     if(!identifier)throw Error("Введите email или имя пользователя.");
     const email=identifier.includes("@")?identifier:authEmail(identifier);
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
-    if(!result.user.emailVerified){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}
+    if(!result.user.emailVerified&&!result.user.email.endsWith("@fross-ca5d6.firebaseapp.com")){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}
   }catch(e){$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
@@ -82,7 +82,9 @@ function authError(e) {
     "auth/email-already-in-use":"Это имя пользователя уже занято.",
     "auth/weak-password":"Пароль слишком простой (минимум 8 символов).",
     "auth/too-many-requests":"Слишком много попыток. Попробуйте позже.",
-    "auth/operation-not-allowed":"В Firebase Console включите Authentication → Email/Password.",
+    "auth/operation-not-allowed":"В Firebase Console включите нужный способ входа в Authentication → Sign-in method.",
+    "auth/unauthorized-domain":"Добавьте домен сайта в Firebase Authentication → Settings → Authorized domains.",
+    "auth/popup-blocked":"Разрешите всплывающие окна для входа через Google.",
     "auth/popup-closed-by-user":"Окно Google было закрыто.",
     "auth/account-exists-with-different-credential":"Для этого email уже существует аккаунт с другим способом входа.",
     "permission-denied":"Firebase Rules запретили операцию. Проверьте опубликованные правила."
@@ -484,7 +486,7 @@ $("gb").onclick=()=>{
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,user=>{
-  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){signOut(auth);return}bootFromAuth(user)}}
+  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified&&!user.email.endsWith("@fross-ca5d6.firebaseapp.com")){signOut(auth);return}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
