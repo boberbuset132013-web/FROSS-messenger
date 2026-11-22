@@ -1,0 +1,67 @@
+# FROSS Android security app
+
+This is the first native Android companion for FROSS (it is the security/approval app, not yet the full chat client). Create the FROSS account on the website first; the app does not create new FROSS accounts. It signs in to an existing account with Email/Password or Google, verifies the account phone through Firebase Phone Number Verification (PNV), registers this Android installation as a trusted device, and displays browser login requests in the in-app **FROSS Security** bot.
+
+## Firebase setup required before building
+
+1. In Firebase Console, open project `fross-ca5d6`.
+2. Add an Android app with package name `com.fross.messenger`.
+3. Download its `google-services.json` and put it at `android/app/google-services.json`. Do not commit this file if it contains project-specific configuration you do not want public.
+4. Add the app's SHA-1 and SHA-256 signing certificate fingerprints in Firebase project settings.
+5. Enable Email/Password and Google sign-in providers. The Android companion supports both existing FROSS account types.
+6. For PNV production, complete Firebase Phone Number Verification onboarding, billing setup, OAuth brand verification, privacy-policy review, and enable production mode. Production PNV is not a free service.
+
+Open the `android/` folder in Android Studio and sync Gradle. The app requires Google Play services. PNV production verification requires a supported carrier and a compatible device (Android 10+). The project minimum SDK is 24 so the app can install on older devices, but PNV may not work there.
+
+## Free development test mode
+
+In Firebase Console → Security → Phone Verification → Settings → Testing, generate a test token. Add it to `android/local.properties` (this file is ignored by Git):
+
+```properties
+fpnv.testToken=PASTE_TEST_TOKEN_HERE
+```
+
+The token expires after 7 days. Test mode returns a fake number; it is only for development and must never be enabled in production. For a test deployment only, set `FROSS_ALLOW_PNV_TEST_TOKENS=true` in `functions/.env.fross-ca5d6` before deploying Functions. Never set this variable in production.
+
+## Browser approval rollout
+
+The browser approval gate is intentionally **off by default** to avoid locking out existing users before the Android app is registered, built, tested, and released.
+
+After the app and Cloud Functions are deployed and tested, a FROSS administrator calls the `setBrowserApprovalGate` HTTP function with a Firebase ID token:
+
+```http
+POST https://us-central1-fross-ca5d6.cloudfunctions.net/setBrowserApprovalGate
+Authorization: Bearer FIREBASE_ADMIN_ID_TOKEN
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Use `{"enabled": false}` to turn the gate off. The function requires the `frossAdmin` custom claim. Before enabling, it checks every active account and refuses with HTTP 409 if any account has not completed a real PNV verification and registered a trusted Android device. It then updates the per-user security flag on every Auth user's private profile before writing the global Firestore setting.
+
+Once enabled:
+- Users must have a phone verified through the Android app and at least one active trusted Android device.
+- A browser login creates a five-minute request and a random six-digit code.
+- FROSS Security sends a push notification; the code is visible only inside the trusted Android app.
+- The user enters that code in the browser. They can reject suspicious requests in the Android app.
+- The browser session receives access only after the server verifies the code.
+
+Do not enable the gate until you have a working release APK and have confirmed that the phone's carrier supports Firebase PNV. The current published PNV carrier list does not include Russian carriers; unsupported carriers cannot complete this method. PNV production checks are billed per successful verification. Keep the gate off if your users cannot use PNV.
+
+## Endpoints
+
+Cloud Functions in `functions/phone-security.js`:
+- `verifyPhoneWithPnv`
+- `createTrustedDeviceSession`
+- `registerTrustedDevicePushToken`
+- `createBrowserLoginRequest`
+- `refreshBrowserLoginSession`
+- `verifyBrowserLoginCode`
+- `rejectBrowserLogin`
+- `expireBrowserLoginRequests` (scheduled cleanup)
+- `setBrowserApprovalGate` (administrator-only rollout switch)
+- `initializeSecurityGateForNewUser` (marks newly created accounts when the gate is enabled)
+
+Before deploying Functions, store the browser-code HMAC key in Firebase Secret Manager: run `firebase functions:secrets:set FROSS_BROWSER_OTP_SECRET` and enter a unique value generated with `openssl rand -hex 32`. Do not put this key in the repository or in a committed `.env` file.
+
+All HTTP endpoints require a Firebase ID token. The expiry job and new-user initializer are server-triggered. PNV JWTs are verified server-side against Google's published JWKS, issuer and audience, and each PNV token can be consumed only once. Browser codes are HMAC-hashed, expire after five minutes, and allow at most five attempts. Test PNV tokens are rejected unless an explicit test-only environment flag is set.

@@ -4,11 +4,30 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    function securityGateEnabled() {
+      return exists(/databases/$(database)/documents/system/securityConfig)
+        && get(/databases/$(database)/documents/system/securityConfig).data.requireBrowserApproval == true;
+    }
+    function trustedDeviceSession() {
+      return signedIn()
+        && request.auth.token.keys().hasAny(["frossDeviceId"])
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && "trustedDeviceIds" in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && request.auth.token.frossDeviceId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.trustedDeviceIds;
+    }
+    function approvedBrowserSession() {
+      return signedIn()
+        && request.auth.token.keys().hasAny(["frossBrowserSession"])
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && "approvedBrowserSessions" in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvedBrowserSessions.keys().hasAny([request.auth.token.frossBrowserSession])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvedBrowserSessions[request.auth.token.frossBrowserSession].expiresAt > request.time;
+    }
     function verified() {
-      return signedIn() && (
-        request.auth.token.email_verified == true
-        || request.auth.token.legacyAccount == true
-      );
+      return signedIn()
+        && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
     }
     function own(uid) {
       return signedIn() && request.auth.uid == uid;
@@ -36,13 +55,18 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if own(uid);
+      allow get: if own(uid) && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
       allow list: if false;
       allow create: if own(uid)
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
       allow update: if own(uid)
+        && (
+          verified()
+          || request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["contactEmail", "settings", "createdAt", "authProvider"])
+        )
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "createdAt", "authProvider"]);
       allow delete: if own(uid);
     }
 
@@ -60,7 +84,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"
         ]);
-      allow update: if own(uid)
+      allow update: if own(uid) && verified()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"])
         && (
@@ -105,6 +129,7 @@ service cloud.firestore {
       );
 
       allow update: if verified()
+        && resource.data.type != "system"
         && (chatId == "general" || request.auth.uid in resource.data.memberUids)
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["lastMessage", "lastMessageAt", "updatedAt", "memberUids"])
@@ -126,6 +151,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if canReadChat(chatId);
         allow create: if canReadChat(chatId)
+          && get(/databases/$(database)/documents/chats/$(chatId)).data.type != "system"
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.username == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.username
           && request.resource.data.displayName == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.displayName
@@ -238,6 +264,28 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(["uid", "candidate", "createdAt"]);
         allow update, delete: if false;
       }
+    }
+
+    match /browserLoginRequests/{requestId} {
+      allow get: if signedIn()
+        && request.auth.uid == resource.data.uid
+        && (
+          (request.auth.token.keys().hasAny(["frossBrowserSession"])
+            && request.auth.token.frossBrowserSession == resource.data.sessionId)
+          || trustedDeviceSession()
+        );
+      allow list: if trustedDeviceSession()
+        && request.auth.uid == resource.data.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /users/{uid}/trustedDevices/{deviceId} {
+      allow get, list: if own(uid) && trustedDeviceSession();
+      allow create, update, delete: if false;
+    }
+
+    match /system/{document=**} {
+      allow read, write: if false;
     }
 
     match /systemMigrations/{document=**} {

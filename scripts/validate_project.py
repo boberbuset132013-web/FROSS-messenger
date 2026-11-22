@@ -24,11 +24,19 @@ checks = {
     "Google users complete a real profile setup": "askGoogleProfile(user)" in js,
     "username can be changed with a Firestore reservation transaction": "username !== oldUsername" in js and "getAfter(/databases/$(database)/documents/usernameIndex/" in rules,
     "display name is separate from unique username": 'Никнейм — может повторяться' in js,
-    "phone number linking uses Firebase SMS verification": "linkWithPhoneNumber(currentUser" in js and "RecaptchaVerifier" in js,
+    "web no longer sends SMS for phone verification": "linkWithPhoneNumber" not in js and "phoneSend" not in js,
+    "Android app includes Firebase PNV": (root / "android/app/src/main/java/com/fross/messenger/MainActivity.kt").exists() and "getVerifiedPhoneNumber(this)" in (root / "android/app/src/main/java/com/fross/messenger/MainActivity.kt").read_text(encoding="utf-8") and "com.google.firebase:firebase-pnv" in (root / "android/app/build.gradle.kts").read_text(encoding="utf-8"),
+    "PNV token is verified on the server": "JwtVerifier.create" in (root / "functions/phone-security.js").read_text(encoding="utf-8") and "verifyPhoneWithPnv" in (root / "functions/index.js").read_text(encoding="utf-8"),
+    "browser sign-in requests a FROSS Security code": "createBrowserLoginRequest" in js and "verifyBrowserLoginCode" in js and "FROSS Security" in js,
+    "bot codes are HMAC-protected and one-time": "FROSS_BROWSER_OTP_SECRET" in (root / "functions/phone-security.js").read_text(encoding="utf-8") and "randomInt(100000, 1000000)" in (root / "functions/phone-security.js").read_text(encoding="utf-8"),
+    "Android companion displays the bot code": "securityRequestCode" in (root / "android/app/src/main/java/com/fross/messenger/MainActivity.kt").read_text(encoding="utf-8"),
+    "browser approval is protected by Firestore session rules": "function approvedBrowserSession()" in rules and "approvedBrowserSessions" in rules and ".expiresAt > request.time" in rules,
+    "Storage also checks trusted FROSS sessions": "function frossSessionApproved()" in storage and "requireBrowserApproval" in storage,
+    "browser approval gate is opt-in": "requireBrowserApproval" in (root / "functions/phone-security.js").read_text(encoding="utf-8") and "off by default" in (root / "android/README.md").read_text(encoding="utf-8"),
     "voice calling has Firestore signaling": (root / "public/voice-calls.js").exists() and "callerCandidates" in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
     "voice call signaling is limited to chat members": "match /calls/{callId}" in rules and "participantUids" in rules,
     "global account reset is admin and opt-in protected": "decoded.frossAdmin !== true" in (root / "functions/index.js").read_text(encoding="utf-8") and 'ENABLE_DANGEROUS_TEST_RESET !== "true"' in (root / "functions/index.js").read_text(encoding="utf-8"),
-    "phone and call UI controls exist": 'id="phoneSend"' in js and 'id="call"' in html,
+    "phone and call UI controls exist": 'phoneError' in js and 'id="call"' in html,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)

@@ -8,6 +8,7 @@
   "main": "index.js",
   "dependencies": {
     "firebase-admin": "^13.6.0",
-    "firebase-functions": "^6.4.0"
+    "firebase-functions": "^6.4.0",
+    "aws-jwt-verify": "^5.1.0"
   }
 }

@@ -154,3 +154,14 @@ After a successful import and verification:
 - Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
 - Enable Firebase App Check (reCAPTCHA Enterprise for web) after testing it in monitoring mode; App Check complements Auth and Security Rules but does not replace them.
 - Account deletion removes the account/profile and removes the user from chats; historical messages remain visible to other participants as conversation history.
+
+
+## FROSS phone verification and browser approval
+
+The native Android companion is in `android/`. It verifies the phone number with Firebase Phone Number Verification (PNV), registers the Android installation as a trusted device, and receives browser-login requests through Firebase Cloud Messaging. The request is presented inside the **FROSS Security** system bot.
+
+The website keeps the existing Firebase account providers. When the approval gate is enabled, a browser login creates a five-minute pending request; the FROSS Security bot delivers a six-digit code to the trusted Android app, and the user enters it in the browser. Codes allow at most five attempts. Approved browser sessions last 30 days and can refresh without asking for a new code each hour.
+
+**The feature is opt-in and is not enabled by this branch.** First register the Android app in Firebase, add its `google-services.json` locally, set the server-only `FROSS_BROWSER_OTP_SECRET` in Firebase Secret Manager, test with a Firebase PNV test token, build and distribute the APK, and verify that the real carrier is supported. Only then should a FROSS administrator call `setBrowserApprovalGate` with `{"enabled":true}`. To turn it off, call the same endpoint with `{"enabled":false}`. The endpoint updates the per-user security flags and Firestore configuration together.
+
+Firebase PNV production mode requires billing and OAuth brand verification, and charges for successful verifications. The published carrier list does not currently include Russian mobile operators, so do not enable the mandatory gate for users whose SIMs cannot pass PNV. See [android/README.md](android/README.md) for the exact setup and rollout steps.

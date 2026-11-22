@@ -1,9 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
+  onIdTokenChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
   EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
-  sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
+  sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
@@ -32,10 +32,132 @@ const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
+let browserApprovalInProgress=false, browserApprovalStop=null, activeBrowserSessionId=null;
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
+}
+
+const SECURITY_FUNCTIONS = "https://us-central1-fross-ca5d6.cloudfunctions.net/";
+
+async function startBrowserApproval(user) {
+  browserApprovalInProgress = true;
+  const idToken = await user.getIdToken(true);
+  const savedSession = localStorage.getItem("frossBrowserSession");
+  if (savedSession) {
+    try {
+      const refreshResponse = await fetch(SECURITY_FUNCTIONS + "refreshBrowserLoginSession", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body: JSON.stringify({ sessionId: savedSession })
+      });
+      const refreshData = await refreshResponse.json().catch(() => ({}));
+      if (refreshResponse.ok && refreshData.customToken) {
+        await signOut(auth);
+        await signInWithCustomToken(auth, refreshData.customToken);
+        browserApprovalInProgress = false;
+        return;
+      }
+    } catch (_) { }
+    localStorage.removeItem("frossBrowserSession");
+    activeBrowserSessionId = null;
+    bootedUid = null;
+  }
+  const response = await fetch(SECURITY_FUNCTIONS + "createBrowserLoginRequest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+    body: JSON.stringify({ browserLabel: (navigator.userAgent || "Браузер").slice(0, 80) })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Не удалось запросить подтверждение входа.");
+  if (data.mode === "disabled") {
+    browserApprovalInProgress = false;
+    await boot(user);
+    return;
+  }
+  if (!data.customToken || !data.requestId) throw new Error("Сервер вернул неполный запрос подтверждения.");
+  localStorage.setItem("frossBrowserSession", data.requestId);
+  await signOut(auth);
+  await signInWithCustomToken(auth, data.customToken);
+  browserApprovalInProgress = false;
+}
+
+function showBrowserApprovalWait() {
+  $("auth").style.display = "grid";
+  $("app").style.display = "none";
+  $("ac").innerHTML = '<div class="logo">FROSS</div><h3>Введите код из FROSS</h3><p class="mut">Откройте приложение FROSS на телефоне. В чате <b>FROSS Security</b> появится шестизначный код. Введите его здесь.</p><input id="browserLoginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.35em;font-size:24px;font-weight:800"><button class="pr" id="browserVerifyCode" style="width:100%">Подтвердить вход</button><p class="mut">Код действует 5 минут. После пяти неверных попыток запрос будет заблокирован.</p><div class="err" id="approvalError"></div><button class="dg" id="approvalCancel" style="width:100%">Отменить вход</button>';
+  $("approvalCancel").onclick = async () => {
+    if (browserApprovalStop) { browserApprovalStop(); browserApprovalStop = null; }
+    localStorage.removeItem("frossBrowserSession");
+    activeBrowserSessionId = null;
+    await signOut(auth);
+  };
+}
+
+async function waitForBrowserApproval(user, requestId) {
+  showBrowserApprovalWait();
+  if (browserApprovalStop) browserApprovalStop();
+  $("browserVerifyCode").onclick = async () => {
+    const code = $("browserLoginCode").value.trim();
+    if (!/^\d{6}$/.test(code)) {
+      $("approvalError").textContent = "Введите шесть цифр из сообщения FROSS Security.";
+      return;
+    }
+    const button = $("browserVerifyCode");
+    button.disabled = true;
+    $("approvalError").textContent = "Проверяем код…";
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch(SECURITY_FUNCTIONS + "verifyBrowserLoginCode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body: JSON.stringify({ requestId, code })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Не удалось проверить код.");
+      $("approvalError").textContent = "Код принят. Завершаем вход…";
+    } catch (error) {
+      if ($("approvalError")) $("approvalError").textContent = authError(error);
+    } finally {
+      if ($("browserVerifyCode")) $("browserVerifyCode").disabled = false;
+    }
+  };
+  $("browserLoginCode").addEventListener("keydown", event => {
+    if (event.key === "Enter") $("browserVerifyCode").click();
+  });
+  return new Promise(resolve => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (browserApprovalStop) { browserApprovalStop(); browserApprovalStop = null; }
+      resolve();
+    };
+    browserApprovalStop = onSnapshot(doc(db, "browserLoginRequests", requestId), async snapshot => {
+      if (!snapshot.exists()) {
+        finish();
+        await signOut(auth);
+        return;
+      }
+      const state = snapshot.data().status;
+      if (state === "approved") {
+        finish();
+        activeBrowserSessionId = requestId;
+        try { await boot(user); }
+        catch (error) { if ($("approvalError")) $("approvalError").textContent = authError(error); await signOut(auth); }
+      } else if (state === "denied" || state === "expired") {
+        finish();
+        localStorage.removeItem("frossBrowserSession");
+        activeBrowserSessionId = null;
+        if ($("approvalError")) $("approvalError").textContent = state === "denied" ? "Вход отклонён в приложении FROSS." : "Время подтверждения истекло. Войдите снова.";
+        await signOut(auth);
+      }
+    }, error => {
+      finish();
+      if ($("approvalError")) $("approvalError").textContent = "Не удалось проверить подтверждение: " + error.message;
+    });
+  });
 }
 async function completeTotpSignIn(error) {
   const sdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
@@ -57,9 +179,11 @@ function showLogin() {
     const identifier=$("lu").value.trim().toLowerCase();
     if(!identifier)throw Error("Введите email или имя пользователя.");
     const email=identifier.includes("@")?identifier:authEmail(identifier);
+    browserApprovalInProgress=true;
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
-    if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
-  }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
+    if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);browserApprovalInProgress=false;await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
+    await startBrowserApproval(result.user);
+  }catch(e){browserApprovalInProgress=false;await signOut(auth).catch(()=>{});try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
@@ -165,18 +289,18 @@ async function googleLogin(){
         tx.set(doc(db,"users",user.uid),{
           contactEmail:user.email||"",settings:{...DEF},
           createdAt:serverTimestamp(),authProvider:"google"
-        });
+        },{merge:true});
       });
     }
     creatingAccount = false;
-    await boot(user);
+    await startBrowserApproval(user);
   }catch(e){
     if (e?.code === "auth/account-exists-with-different-credential") {
       try {
         const linkedUser = await linkGoogleToExistingAccount(e);
         if (linkedUser) {
           creatingAccount = false;
-          await boot(linkedUser);
+          await startBrowserApproval(linkedUser);
           return;
         }
       } catch (linkError) {
@@ -184,6 +308,7 @@ async function googleLogin(){
       }
     }
     creatingAccount = false;
+    browserApprovalInProgress = false;
     const message = e?.message === "username-taken"
       ? "Это имя пользователя уже занято. Выберите другое."
       : authError(e);
@@ -361,7 +486,7 @@ function wiz(n) {
         });
         tx.set(doc(db,"users",uid),{
           contactEmail:W.email,settings:W.settings,createdAt:serverTimestamp(),authProvider:"password"
-        });
+        },{merge:true});
       });
       creatingAccount=false;
       await signOut(auth);
@@ -383,6 +508,7 @@ function isOnline(u) {
 }
 function chatInfo(c) {
   if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
+  if(c.type==="system")return{title:c.title||"FROSS Security",avatar:{title:"F",profileColor:"#9181ff"},sub:"Системный бот безопасности"};
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
     if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
@@ -444,8 +570,12 @@ function head() {
 }
 function openChat(id) {
   cur=id;
+  const selectedChat=chats.find(c=>c.id===id);
+  const systemChat=selectedChat?.type==="system";
+  $("inp").disabled=!!systemChat;$("send").disabled=!!systemChat;$("attach").disabled=!!systemChat;
+  $("inp").placeholder=systemChat?"Системный чат — только уведомления":"Сообщение…";
   document.body.classList.add("ch");renderList();head();subscribeMessages();
-  const chat=chats.find(c=>c.id===id);if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
+  const chat=selectedChat;if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
 }
 const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
 function openMessageMenu(message,mine,x,y) {
@@ -512,6 +642,7 @@ function subscribeMessages() {
         const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
+      if(m.securityRequestId){const tag=document.createElement("small");tag.textContent="FROSS SECURITY · "+({pending:"ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ",approved:"ПОДТВЕРЖДЕНО",denied:"ОТКЛОНЕНО",expired:"ИСТЕКЛО"}[m.securityRequestStatus]||"ЗАПРОС");tag.style.cssText="display:block;font-size:10px;letter-spacing:.06em;font-weight:700;opacity:.8;margin-bottom:5px";b.append(tag)}
       if(m.text){const body=document.createElement("div");body.textContent=m.text;b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
       r.append(b);box.append(r);
@@ -572,6 +703,7 @@ async function boot(user) {
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
 async function send() {
+  if(chats.find(c=>c.id===cur)?.type==="system")return;
   const input=$("inp"),text=input.value.trim();if(!text)return;input.value="";input.style.height="";
   try{
     const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
@@ -694,7 +826,7 @@ $("gb").onclick=()=>{
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение телефона</b><small class="mut">Номер подтверждается в Android-приложении FROSS через мобильного оператора, без SMS-кода.</small></div></div><div class="mut" id="phoneError" style="margin:10px 0">'+(currentUser.phoneNumber?'Подтверждённый номер: '+esc(currentUser.phoneNumber):'Номер пока не подтверждён. Установите приложение FROSS и подтвердите номер там.')+'</div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -731,31 +863,6 @@ $("gb").onclick=()=>{
             }catch(e){$("totp-error").textContent=authError(e)}
           };
         }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
-      };
-      let phoneConfirmation = null, phoneVerifier = null;
-      $("phoneSend").onclick = async () => {
-        try {
-          const phone = $("phoneNumber").value.trim();
-          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в формате +447700900123.");
-          phoneVerifier = new RecaptchaVerifier(auth,"phone-recaptcha-container",{size:"normal"});
-          phoneConfirmation = await linkWithPhoneNumber(currentUser,phone,phoneVerifier);
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "SMS отправлено. Введите код из сообщения.";
-        } catch(e) {
-          $("phoneError").textContent = authError(e);
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        }
-      };
-      $("phoneConfirm").onclick = async () => {
-        try {
-          if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
-          const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
-          currentUser = linked.user;
-          await updateDoc(doc(db,"users",me.uid),{phoneNumber:linked.user.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        } catch(e) { $("phoneError").textContent = authError(e); }
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {
@@ -834,12 +941,36 @@ $("gb").onclick=()=>{
   };
 };
 $("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click()};
-async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);localStorage.removeItem("frossBrowserSession");activeBrowserSessionId=null;await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
-onAuthStateChanged(auth,async user=>{
-  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
-  else{
+onIdTokenChanged(auth,async user=>{
+  if(user){
+    if(creatingAccount)return;
+    const token=await user.getIdTokenResult();
+    if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified&&token.claims.legacyAccount!==true){
+      browserApprovalInProgress=false;
+      await signOut(auth);
+      return;
+    }
+    if(token.claims.frossBrowserSession){
+      const sessionId=String(token.claims.frossBrowserSession);
+      if(activeBrowserSessionId===sessionId && me?.uid===user.uid)return;
+      await waitForBrowserApproval(user,sessionId);
+      return;
+    }
+    if(browserApprovalInProgress)return;
+    try{
+      await startBrowserApproval(user);
+    }catch(error){
+      browserApprovalInProgress=false;
+      await signOut(auth);
+      showLogin();
+      if($("le"))$("le").textContent=authError(error);
+    }
+  }else{
+    if(browserApprovalInProgress)return;
     currentUser=null;me=null;bootedUid=null;
+    if(browserApprovalStop){browserApprovalStop();browserApprovalStop=null}
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
     showLogin();
   }

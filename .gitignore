@@ -11,3 +11,9 @@ migration/node_modules/
 migration/d1-backup.sql
 migration/service-account*.json
 **/*service-account*.json
+
+# Android local build files and Firebase app configuration
+android/local.properties
+android/.gradle/
+android/**/build/
+android/app/google-services.json
