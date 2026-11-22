@@ -107,6 +107,17 @@ export const requestAccountDeletion = onRequest(async (req, res) => {
     const decoded=await getAuth().verifyIdToken(match[1],true);
     if(!decoded.auth_time||Date.now()/1000-decoded.auth_time>300)return res.status(401).json({error:"Please sign in again before deleting your account."});
     const uid=decoded.uid,auth=getAuth(),firestore=getFirestore();
+    const securityConfig=await firestore.doc("system/securityConfig").get();
+    if(securityConfig.data()?.requireBrowserApproval===true){
+      const privateProfile=await firestore.doc("users/"+uid).get();
+      const securityData=privateProfile.data()||{};
+      const deviceId=decoded.frossDeviceId;
+      const deviceAllowed=typeof deviceId==="string"&&Array.isArray(securityData.trustedDeviceIds)&&securityData.trustedDeviceIds.includes(deviceId);
+      const browserSessionId=decoded.frossBrowserSession;
+      const browserSession=typeof browserSessionId==="string"?securityData.approvedBrowserSessions?.[browserSessionId]:null;
+      const browserAllowed=!!browserSession?.expiresAt&&browserSession.expiresAt.toMillis()>Date.now();
+      if(!deviceAllowed&&!browserAllowed)return res.status(403).json({error:"Подтвердите вход через FROSS Security перед удалением аккаунта."});
+    }
     const user=await auth.getUser(uid);
     const profileRef=firestore.doc("publicUsers/"+uid);
     const profileSnap=await profileRef.get();
