@@ -444,7 +444,7 @@ function openChat(id) {
   cur=id;
   document.body.classList.add("ch");renderList();head();subscribeMessages();
 }
-const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀"];
+const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
 function openMessageMenu(message,mine,x,y) {
   document.getElementById("message-menu")?.remove();
   const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
