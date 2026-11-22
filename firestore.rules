@@ -183,6 +183,13 @@ service cloud.firestore {
         allow create: if isCallParticipant()
           && candidateSet in ["callerCandidates", "calleeCandidates"]
           && request.resource.data.uid == request.auth.uid
+          && (
+            (candidateSet == "callerCandidates"
+              && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.callerUid)
+            ||
+            (candidateSet == "calleeCandidates"
+              && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.calleeUid)
+          )
           && request.resource.data.candidate is map
           && request.resource.data.keys().hasOnly(["uid", "candidate", "createdAt"]);
         allow update, delete: if false;
