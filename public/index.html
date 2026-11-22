@@ -51,6 +51,32 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 .chip{display:inline-block;background:var(--p2);border:1px solid var(--line);border-radius:14px;padding:2px 10px;margin:2px;font-size:13px}
 .sw2{display:flex;justify-content:space-between;align-items:center;padding:8px 0}.sw2 input{width:auto;margin:0}
 @media(max-width:700px){#app{grid-template-columns:1fr}.main{display:none}.ch .side{display:none}.ch .main{display:flex}#back{display:block}.mr{max-width:92%}}
+
+/* Motion system: restrained, fast and reduced-motion friendly */
+@keyframes fross-enter{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes fross-pop{0%{opacity:0;transform:translateY(8px) scale(.96)}70%{transform:translateY(-2px) scale(1.01)}100%{opacity:1;transform:none}}
+@keyframes fross-glow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--accent) 13%,transparent)}}
+@keyframes fross-shimmer{to{background-position:200% center}}
+@keyframes fross-orbit{to{transform:rotate(360deg)}}
+body{overflow:hidden}
+#auth{position:relative;isolation:isolate;overflow:hidden}
+#auth:before,#auth:after{content:"";position:absolute;z-index:-1;width:340px;height:340px;border-radius:50%;filter:blur(75px);opacity:.18;pointer-events:none;background:var(--accent);animation:fross-orbit 24s linear infinite}
+#auth:before{top:-160px;left:-110px}#auth:after{right:-130px;bottom:-170px;animation-direction:reverse}
+.card{animation:fross-enter .55s cubic-bezier(.2,.8,.2,1) both;backdrop-filter:blur(18px);background:color-mix(in srgb,var(--panel) 92%,transparent)}
+.logo{background:linear-gradient(100deg,var(--accent),#c4b5fd,var(--accent));background-size:200% auto;background-clip:text;-webkit-background-clip:text;color:transparent;animation:fross-shimmer 5s linear infinite}
+button{transition:transform .18s ease,filter .18s ease,background .18s ease,border-color .18s ease}
+button:active{transform:scale(.97)}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.it{transition:background .2s ease,transform .2s ease,box-shadow .2s ease}.it:hover{transform:translateX(3px)}
+.av{transition:transform .25s ease,box-shadow .25s ease}.it:hover .av{transform:scale(1.06)}
+.msg{animation:fross-pop .28s cubic-bezier(.2,.8,.2,1) both;box-shadow:0 2px 10px #0000000a}
+.head,.me,.comp{backdrop-filter:blur(14px)}
+.steps i{transition:background .3s ease,transform .3s ease}.steps i.d{animation:fross-glow 1.8s ease-in-out infinite}
+.sw span{transition:transform .2s ease,border-color .2s ease}.sw span:hover{transform:scale(1.13)}
+.ov{backdrop-filter:blur(8px);opacity:0;transition:opacity .2s ease}.ov.o{opacity:1}
+.md{animation:fross-enter .28s ease both}
+.empty{animation:fross-enter .4s ease both}
+@media(max-width:700px){.card{padding:22px 18px;border-radius:18px}.head{padding:0 12px}.comp{padding:10px}.msgs{padding:12px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
@@ -60,89 +86,4 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 <div class="msgs" id="msgs"></div>
 <div class="comp"><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
-<script>
-const $=id=>document.getElementById(id),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF={theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",enter:true,h24:true,wall:"none",avatars:true};
-const ACC=["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
-let token=localStorage.fross_token||"",me=null,S={...DEF},cur="general",chats=[],timer1,timer2,found=[];
-async function api(path,body){const r=await fetch("/api"+path,{method:body===undefined?"GET":"POST",headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});const raw=await r.text();let d;try{d=JSON.parse(raw)}catch{throw Error("Сервер вернул не JSON (HTTP "+r.status+")")}if(!r.ok)throw Error(d.error||"Ошибка "+r.status);return d}
-function hue(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return`hsl(${h} 50% 45%)`}
-function av(n,o,on){const name=o?.display_name||o?.username||o?.title||"#";n.classList.toggle("on",!!on);n.style.background=o?.avatar?"":hue(name);n.style.backgroundImage=o?.avatar?`url("${o.avatar}")`:"none";n.textContent=o?.avatar?"":name[0].toUpperCase()}
-function applyS(s){const r=document.documentElement;r.dataset.theme=s.theme;r.style.setProperty("--accent",s.accent);r.style.setProperty("--fs",s.fs+"px");r.style.setProperty("--br",s.shape==="round"?"16px":"4px");r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");$("msgs")&&($("msgs").dataset.w=s.wall)}
-function pickImg(file,cb){const fr=new FileReader();fr.onload=()=>{const i=new Image();i.onload=()=>{const c=document.createElement("canvas");c.width=c.height=160;const m=Math.min(i.width,i.height);c.getContext("2d").drawImage(i,(i.width-m)/2,(i.height-m)/2,m,m,0,0,160,160);cb(c.toDataURL("image/jpeg",.82))};i.src=fr.result};fr.readAsDataURL(file)}
-const swatches=(id,sel)=>`<div class="sw" id="${id}">${ACC.map(c=>`<span data-c="${c}" style="background:${c}" class="${c===sel?"s":""}"></span>`).join("")}</div>`;
-function look(o,pre,done){return`<label>Тема</label><select id="${pre}th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select><label>Цвет акцента</label>${swatches(pre+"ac",o.accent)}<label>Размер текста</label><input id="${pre}fs" type="range" min="13" max="19" value="${o.fs}"><label>Форма сообщений</label><select id="${pre}sh"><option value="round">Скруглённые</option><option value="sq">Прямоугольные</option></select>`}
-function bindLook(o,pre){$(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;const up=()=>applyS(o);$(pre+"th").onchange=e=>{o.theme=e.target.value;up()};$(pre+"sh").onchange=e=>{o.shape=e.target.value;up()};$(pre+"fs").oninput=e=>{o.fs=+e.target.value;up()};$(pre+"ac").onclick=e=>{const c=e.target.dataset.c;if(!c)return;o.accent=c;[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===c));up()}}
-/* ---------- вход и регистрация (4 шага) ---------- */
-let W;
-function showLogin(){applyS(DEF);$("ac").innerHTML=`<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Имя пользователя</label><input id="lu" autocomplete="username"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button></div><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>`;
-$("rg").onclick=()=>{W={username:"",email:"",password:"",display_name:"",bio:"",avatar:"",settings:{...DEF}};wiz(1)};
-$("lg").onclick=async()=>{try{const d=await api("/login",{username:$("lu").value.trim(),password:$("lp").value});token=d.token;localStorage.fross_token=token;boot()}catch(e){$("le").textContent=e.message}};$("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()}}
-function wiz(n){const bar=`<div class="logo">FROSS</div><div class="steps">${[1,2,3,4].map(i=>`<i class="${i<=n?"d":""}"></i>`).join("")}</div><b>Шаг ${n} из 4</b>`;let h=bar;
-if(n===1)h+=`<label>Имя пользователя</label><input id="u" maxlength="20" placeholder="латиница, цифры, _"><label>Email (необязательно)</label><input id="e" type="email"><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password">`;
-if(n===2)h+=`<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><div class="av big" id="pav"></div><div><button id="up">📷 Загрузить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать</button></div></div><label>Отображаемое имя</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea>`;
-if(n===3)h+=`<p class="mut">Оформление можно менять в настройках</p>`+look(W.settings,"w");
-if(n===4)h+=`<div class="sum"><div class="av big" id="pav"></div><div><b>${esc(W.display_name||W.username)}</b><br><span class="mut">@${esc(W.username)}${W.email?" · "+esc(W.email):""}</span><br><span class="mut">${esc(W.bio)}</span></div></div><label style="margin-top:14px"><input type="checkbox" id="tos">Принимаю правила тестовой версии</label>`;
-h+=`<div class="err" id="we"></div><div class="row"><button id="wb">${n===1?"Отмена":"Назад"}</button><button class="pr" id="wn">${n===4?"Создать аккаунт":"Далее"}</button></div>`;$("ac").innerHTML=h;
-const err=t=>$("we").textContent=t;
-if(n===1){$("u").value=W.username;$("e").value=W.email;$("p").value=W.password;$("p2").value=W.password;$("p").oninput=e=>{const v=e.target.value,s=(v.length>=8)+(v.length>=12)+/[A-Z]/.test(v)+/\d/.test(v)+/\W/.test(v);$("mt").style.width=s*20+"%";$("mt").style.background=s<3?"#ff6b6b":s<4?"#f59e0b":"#3ddc84"}}
-if(n===2){$("dn").value=W.display_name;$("bio").value=W.bio;av($("pav"),{display_name:W.display_name||W.username,avatar:W.avatar});$("up").onclick=()=>$("fi").click();$("fi").onchange=e=>e.target.files[0]&&pickImg(e.target.files[0],d=>{W.avatar=d;av($("pav"),{display_name:W.username,avatar:d})});$("rm").onclick=()=>{W.avatar="";av($("pav"),{display_name:W.username})}}
-if(n===3)bindLook(W.settings,"w");if(n===4)av($("pav"),{display_name:W.display_name||W.username,avatar:W.avatar});
-$("wb").onclick=()=>{if(n===2){W.display_name=$("dn").value.trim();W.bio=$("bio").value.trim()}n===1?showLogin():wiz(n-1)};
-$("wn").onclick=async()=>{
- if(n===1){const u=$("u").value.trim(),p=$("p").value;if(!/^[a-zA-Z0-9_]{3,20}$/.test(u))return err("Имя: 3–20 символов, латиница, цифры, _");const e=$("e").value.trim();if(e&&!/^\S+@\S+\.\S+$/.test(e))return err("Некорректный email");if(p.length<8)return err("Пароль: минимум 8 символов");if(p!==$("p2").value)return err("Пароли не совпадают");Object.assign(W,{username:u,email:e,password:p});return wiz(2)}
- if(n===2){W.display_name=$("dn").value.trim();W.bio=$("bio").value.trim();return wiz(3)}
- if(n===3)return wiz(4);
- if(!$("tos").checked)return err("Нужно принять правила");
- try{const d=await api("/register",W);token=d.token;localStorage.fross_token=token;boot()}catch(x){err(x.message)}}}
-/* ---------- чаты ---------- */
-const online=u=>u&&Date.now()-u.last_seen<60000;
-function cinfo(c){if(c.id==="general")return{title:"Общий чат",o:{title:"#"},sub:"Для всех"};if(c.type==="dm"){const u=c.members.find(m=>m.id!==me.id)||me;return{title:u.display_name||u.username,o:u,on:online(u),sub:online(u)?"в сети":"@"+u.username}}return{title:c.title,o:{title:c.title},sub:c.members.length+" участн."}}
-function item(o,title,sub,on,act,fn){const d=document.createElement("div");d.className="it"+(act?" a":"");d.innerHTML=`<div class="av"></div><div class="t"><b>${esc(title)}</b><small>${esc(sub||"")}</small></div>`;av(d.firstChild,o,on);d.onclick=fn;return d}
-function renderList(){const L=$("list"),q=$("q").value.trim().toLowerCase();L.innerHTML="";const all=[{id:"general",members:[]},...chats];let n=0;
-for(const c of all){const i=cinfo(c);if(q&&!i.title.toLowerCase().includes(q))continue;n++;L.append(item(i.o,i.title,c.last_body||i.sub,i.on,c.id===cur,()=>openChat(c.id)))}
-if(q&&found.length){const h=document.createElement("div");h.className="h";h.textContent="Люди";L.append(h);for(const u of found)L.append(item(u,u.display_name||u.username,"@"+u.username,online(u),false,()=>startDM(u.id)))}
-if(!n&&!found.length){L.innerHTML='<div class="empty" style="padding:20px">Ничего не найдено</div>'}}
-async function loadChats(){try{chats=(await api("/chats")).chats;renderList();head()}catch{}}
-function head(){const c=cur==="general"?{id:"general",members:[]}:chats.find(x=>x.id===cur);if(!c)return;const i=cinfo(c);av($("hav"),i.o,i.on);$("ht").textContent=i.title;$("hs").textContent=i.sub}
-function openChat(id){cur=id;document.body.classList.add("ch");renderList();head();loadMsgs(true)}
-async function startDM(uid){try{const d=await api("/chats",{type:"dm",user_id:uid});$("q").value="";found=[];await loadChats();closeM();openChat(d.id)}catch(e){alert(e.message)}}
-const tm=t=>new Date(t).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24});
-async function loadMsgs(force){try{const d=await api("/messages?chat="+encodeURIComponent(cur)),box=$("msgs"),bot=force||box.scrollHeight-box.scrollTop-box.clientHeight<120;box.innerHTML="";if(!d.messages.length)box.innerHTML='<div class="empty">Пока нет сообщений. Напишите первым!</div>';let prev="";
-for(const m of d.messages){const mine=m.username===me.username,r=document.createElement("div");r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&prev===m.username?" nf":"");if(S.avatars&&!mine&&prev!==m.username){const a=document.createElement("div");a.className="av";av(a,m);r.append(a)}else if(S.avatars&&!mine)r.classList.add("nf");
-const b=document.createElement("div");b.className="msg";if(!mine&&prev!==m.username&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){const n=document.createElement("b");n.textContent=m.display_name||m.username;b.append(n)}b.append(document.createTextNode(m.body));const t=document.createElement("time");t.textContent=tm(m.created_at);b.append(t);r.append(b);box.append(r);prev=m.username}
-if(bot)box.scrollTop=box.scrollHeight}catch(e){$("msgs").textContent=e.message}}
-async function send(){const i=$("inp"),b=i.value.trim();if(!b)return;i.value="";i.style.height="";try{await api("/messages",{chat:cur,body:b});loadMsgs(true);loadChats()}catch(e){alert(e.message);i.value=b}}
-$("send").onclick=send;$("inp").onkeydown=e=>{if(e.key==="Enter"&&(S.enter?!e.shiftKey:e.ctrlKey)){e.preventDefault();send()}};$("inp").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"};
-$("back").onclick=()=>document.body.classList.remove("ch");
-let qt;$("q").oninput=()=>{renderList();clearTimeout(qt);qt=setTimeout(async()=>{const q=$("q").value.trim();if(q.length<2){found=[];return renderList()}try{found=(await api("/users/search?q="+encodeURIComponent(q))).users;renderList()}catch{}},300)};
-/* ---------- модальные окна ---------- */
-const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
-$("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
-function picker(box,onPick,sel){box.innerHTML=`<input placeholder="Имя или @username"><div class="pl" style="max-height:220px;overflow:auto"></div>`;const inp=box.firstChild,pl=box.lastChild;let t;
-const run=async()=>{try{const us=(await api("/users/search?q="+encodeURIComponent(inp.value.trim()))).users;pl.innerHTML="";us.forEach(u=>{const it=item(u,u.display_name||u.username,"@"+u.username,online(u),sel&&sel.has(u.id),()=>onPick(u));pl.append(it)});if(!us.length)pl.innerHTML='<div class="empty">Никого нет</div>'}catch{}};
-inp.oninput=()=>{clearTimeout(t);t=setTimeout(run,250)};run()}
-$("nb").onclick=()=>{openM(`<h3 style="margin:0">Новый чат</h3><div class="tabs"><button class="a" id="t1">Личный</button><button id="t2">Группа</button></div><div id="nc"></div><div class="row"><button id="cx">Закрыть</button></div>`);$("cx").onclick=closeM;
-const tab=n=>{$("t1").classList.toggle("a",n===1);$("t2").classList.toggle("a",n===2);const nc=$("nc");nc.innerHTML="";if(n===1){const b=document.createElement("div");nc.append(b);picker(b,u=>startDM(u.id))}else{const sel=new Map();nc.innerHTML=`<label>Название группы</label><input id="gt" maxlength="40"><div id="ch"></div><div id="pk"></div><div class="err" id="ge"></div><button class="pr" id="gc" style="width:100%">Создать группу</button>`;
-const chips=()=>$("ch").innerHTML=[...sel.values()].map(u=>`<span class="chip">${esc(u.display_name||u.username)}</span>`).join("");picker($("pk"),u=>{sel.has(u.id)?sel.delete(u.id):sel.set(u.id,u);chips()},sel);
-$("gc").onclick=async()=>{if(!$("gt").value.trim())return $("ge").textContent="Введите название";if(!sel.size)return $("ge").textContent="Добавьте участников";try{const d=await api("/chats",{type:"group",title:$("gt").value.trim(),members:[...sel.keys()]});await loadChats();closeM();openChat(d.id)}catch(e){$("ge").textContent=e.message}}}};
-$("t1").onclick=()=>tab(1);$("t2").onclick=()=>tab(2);tab(1)};
-$("gb").onclick=()=>{const bak=JSON.parse(JSON.stringify(S)),o={...S},P={display_name:me.display_name,bio:me.bio,email:me.email,avatar:me.avatar};
-const tabs=["Профиль","Оформление","Чат","Аккаунт"];openM(`<h3 style="margin:0">Настройки</h3><div class="tabs">${tabs.map((t,i)=>`<button data-i="${i}">${t}</button>`).join("")}</div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>`);
-const tog=(k,l,d)=>`<div class="sw2"><div>${l}${d?`<br><small class="mut">${d}</small>`:""}</div><input type="checkbox" data-k="${k}" ${o[k]?"checked":""}></div>`;
-const show=i=>{[...document.querySelectorAll(".tabs button")].forEach((b,j)=>b.classList.toggle("a",i===j));const c=$("sc");
-if(i===0){c.innerHTML=`<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Отображаемое имя</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Email</label><input id="em" type="email"><p class="mut">Имя пользователя: @${esc(me.username)}</p>`;$("dn").value=P.display_name;$("bio").value=P.bio;$("em").value=P.email;av($("pav"),P);
-$("dn").oninput=e=>P.display_name=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.email=e.target.value;$("up").onclick=()=>$("fi").click();$("fi").onchange=e=>e.target.files[0]&&pickImg(e.target.files[0],d=>{P.avatar=d;av($("pav"),P)});$("rm").onclick=()=>{P.avatar="";av($("pav"),{display_name:P.display_name})}}
-if(i===1){c.innerHTML=look(o,"s")+`<label>Фон чата</label><select id="sw"><option value="none">Без фона</option><option value="dots">Точки</option><option value="grad">Градиент</option></select>`;bindLook(o,"s");$("sw").value=o.wall;$("sw").onchange=e=>{o.wall=e.target.value;applyS(o)}}
-if(i===2){c.innerHTML=tog("avatars","Аватары в сообщениях")+tog("h24","24-часовое время")+tog("enter","Enter — отправить","Выключено: Ctrl+Enter, Enter — новая строка")+`<label>Плотность сообщений</label><select id="sd"><option value="normal">Обычная</option><option value="compact">Компактная</option></select>`;$("sd").value=o.density;$("sd").onchange=e=>{o.density=e.target.value;applyS(o)};c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked)}
-if(i===3){c.innerHTML=`<label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>`;
-$("pc").onclick=async()=>{try{await api("/password",{old:$("po").value,new:$("pn").value});$("pe").style.color="#3ddc84";$("pe").textContent="Пароль изменён"}catch(e){$("pe").style.color="";$("pe").textContent=e.message}};$("lo").onclick=logout;
-$("dl").onclick=()=>{$("db").innerHTML=`<label>Введите пароль для удаления. Аккаунт и сообщения будут стёрты безвозвратно.</label><input id="dp" type="password"><div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить навсегда</button>`;$("dk").onclick=async()=>{try{await api("/account/delete",{password:$("dp").value});logout(true)}catch(e){$("de").textContent=e.message}}}};
-document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(0);
-$("sx").onclick=()=>{S=bak;applyS(S);closeM()};
-$("ss").onclick=async()=>{try{await api("/profile",{...P,settings:o});Object.assign(me,P);S=o;applyS(S);fillMe();closeM();loadMsgs();loadChats()}catch(e){alert(e.message)}}};
-async function logout(skip){if(!skip)try{await api("/logout",{})}catch{}token="";localStorage.removeItem("fross_token");clearInterval(timer1);clearInterval(timer2);closeM();$("app").style.display="none";$("auth").style.display="grid";me=null;showLogin()}
-function fillMe(){av($("mav"),me,true);$("mn").textContent=me.display_name;$("mu").textContent="@"+me.username}
-async function boot(){try{me=(await api("/me")).user;S={...DEF,...me.settings};applyS(S);fillMe();$("auth").style.display="none";$("app").style.display="grid";cur="general";await loadChats();renderList();head();loadMsgs(true);clearInterval(timer1);clearInterval(timer2);timer1=setInterval(()=>loadMsgs(false),2500);timer2=setInterval(loadChats,7000)}catch{token="";localStorage.removeItem("fross_token");showLogin()}}
-token?boot():showLogin();
-</script></body></html>
+<script type="module" src="/firebase-app.js"></script></body></html>
