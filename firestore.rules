@@ -19,7 +19,8 @@ service cloud.firestore {
         && request.auth.token.keys().hasAny(["frossBrowserSession"])
         && exists(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession))
         && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.status == "approved";
+        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.status == "approved"
+        && get(/databases/$(database)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.sessionExpiresAt > request.time;
     }
     function verified() {
       return signedIn()
