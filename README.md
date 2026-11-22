@@ -33,3 +33,22 @@ npx wrangler dev
 
 ## Что пока не реализовано
 В первой версии доступна только общая комната. Личные чаты, поиск пользователей, вложения, статусы присутствия, WebSocket realtime, восстановление пароля и модерация — следующие этапы. Перед широким публичным запуском добавьте rate limiting для регистрации/входа, защиту от перебора паролей и процедуры удаления аккаунта/данных. Используйте HTTPS и не публикуйте секреты в репозитории.
+
+## Важно: публикация именно Worker, а не Static Assets only
+
+В репозитории теперь есть `package.json` с Wrangler 4 и командой `npm run deploy`.
+В Cloudflare откройте **Workers & Pages → fross-messenger → Settings → Builds**:
+- Git repository: `boberbuset132013-web/FROSS-messenger`
+- Production branch: `main`
+- Root directory: `/` (корень репозитория)
+- Build command: оставить пустой
+- Deploy command: `npm run deploy`
+
+После сохранения настроек запустите новый build/retry deployment. Wrangler прочитает `wrangler.toml`, загрузит `worker.js` как серверный код и `public/` как статические файлы. Не выбирайте режим публикации только Static Assets. Название Worker в Cloudflare должно быть `fross-messenger`.
+
+Перед успешной публикацией обязательно замените заглушку `REPLACE_WITH_D1_DATABASE_ID` в `wrangler.toml` на ID вашей D1-базы. D1 binding уже описан в конфигурации с именем `DB`; после deploy он появится у скрипта как `env.DB`.
+
+Применить таблицы после добавления ID можно командой:
+```sh
+npm run d1:migrate:prod
+```
