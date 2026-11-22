@@ -56,6 +56,7 @@ async function startBrowserApproval(user) {
       if (refreshResponse.ok && refreshData.customToken) {
         await signOut(auth);
         await signInWithCustomToken(auth, refreshData.customToken);
+        browserApprovalInProgress = false;
         return;
       }
     } catch (_) { }
@@ -79,6 +80,7 @@ async function startBrowserApproval(user) {
   localStorage.setItem("frossBrowserSession", data.requestId);
   await signOut(auth);
   await signInWithCustomToken(auth, data.customToken);
+  browserApprovalInProgress = false;
 }
 
 function showBrowserApprovalWait() {
