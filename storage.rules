@@ -4,19 +4,36 @@ service firebase.storage {
     function signedIn() {
       return request.auth != null;
     }
-    function isChatMember(chatId) {
+    function securityGateEnabled() {
+      return firestore.exists(/databases/(default)/documents/system/securityConfig)
+        && firestore.get(/databases/(default)/documents/system/securityConfig).data.requireBrowserApproval == true;
+    }
+    function trustedDeviceSession() {
+      return request.auth.token.keys().hasAny(["frossDeviceId"])
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)/trustedDevices/$(request.auth.token.frossDeviceId)).data.status == "active";
+    }
+    function approvedBrowserSession() {
+      return request.auth.token.keys().hasAny(["frossBrowserSession"])
+        && firestore.exists(/databases/(default)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession))
+        && firestore.get(/databases/(default)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.uid == request.auth.uid
+        && firestore.get(/databases/(default)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.status == "approved"
+        && firestore.get(/databases/(default)/documents/browserLoginRequests/$(request.auth.token.frossBrowserSession)).data.sessionExpiresAt > request.time;
+    }
+    function verified() {
       return signedIn()
-        && (
-          request.auth.token.email_verified == true
-          || request.auth.token.legacyAccount == true
-        )
+        && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
+        && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
+    }
+    function isChatMember(chatId) {
+      return verified()
         && firestore.exists(/databases/(default)/documents/chats/$(chatId))
         && (chatId == "general" || request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids);
     }
 
     match /avatars/{userId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn()
+      allow read: if verified();
+      allow write: if verified()
         && request.auth.uid == userId
         && (
           request.resource == null
