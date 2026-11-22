@@ -27,11 +27,17 @@ The token expires after 7 days. Test mode returns a fake number; it is only for 
 
 The browser approval gate is intentionally **off by default** to avoid locking out existing users before the Android app is registered, built, tested, and released.
 
-After the app and Cloud Functions are deployed and tested, create this Firestore document in the Firebase Console:
+After the app and Cloud Functions are deployed and tested, a FROSS administrator calls the `setBrowserApprovalGate` HTTP function with a Firebase ID token:
 
-- Collection: `system`
-- Document: `securityConfig`
-- Field: `requireBrowserApproval` (boolean) = `true`
+```http
+POST https://us-central1-fross-ca5d6.cloudfunctions.net/setBrowserApprovalGate
+Authorization: Bearer FIREBASE_ADMIN_ID_TOKEN
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Use `{"enabled": false}` to turn the gate off. The function requires the `frossAdmin` custom claim and updates the security flag on every Auth user's private profile before writing the global Firestore setting.
 
 Once enabled:
 - Users must have a phone verified through the Android app and at least one active trusted Android device.
@@ -49,6 +55,7 @@ Cloud Functions in `functions/phone-security.js`:
 - `createTrustedDeviceSession`
 - `registerTrustedDevicePushToken`
 - `createBrowserLoginRequest`
+- `refreshBrowserLoginSession`
 - `approveBrowserLogin`
 - `rejectBrowserLogin`
 
