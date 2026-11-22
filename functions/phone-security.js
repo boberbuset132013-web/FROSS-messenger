@@ -282,23 +282,25 @@ async function updateBrowserRequest(req, res, status) {
     const sessionExpiresAt = status === "approved"
       ? Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000)
       : null;
-    await requestRef.update({
+    const batch = db.batch();
+    batch.update(requestRef, {
       status,
       resolvedAt,
       approvedDeviceId: status === "approved" ? deviceId : null,
       sessionExpiresAt,
     });
     if (status === "approved") {
-      await db.doc(`users/${user.uid}`).update({
+      batch.update(db.doc(`users/${user.uid}`), {
         [`approvedBrowserSessions.${requestId}`]: { expiresAt: sessionExpiresAt },
       });
     }
     const messageRef = db.doc(`chats/security_${user.uid}/messages/${requestId}`);
-    await messageRef.set({
+    batch.set(messageRef, {
       securityRequestStatus: status,
       text: status === "approved" ? "Вход в FROSS через браузер подтверждён." : "Запрос на вход отклонён.",
       resolvedAt,
     }, { merge: true });
+    await batch.commit();
     await deviceRef.update({ lastSeenAt: FieldValue.serverTimestamp() });
     return res.status(200).json({ ok: true, status });
   } catch (error) {
