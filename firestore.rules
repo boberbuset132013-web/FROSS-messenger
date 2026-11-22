@@ -26,6 +26,7 @@ service cloud.firestore {
     function verified() {
       return signedIn()
         && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
     }
     function own(uid) {
