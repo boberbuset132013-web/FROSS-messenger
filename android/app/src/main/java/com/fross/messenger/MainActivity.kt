@@ -33,6 +33,21 @@ class MainActivity : ComponentActivity() {
     private val auth by lazy { FirebaseAuth.getInstance() }
     private val db by lazy { FirebaseFirestore.getInstance() }
     private var requestListener: ListenerRegistration? = null
+    private var renewingSession = false
+    private val idTokenListener = FirebaseAuth.IdTokenListener { firebaseAuth ->
+        val signedIn = firebaseAuth.currentUser
+        if (signedIn != null && !renewingSession) {
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    val claims = signedIn.getIdTokenResult(false).await().claims
+                    if (claims["frossDeviceId"] != deviceId && !renewingSession) {
+                        renewingSession = true
+                        try { establishExistingDevice() } finally { renewingSession = false }
+                    }
+                } catch (_: Exception) { }
+            }
+        }
+    }
     private lateinit var content: LinearLayout
     private lateinit var status: TextView
     private val deviceId by lazy { DevicePrefs.deviceId(this) }
@@ -44,11 +59,26 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (auth.currentUser == null) showLogin() else openSignedIn()
+        auth.addIdTokenListener(idTokenListener)
+        val signedIn = auth.currentUser
+        if (signedIn == null) showLogin() else {
+            renewingSession = true
+            CoroutineScope(Dispatchers.Main).launch {
+                try {
+                    val claims = signedIn.getIdTokenResult(true).await().claims
+                    if (claims["frossDeviceId"] == deviceId) openSignedIn() else establishExistingDevice()
+                } catch (error: Exception) {
+                    showLogin(error.message ?: "Войдите в аккаунт FROSS.")
+                } finally {
+                    renewingSession = false
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
         requestListener?.remove()
+        auth.removeIdTokenListener(idTokenListener)
         super.onDestroy()
     }
 
@@ -136,7 +166,8 @@ class MainActivity : ComponentActivity() {
                             showLogin("Сначала подтвердите email по ссылке из письма.")
                             return@launch
                         }
-                        establishExistingDevice()
+                        renewingSession = true
+                        try { establishExistingDevice() } finally { renewingSession = false }
                     } catch (error: Exception) {
                         status.text = error.message ?: "Не удалось войти."
                     }
@@ -160,6 +191,7 @@ class MainActivity : ComponentActivity() {
 
     private fun verifyPhone() {
         status.text = "Запрашиваем подтверждение номера у оператора…"
+        renewingSession = true
         FirebasePhoneNumberVerification.getInstance().getVerifiedPhoneNumber(this)
             .addOnSuccessListener { result ->
                 CoroutineScope(Dispatchers.Main).launch {
@@ -175,10 +207,13 @@ class MainActivity : ComponentActivity() {
                         openSignedIn()
                     } catch (error: Exception) {
                         status.text = error.message ?: "Не удалось сохранить подтверждение."
+                    } finally {
+                        renewingSession = false
                     }
                 }
             }
             .addOnFailureListener { error ->
+                renewingSession = false
                 status.text = when {
                     error.message?.contains("CARRIER_NOT_SUPPORTED") == true ->
                         "Ваш мобильный оператор пока не поддерживает подтверждение без SMS."
@@ -231,10 +266,11 @@ class MainActivity : ComponentActivity() {
         // Keep the header and the sign-out / refresh controls; replace only request cards.
         for (i in content.childCount - 1 downTo 0) {
             val view = content.getChildAt(i)
-            if (view.tag == "request-card") content.removeViewAt(i)
+            if (view.tag == "request-card" || view.tag == "request-empty") content.removeViewAt(i)
         }
         if (requests.isEmpty()) {
             content.addView(TextView(this).apply {
+                tag = "request-empty"
                 text = "Новых запросов нет."
                 setTextColor(0xFFAAA7B8.toInt())
                 setPadding(0, 22, 0, 8)
