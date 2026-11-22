@@ -108,16 +108,24 @@ function askGoogleProfile(user) {
 async function linkGoogleToExistingAccount(error) {
   const googleCredential = GoogleAuthProvider.credentialFromError(error);
   if (!googleCredential) throw error;
-  const credentials = await new Promise(resolve => {
+  return new Promise(resolve => {
     openM('<h3 style="margin:0">Аккаунт уже существует</h3><p class="mut">Для этого Google email уже есть аккаунт FROSS. Войдите в него по паролю, чтобы безопасно привязать Google.</p><label>Email существующего аккаунта</label><input id="linkEmail" type="email" autocomplete="username"><label>Пароль FROSS</label><input id="linkPassword" type="password" autocomplete="current-password"><div class="err" id="linkError"></div><div class="row"><button id="linkCancel">Отмена</button><button class="pr" id="linkContinue">Войти и связать</button></div>');
     $("linkCancel").onclick=()=>{closeM();resolve(null)};
-    $("linkContinue").onclick=()=>resolve({email:$("linkEmail").value.trim(),password:$("linkPassword").value});
+    $("linkContinue").onclick=async()=>{
+      const email=$("linkEmail").value.trim(),password=$("linkPassword").value;
+      if(!email||!password){$("linkError").textContent="Введите email и пароль существующего аккаунта.";return;}
+      $("linkContinue").disabled=true;
+      try {
+        const signed=await signInWithEmailAndPassword(auth,email,password);
+        const linked=await linkWithCredential(signed.user,googleCredential);
+        closeM();
+        resolve(linked.user);
+      } catch(linkError) {
+        $("linkError").textContent=authError(linkError);
+        $("linkContinue").disabled=false;
+      }
+    };
   });
-  if (!credentials) return null;
-  if (!credentials.email || !credentials.password) throw new Error("Введите email и пароль существующего аккаунта.");
-  const signed = await signInWithEmailAndPassword(auth,credentials.email,credentials.password);
-  const linked = await linkWithCredential(signed.user,googleCredential);
-  return linked.user;
 }
 
 async function googleLogin(){
