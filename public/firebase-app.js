@@ -815,9 +815,31 @@ $("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click(
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
-  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
-  else{
+  if(user){
+    if(creatingAccount)return;
+    const token=await user.getIdTokenResult();
+    if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified&&token.claims.legacyAccount!==true){
+      browserApprovalInProgress=false;
+      await signOut(auth);
+      return;
+    }
+    if(token.claims.frossBrowserSession){
+      await waitForBrowserApproval(user,String(token.claims.frossBrowserSession));
+      return;
+    }
+    if(browserApprovalInProgress)return;
+    try{
+      await startBrowserApproval(user);
+    }catch(error){
+      browserApprovalInProgress=false;
+      await signOut(auth);
+      showLogin();
+      if($("le"))$("le").textContent=authError(error);
+    }
+  }else{
+    if(browserApprovalInProgress)return;
     currentUser=null;me=null;bootedUid=null;
+    if(browserApprovalStop){browserApprovalStop();browserApprovalStop=null}
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
     showLogin();
   }
