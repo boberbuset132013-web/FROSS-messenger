@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, randomInt, createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
@@ -71,7 +71,15 @@ function hasValidPnvHeader(token) {
   }
 }
 
-async function ensureSecurityBotMessage(uid, requestId, browserLabel, expiresAt) {
+function browserCodeDigest(requestId, code) {
+  const secret = process.env.FROSS_BROWSER_OTP_SECRET || "";
+  if (secret.length < 32) {
+    throw Object.assign(new Error("FROSS_BROWSER_OTP_SECRET не настроен на сервере."), { status: 503 });
+  }
+  return createHmac("sha256", secret).update(`${requestId}:${code}`).digest();
+}
+
+async function ensureSecurityBotMessage(uid, requestId, browserLabel, expiresAt, code) {
   const chatRef = db.doc(`chats/security_${uid}`);
   const now = Timestamp.now();
   await chatRef.set({
@@ -90,7 +98,7 @@ async function ensureSecurityBotMessage(uid, requestId, browserLabel, expiresAt)
     senderUid: "fross-security",
     username: "fross-security",
     displayName: "FROSS Security",
-    text: `Попытка входа через ${browserLabel}. Подтвердите её в приложении FROSS.`,
+    text: `Попытка входа через ${browserLabel}. Код входа: ${code}. Введите его в браузере. Если это не вы — нажмите «Отклонить» в приложении FROSS.`,
     securityRequestId: requestId,
     securityRequestStatus: "pending",
     securityRequestExpiresAt: expiresAt,
@@ -260,7 +268,12 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
     }
     if (devices.empty) return sendError(res, 412, "Сначала зарегистрируйте доверенное Android-устройство в FROSS.");
 
+    if ((process.env.FROSS_BROWSER_OTP_SECRET || "").length < 32) {
+      return sendError(res, 503, "Сервер подтверждения входа пока не настроен.");
+    }
     const requestId = randomUUID();
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = browserCodeDigest(requestId, code).toString("hex");
     const now = Timestamp.now();
     const expiresAt = Timestamp.fromMillis(now.toMillis() + FIVE_MINUTES);
     const browserLabel = String(req.body?.browserLabel || "Браузер").replace(/[<>]/g, "").slice(0, 80);
@@ -278,11 +291,14 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
         uid: user.uid,
         status: "pending",
         browserLabel,
+        codeHash,
+        attempts: 0,
+        maxAttempts: 5,
         createdAt: now,
         expiresAt,
       });
     });
-    await ensureSecurityBotMessage(user.uid, requestId, browserLabel, expiresAt);
+    await ensureSecurityBotMessage(user.uid, requestId, browserLabel, expiresAt, code);
     const activeDevices = await db.collection(`users/${user.uid}/trustedDevices`)
       .where("status", "==", "active").get();
     const pushTokens = activeDevices.docs.map(item => item.data()?.fcmToken).filter(value => typeof value === "string" && value.length > 20).slice(0, 500);
@@ -292,7 +308,7 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
           tokens: pushTokens,
           notification: {
             title: "FROSS Security",
-            body: "Подтвердите вход в FROSS через браузер.",
+            body: "В FROSS Security появился код для входа в браузер.",
           },
           data: { type: "browser_login_request", requestId },
           android: { priority: "high", notification: { channelId: "fross_security" } },
@@ -365,8 +381,86 @@ async function updateBrowserRequest(req, res, status) {
   }
 }
 
-export const approveBrowserLogin = onRequest((req, res) => updateBrowserRequest(req, res, "approved"));
 export const rejectBrowserLogin = onRequest((req, res) => updateBrowserRequest(req, res, "denied"));
+
+export const verifyBrowserLoginCode = onRequest(async (req, res) => {
+  if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
+  if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
+  try {
+    const user = await requireFirebaseUser(req);
+    const requestId = String(req.body?.requestId || "");
+    const code = String(req.body?.code || "");
+    if (!/^[a-f0-9-]{36}$/i.test(requestId) || !/^\d{6}$/.test(code)) {
+      return sendError(res, 400, "Введите шестизначный код из приложения FROSS.");
+    }
+    const requestRef = db.doc(`browserLoginRequests/${requestId}`);
+    const request = await requestRef.get();
+    if (!request.exists || request.data()?.uid !== user.uid) return sendError(res, 404, "Запрос на вход не найден.");
+    const data = request.data();
+    if (data.status !== "pending") return sendError(res, 409, "Этот запрос уже обработан.");
+    if (!data.expiresAt || data.expiresAt.toMillis() <= Date.now()) {
+      const now = Timestamp.now();
+      const batch = db.batch();
+      batch.update(requestRef, { status: "expired", resolvedAt: now });
+      batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
+        securityRequestStatus: "expired",
+        text: "Время действия кода истекло.",
+        resolvedAt: now,
+      }, { merge: true });
+      await batch.commit();
+      return sendError(res, 410, "Время действия кода истекло. Начните вход заново.");
+    }
+
+    const attempts = Number(data.attempts || 0);
+    const maxAttempts = Math.min(5, Math.max(1, Number(data.maxAttempts || 5)));
+    if (attempts >= maxAttempts) return sendError(res, 429, "Лимит попыток исчерпан. Начните вход заново.");
+    const expected = Buffer.from(String(data.codeHash || ""), "hex");
+    const actual = browserCodeDigest(requestId, code);
+    const matches = expected.length === actual.length && timingSafeEqual(expected, actual);
+    if (!matches) {
+      const nextAttempts = attempts + 1;
+      if (nextAttempts >= maxAttempts) {
+        const now = Timestamp.now();
+        const batch = db.batch();
+        batch.update(requestRef, { status: "denied", attempts: nextAttempts, resolvedAt: now });
+        batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
+          securityRequestStatus: "denied",
+          text: "Запрос на вход заблокирован после пяти неверных кодов.",
+          resolvedAt: now,
+        }, { merge: true });
+        await batch.commit();
+        return sendError(res, 429, "Слишком много неверных попыток. Запрос заблокирован.");
+      }
+      await requestRef.update({ attempts: nextAttempts });
+      return res.status(401).json({ ok: false, error: "Неверный код.", attemptsRemaining: maxAttempts - nextAttempts });
+    }
+
+    const resolvedAt = Timestamp.now();
+    const sessionExpiresAt = Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000);
+    const batch = db.batch();
+    batch.update(requestRef, {
+      status: "approved",
+      attempts,
+      resolvedAt,
+      sessionExpiresAt,
+      approvedAt: resolvedAt,
+    });
+    batch.update(db.doc(`users/${user.uid}`), {
+      [`approvedBrowserSessions.${requestId}`]: { expiresAt: sessionExpiresAt },
+    });
+    batch.set(db.doc(`chats/security_${user.uid}/messages/${requestId}`), {
+      securityRequestStatus: "approved",
+      text: "Вход в FROSS через браузер подтверждён.",
+      resolvedAt,
+    }, { merge: true });
+    await batch.commit();
+    return res.status(200).json({ ok: true, status: "approved" });
+  } catch (error) {
+    console.error("FROSS browser code verification failed:", error);
+    return sendError(res, error.status || 500, error.status ? error.message : "Не удалось проверить код входа.");
+  }
+});
 
 export const expireBrowserLoginRequests = onSchedule("every 5 minutes", async () => {
   const now = Timestamp.now();
