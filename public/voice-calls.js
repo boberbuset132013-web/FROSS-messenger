@@ -133,7 +133,7 @@ function attachAudio(peer) {
       audioElement.style.display = "none";
       document.body.append(audioElement);
     }
-    audioElement.srcObject = event.streams[0];
+    audioElement.srcObject = event.streams[0];\n    if(outputSelect?.value)changeAudioOutput(outputSelect.value);
     if(remoteScreen)remoteScreen.style.display="none";
     audioElement.play().catch(() => {
       $("call-status").textContent = "Разрешите воспроизведение звука в браузере.";
