@@ -168,4 +168,5 @@ export {
   registerTrustedDevicePushToken,
   expireBrowserLoginRequests,
   setBrowserApprovalGate,
+  initializeSecurityGateForNewUser,
 } from "./phone-security.js";
