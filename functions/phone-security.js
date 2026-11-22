@@ -216,6 +216,9 @@ export const createTrustedDeviceSession = onRequest(async (req, res) => {
     if (!profile.data()?.phoneVerified || !device.exists || device.data()?.status !== "active") {
       return sendError(res, 403, "Это устройство не зарегистрировано. Сначала подтвердите номер телефона.");
     }
+    if (profile.data()?.phoneVerificationTest === true && process.env.FROSS_ALLOW_PNV_TEST_TOKENS !== "true") {
+      return sendError(res, 403, "Тестовый номер нельзя использовать в production.");
+    }
     await device.ref.update({ lastSeenAt: FieldValue.serverTimestamp() });
     const customToken = await createFrossCustomToken(user.uid, { frossDeviceId: deviceId });
     return res.status(200).json({ ok: true, customToken });
@@ -243,6 +246,9 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
     ]);
     if (!profile.data()?.phoneVerified) {
       return sendError(res, 412, "Сначала подтвердите номер телефона в Android-приложении FROSS.");
+    }
+    if (profile.data()?.phoneVerificationTest === true && process.env.FROSS_ALLOW_PNV_TEST_TOKENS !== "true") {
+      return sendError(res, 412, "Тестовый номер нельзя использовать для входа в production.");
     }
     if (devices.empty) return sendError(res, 412, "Сначала зарегистрируйте доверенное Android-устройство в FROSS.");
 
@@ -436,29 +442,56 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
     if (user.frossAdmin !== true) return sendError(res, 403, "Только администратор FROSS может менять этот режим.");
     const enabled = req.body?.enabled === true;
     let pageToken;
-    let updated = 0;
+    const accountUids = [];
+    let readyUsers = 0;
+    let unreadyUsers = 0;
+
     do {
       const page = await auth.listUsers(1000, pageToken);
-      for (let offset = 0; offset < page.users.length; offset += 450) {
-        const batch = db.batch();
-        for (const account of page.users.slice(offset, offset + 450)) {
-          batch.set(db.doc(`users/${account.uid}`), {
-            requireBrowserApproval: enabled,
-            securityGateUpdatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
-          updated++;
+      accountUids.push(...page.users.map(account => account.uid));
+      if (enabled) {
+        for (let offset = 0; offset < page.users.length; offset += 400) {
+          const chunk = page.users.slice(offset, offset + 400);
+          const profiles = await db.getAll(...chunk.map(account => db.doc(`users/${account.uid}`)));
+          for (const profile of profiles) {
+            const data = profile.data() || {};
+            const ready = data.phoneVerified === true
+              && data.phoneVerificationTest !== true
+              && Array.isArray(data.trustedDeviceIds)
+              && data.trustedDeviceIds.length > 0;
+            if (ready) readyUsers++; else unreadyUsers++;
+          }
         }
-        await batch.commit();
       }
       pageToken = page.pageToken;
     } while (pageToken);
+
+    if (enabled && unreadyUsers > 0) {
+      return res.status(409).json({
+        ok: false,
+        error: "Нельзя включить обязательное подтверждение: не все аккаунты подтвердили номер и зарегистрировали Android-устройство.",
+        readyUsers,
+        unreadyUsers,
+      });
+    }
+
+    for (let offset = 0; offset < accountUids.length; offset += 450) {
+      const batch = db.batch();
+      for (const uid of accountUids.slice(offset, offset + 450)) {
+        batch.set(db.doc(`users/${uid}`), {
+          requireBrowserApproval: enabled,
+          securityGateUpdatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      await batch.commit();
+    }
 
     await db.doc("system/securityConfig").set({
       requireBrowserApproval: enabled,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: user.uid,
     }, { merge: true });
-    return res.status(200).json({ ok: true, enabled, updatedUsers: updated });
+    return res.status(200).json({ ok: true, enabled, readyUsers, updatedUsers: accountUids.length });
   } catch (error) {
     console.error("FROSS browser approval gate update failed:", error);
     return sendError(res, error.status || 500, error.status ? error.message : "Не удалось изменить режим защиты браузера.");
