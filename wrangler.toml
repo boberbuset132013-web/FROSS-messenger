@@ -1,0 +1,14 @@
+name = "fross-messenger"
+main = "worker.js"
+compatibility_date = "2026-11-22"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fross-messenger-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
