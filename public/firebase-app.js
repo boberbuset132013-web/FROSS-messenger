@@ -397,7 +397,7 @@ function head() {
 }
 function openChat(id) {
   cur=id;
-  if (window.FROSS) window.FROSS.chatId = id;document.body.classList.add("ch");renderList();head();subscribeMessages();
+  document.body.classList.add("ch");renderList();head();subscribeMessages();
 }
 function subscribeMessages() {
   if(stopMessages)stopMessages();
@@ -585,8 +585,9 @@ $("gb").onclick=()=>{
       $("phoneConfirm").onclick = async () => {
         try {
           if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
-          await phoneConfirmation.confirm($("phoneCode").value.trim());
-          await updateDoc(doc(db,"users",me.uid),{phoneNumber:currentUser.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
+          const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
+          currentUser = linked.user;
+          await updateDoc(doc(db,"users",me.uid),{phoneNumber:linked.user.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
           $("phoneError").style.color = "#3ddc84";
           $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
           if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
