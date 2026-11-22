@@ -13,7 +13,9 @@ The Firebase web config in `public/firebase-app.js` is client configuration, not
 
 ## Features in this version
 
-- Firebase Authentication (Email/Password provider; users enter their username in the UI).
+- Firebase Authentication with Google sign-in and real email/password accounts.
+- Email verification is required for new password accounts before chats can be opened; Firebase sends a verification link (not a six-digit OTP).
+- Existing migrated accounts keep username/password compatibility through their legacy internal Firebase address.
 - Username reservation and uniqueness in Firestore.
 - Private account settings and public profile documents.
 - Profile photo uploads to Cloud Storage.
@@ -22,19 +24,24 @@ The Firebase web config in `public/firebase-app.js` is client configuration, not
 - Search by username.
 - Firestore and Storage security rules, plus the chat-list composite index.
 
-### Username login design
+### Authentication design
 
-To keep the existing username + password login flow, Firebase Auth uses an internal address of the form `<username>@fross-ca5d6.firebaseapp.com`. The optional contact email is stored privately in Firestore and is not used as the Auth login identifier. This first Firebase release does not yet have password-reset-by-contact-email; do not promise account recovery by email until a verified email-linking/recovery flow is added.
+New registrations require a real email address and password. Firebase sends a verification link; until the address is verified, Firestore chat access is denied by Security Rules. Password reset is available by email. Google sign-in is also supported; first-time Google users choose a unique FROSS username.
+
+For accounts migrated from the older username-only version, the previous internal address `<username>@fross-ca5d6.firebaseapp.com` remains supported as a compatibility login. These legacy accounts are not email-verified and therefore do not get the new email-verification gate until a separate account-linking flow is completed. Their optional contact email is not an authentication credential.
+
+Firebase's built-in Email/Password provider sends a verification link, not a numeric one-time code on every login. Requiring a fresh six-digit code at every login needs a trusted server-side OTP service (for example, Cloud Functions plus a transactional email provider); do not implement OTP generation or validation in browser code.
 
 ## Enable Firebase services before publishing
 
 1. Open Firebase Console and select project `fross-ca5d6`.
-2. Authentication → Sign-in method → enable **Email/Password**.
-3. Firestore Database → create a **Standard** database in the region you prefer. Choose production mode (the repository contains the rules).
-4. Storage → Get started → create the default bucket `fross-ca5d6.firebasestorage.app`.
+2. Authentication → Sign-in method → enable **Email/Password** and **Google**. Configure the Google OAuth consent screen if Firebase requests it.
+3. Authentication → Templates → customize the email verification and password-reset templates with FROSS branding.
+4. Firestore Database → create a **Standard** database in the region you prefer. Choose production mode (the repository contains the rules).
+5. Storage → Get started → create the default bucket `fross-ca5d6.firebasestorage.app`.
    **Cloud Storage for Firebase requires the Blaze pay-as-you-go plan.** Usage may have no-cost quotas, but billing must be linked for Storage access. Check Google's current pricing and set budget alerts before enabling it.
-5. Authentication → Settings → Authorized domains: add the exact hostname of the deployed `workers.dev` site (and your custom domain, if you use one).
-6. From the repository root run:
+6. Authentication → Settings → Authorized domains: add the exact hostname of the deployed `workers.dev` site (and your custom domain, if you use one).
+7. From the repository root run:
    ```sh
    npm run firebase:deploy
    ```
@@ -107,7 +114,7 @@ After a successful import and verification:
 
 ## Current limitations / follow-up work
 
-- Password reset through the optional contact email is not implemented yet because Auth uses a private username-derived login address.
+- Numeric email OTP on every login is not implemented; the current verified-email flow uses Firebase's signed verification link.
 - Chat attachments are allowed by Storage Rules but the UI currently uploads profile avatars only.
 - Push notifications, voice/video calls, end-to-end encryption, moderation and automated account-recovery are not included yet.
 - Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
