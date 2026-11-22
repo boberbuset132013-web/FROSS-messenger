@@ -184,7 +184,7 @@ export const createTrustedDeviceSession = onRequest(async (req, res) => {
       return sendError(res, 403, "Это устройство не зарегистрировано. Сначала подтвердите номер телефона.");
     }
     await device.ref.update({ lastSeenAt: FieldValue.serverTimestamp() });
-    const customToken = await auth.createCustomToken(user.uid, { frossDeviceId: deviceId });
+    const customToken = await createFrossCustomToken(user.uid, { frossDeviceId: deviceId });
     return res.status(200).json({ ok: true, customToken });
   } catch (error) {
     console.error("FROSS trusted device session failed:", error);
