@@ -58,9 +58,14 @@ service cloud.firestore {
       allow list: if false;
       allow create: if own(uid)
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
-      allow update: if own(uid) && verified()
+      allow update: if own(uid)
+        && (
+          verified()
+          || request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(["contactEmail", "settings", "createdAt", "authProvider"])
+        )
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "createdAt", "authProvider"]);
       allow delete: if own(uid);
     }
 
