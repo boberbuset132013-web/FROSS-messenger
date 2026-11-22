@@ -46,6 +46,13 @@ async function changeAudioOutput(deviceId){
   if(typeof audioElement.setSinkId!=="function"){$("call-status").textContent="Браузер не поддерживает выбор устройства вывода.";return}
   try{await audioElement.setSinkId(deviceId)}catch(e){$("call-status").textContent="Не удалось выбрать устройство вывода: "+e.message}
 }
+function toggleRemoteAudio(){
+  if(!audioElement)return;
+  audioElement.muted=!audioElement.muted;
+  $("call-status").textContent=audioElement.muted?"Звук собеседника выключен.":"Звук собеседника включён.";
+  const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="output");
+  if(b)b.textContent=audioElement.muted?"Включить звук":"Выключить звук";
+}
 async function toggleMicrophone(){
   const track=activeCall?.stream?.getAudioTracks()[0];if(!track)return;
   track.enabled=!track.enabled;$("call-status").textContent=track.enabled?"Микрофон включён.":"Микрофон выключен.";
@@ -77,12 +84,12 @@ function showCall(title, status, avatarText, actions) {
   $("call-avatar").textContent = avatarText || "☎";
   $("call-actions").replaceChildren();
   const visibleActions=[...(actions||[])];
-  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});}
+  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:audioElement?.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
   for (const action of visibleActions) {
     const button = document.createElement("button");
     button.textContent = action.label;
     button.className = action.danger ? "dg" : action.primary ? "pr" : "";
-    if(action.label.includes("микрофон"))button.dataset.action="mute";
+    if(action.label.includes("микрофон"))button.dataset.action="mute";\n    if(action.label.includes("звук"))button.dataset.action="output";
     button.onclick = action.onClick;
     $("call-actions").append(button);
   }
