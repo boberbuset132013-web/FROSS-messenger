@@ -308,7 +308,7 @@ class MainActivity : ComponentActivity() {
                     return@addSnapshotListener
                 }
                 val requests = snapshot?.documents.orEmpty()
-                    .filter { it.getString("status") == "pending" }
+                    .filter { it.getString("status") == "pending" && it.getBoolean("messageReady") == true }
                     .sortedByDescending { it.getTimestamp("createdAt")?.toDate()?.time ?: 0L }
                 renderRequests(requests)
             }
