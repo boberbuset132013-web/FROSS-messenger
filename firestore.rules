@@ -4,11 +4,14 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    function verified() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
     function own(uid) {
       return signedIn() && request.auth.uid == uid;
     }
     function canReadChat(chatId) {
-      return signedIn() && (
+      return verified() && (
         chatId == "general" ||
         (exists(/databases/$(database)/documents/chats/$(chatId))
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.memberUids)
@@ -41,7 +44,7 @@ service cloud.firestore {
     }
 
     match /publicUsers/{uid} {
-      allow get, list: if signedIn();
+      allow get, list: if verified();
       allow create: if own(uid)
         && request.resource.data.username is string
         && request.resource.data.usernameLower is string
@@ -60,12 +63,12 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow get, list: if signedIn() && (
+      allow get, list: if verified() && (
         chatId == "general" ||
         request.auth.uid in resource.data.memberUids
       );
 
-      allow create: if signedIn() && (
+      allow create: if verified() && (
         (chatId == "general"
           && request.resource.data.type == "general"
           && request.resource.data.memberUids is list
@@ -88,7 +91,7 @@ service cloud.firestore {
           && request.resource.data.title.size() <= 40)
       );
 
-      allow update: if signedIn()
+      allow update: if verified()
         && (chatId == "general" || request.auth.uid in resource.data.memberUids)
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["lastMessage", "lastMessageAt", "updatedAt", "memberUids"])
