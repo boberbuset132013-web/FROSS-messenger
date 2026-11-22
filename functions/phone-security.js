@@ -404,9 +404,9 @@ export const verifyBrowserLoginCode = onRequest({ secrets: [browserOtpSecret] },
       return sendError(res, 403, "Этот код нельзя использовать в другой сессии браузера.");
     }
 
-    const requestRef = db.doc(\`browserLoginRequests/\${requestId}\`);
-    const profileRef = db.doc(\`users/\${user.uid}\`);
-    const messageRef = db.doc(\`chats/security_\${user.uid}/messages/\${requestId}\`);
+    const requestRef = db.doc(`browserLoginRequests/${requestId}`);
+    const profileRef = db.doc(`users/${user.uid}`);
+    const messageRef = db.doc(`chats/security_${user.uid}/messages/${requestId}`);
     const actual = browserCodeDigest(requestId, code);
     const result = await db.runTransaction(async transaction => {
       const [requestSnap, profileSnap] = await Promise.all([
@@ -458,7 +458,7 @@ export const verifyBrowserLoginCode = onRequest({ secrets: [browserOtpSecret] },
         approvedAt: now,
       });
       transaction.update(profileRef, {
-        [\`approvedBrowserSessions.\${requestId}\`]: { expiresAt: sessionExpiresAt },
+        [`approvedBrowserSessions.${requestId}`]: { expiresAt: sessionExpiresAt },
       });
       transaction.set(messageRef, {
         securityRequestStatus: "approved",
