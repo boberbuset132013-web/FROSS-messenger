@@ -346,22 +346,41 @@ class MainActivity : ComponentActivity() {
             })
             card.addView(TextView(this).apply {
                 text = "Устройство: " + (request.getString("browserLabel") ?: "Браузер") +
-                    "\nСрок действия: 5 минут"
+                    "\nКод действует 5 минут. Введите его на сайте FROSS."
                 setTextColor(0xFFCBC8D7.toInt())
                 setPadding(0, 6, 0, 8)
             })
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-            val approve = Button(this).apply {
-                text = "Подтвердить"
-                setOnClickListener { decide(requestId, true) }
+            val codeView = TextView(this).apply {
+                text = "Загружаем код…"
+                textSize = 24f
+                typeface = Typeface.MONOSPACE
+                gravity = Gravity.CENTER
+                setTextColor(0xFFFFFFFF.toInt())
+                setPadding(12, 14, 12, 14)
+                setBackgroundColor(0xFF30313D.toInt())
+            }
+            card.addView(codeView)
+            val uid = auth.currentUser?.uid
+            if (uid != null) {
+                db.collection("chats").document("security_$uid").collection("messages")
+                    .document(requestId).get()
+                    .addOnSuccessListener { message ->
+                        val code = message.getString("securityRequestCode")
+                        codeView.text = if (code?.matches(Regex("\\d{6}")) == true) {
+                            "КОД: $code"
+                        } else {
+                            "Код уже недоступен. Обновите список."
+                        }
+                    }
+                    .addOnFailureListener {
+                        codeView.text = "Не удалось загрузить код. Обновите список."
+                    }
             }
             val reject = Button(this).apply {
-                text = "Отклонить"
-                setOnClickListener { decide(requestId, false) }
+                text = "Отклонить запрос"
+                setOnClickListener { reject(requestId) }
             }
-            actions.addView(approve, LinearLayout.LayoutParams(0, -2, 1f))
-            actions.addView(reject, LinearLayout.LayoutParams(0, -2, 1f))
-            card.addView(actions)
+            card.addView(reject)
             val lp = LinearLayout.LayoutParams(-1, -2)
             lp.topMargin = 14
             content.addView(card, lp)
@@ -369,15 +388,14 @@ class MainActivity : ComponentActivity() {
         status.text = keep
     }
 
-    private fun decide(requestId: String, approve: Boolean) {
-        status.text = if (approve) "Подтверждаем вход…" else "Отклоняем запрос…"
+    private fun reject(requestId: String) {
+        status.text = "Отклоняем запрос…"
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                val endpoint = if (approve) "approveBrowserLogin" else "rejectBrowserLogin"
-                FrossApi.post(endpoint, JSONObject().put("requestId", requestId))
-                status.text = if (approve) "Вход подтверждён." else "Запрос отклонён."
+                FrossApi.post("rejectBrowserLogin", JSONObject().put("requestId", requestId))
+                status.text = "Запрос отклонён."
             } catch (error: Exception) {
-                status.text = error.message ?: "Не удалось обработать запрос."
+                status.text = error.message ?: "Не удалось отклонить запрос."
             }
         }
     }
