@@ -86,7 +86,7 @@ async function startBrowserApproval(user) {
 function showBrowserApprovalWait() {
   $("auth").style.display = "grid";
   $("app").style.display = "none";
-  $("ac").innerHTML = '<div class="logo">FROSS</div><h3>Подтвердите вход</h3><p class="mut">Откройте приложение FROSS на телефоне. В чате <b>FROSS Security</b> появится запрос на вход в браузере.</p><p class="mut">Запрос действует 5 минут. Не подтверждайте вход, если вы его не начинали.</p><div class="err" id="approvalError"></div><button class="dg" id="approvalCancel" style="width:100%">Отменить вход</button>';
+  $("ac").innerHTML = '<div class="logo">FROSS</div><h3>Введите код из FROSS</h3><p class="mut">Откройте приложение FROSS на телефоне. В чате <b>FROSS Security</b> появится шестизначный код. Введите его здесь.</p><input id="browserLoginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.35em;font-size:24px;font-weight:800"><button class="pr" id="browserVerifyCode" style="width:100%">Подтвердить вход</button><p class="mut">Код действует 5 минут. После пяти неверных попыток запрос будет заблокирован.</p><div class="err" id="approvalError"></div><button class="dg" id="approvalCancel" style="width:100%">Отменить вход</button>';
   $("approvalCancel").onclick = async () => {
     if (browserApprovalStop) { browserApprovalStop(); browserApprovalStop = null; }
     localStorage.removeItem("frossBrowserSession");
@@ -98,6 +98,34 @@ function showBrowserApprovalWait() {
 async function waitForBrowserApproval(user, requestId) {
   showBrowserApprovalWait();
   if (browserApprovalStop) browserApprovalStop();
+  $("browserVerifyCode").onclick = async () => {
+    const code = $("browserLoginCode").value.trim();
+    if (!/^\d{6}$/.test(code)) {
+      $("approvalError").textContent = "Введите шесть цифр из сообщения FROSS Security.";
+      return;
+    }
+    const button = $("browserVerifyCode");
+    button.disabled = true;
+    $("approvalError").textContent = "Проверяем код…";
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch(SECURITY_FUNCTIONS + "verifyBrowserLoginCode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body: JSON.stringify({ requestId, code })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Не удалось проверить код.");
+      $("approvalError").textContent = "Код принят. Завершаем вход…";
+    } catch (error) {
+      if ($("approvalError")) $("approvalError").textContent = authError(error);
+    } finally {
+      if ($("browserVerifyCode")) $("browserVerifyCode").disabled = false;
+    }
+  };
+  $("browserLoginCode").addEventListener("keydown", event => {
+    if (event.key === "Enter") $("browserVerifyCode").click();
+  });
   return new Promise(resolve => {
     let finished = false;
     const finish = () => {
