@@ -162,6 +162,7 @@ export {
   verifyPhoneWithPnv,
   createTrustedDeviceSession,
   createBrowserLoginRequest,
+  refreshBrowserLoginSession,
   approveBrowserLogin,
   rejectBrowserLogin,
   registerTrustedDevicePushToken,
