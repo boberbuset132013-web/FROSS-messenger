@@ -1,9 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
+  onIdTokenChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
   EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
-  sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
+  sendEmailVerification, sendPasswordResetEmail, signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
@@ -32,10 +32,102 @@ const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
+let browserApprovalInProgress=false, browserApprovalStop=null, activeBrowserSessionId=null;
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
+}
+
+const SECURITY_FUNCTIONS = "https://us-central1-fross-ca5d6.cloudfunctions.net/";
+
+async function startBrowserApproval(user) {
+  browserApprovalInProgress = true;
+  const idToken = await user.getIdToken(true);
+  const savedSession = localStorage.getItem("frossBrowserSession");
+  if (savedSession) {
+    try {
+      const refreshResponse = await fetch(SECURITY_FUNCTIONS + "refreshBrowserLoginSession", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body: JSON.stringify({ sessionId: savedSession })
+      });
+      const refreshData = await refreshResponse.json().catch(() => ({}));
+      if (refreshResponse.ok && refreshData.customToken) {
+        await signOut(auth);
+        await signInWithCustomToken(auth, refreshData.customToken);
+        return;
+      }
+    } catch (_) { }
+    localStorage.removeItem("frossBrowserSession");
+    activeBrowserSessionId = null;
+    bootedUid = null;
+  }
+  const response = await fetch(SECURITY_FUNCTIONS + "createBrowserLoginRequest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+    body: JSON.stringify({ browserLabel: (navigator.userAgent || "Браузер").slice(0, 80) })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Не удалось запросить подтверждение входа.");
+  if (data.mode === "disabled") {
+    browserApprovalInProgress = false;
+    await boot(user);
+    return;
+  }
+  if (!data.customToken || !data.requestId) throw new Error("Сервер вернул неполный запрос подтверждения.");
+  localStorage.setItem("frossBrowserSession", data.requestId);
+  await signOut(auth);
+  await signInWithCustomToken(auth, data.customToken);
+}
+
+function showBrowserApprovalWait() {
+  $("auth").style.display = "grid";
+  $("app").style.display = "none";
+  $("ac").innerHTML = '<div class="logo">FROSS</div><h3>Подтвердите вход</h3><p class="mut">Откройте приложение FROSS на телефоне. В чате <b>FROSS Security</b> появится запрос на вход в браузере.</p><p class="mut">Запрос действует 5 минут. Не подтверждайте вход, если вы его не начинали.</p><div class="err" id="approvalError"></div><button class="dg" id="approvalCancel" style="width:100%">Отменить вход</button>';
+  $("approvalCancel").onclick = async () => {
+    if (browserApprovalStop) { browserApprovalStop(); browserApprovalStop = null; }
+    localStorage.removeItem("frossBrowserSession");
+    activeBrowserSessionId = null;
+    await signOut(auth);
+  };
+}
+
+async function waitForBrowserApproval(user, requestId) {
+  showBrowserApprovalWait();
+  if (browserApprovalStop) browserApprovalStop();
+  return new Promise(resolve => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (browserApprovalStop) { browserApprovalStop(); browserApprovalStop = null; }
+      resolve();
+    };
+    browserApprovalStop = onSnapshot(doc(db, "browserLoginRequests", requestId), async snapshot => {
+      if (!snapshot.exists()) {
+        finish();
+        await signOut(auth);
+        return;
+      }
+      const state = snapshot.data().status;
+      if (state === "approved") {
+        finish();
+        activeBrowserSessionId = requestId;
+        try { await boot(user); }
+        catch (error) { if ($("approvalError")) $("approvalError").textContent = authError(error); await signOut(auth); }
+      } else if (state === "denied" || state === "expired") {
+        finish();
+        localStorage.removeItem("frossBrowserSession");
+        activeBrowserSessionId = null;
+        if ($("approvalError")) $("approvalError").textContent = state === "denied" ? "Вход отклонён в приложении FROSS." : "Время подтверждения истекло. Войдите снова.";
+        await signOut(auth);
+      }
+    }, error => {
+      finish();
+      if ($("approvalError")) $("approvalError").textContent = "Не удалось проверить подтверждение: " + error.message;
+    });
+  });
 }
 async function completeTotpSignIn(error) {
   const sdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
@@ -819,9 +911,9 @@ $("gb").onclick=()=>{
   };
 };
 $("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click()};
-async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);localStorage.removeItem("frossBrowserSession");activeBrowserSessionId=null;await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
-onAuthStateChanged(auth,async user=>{
+onIdTokenChanged(auth,async user=>{
   if(user){
     if(creatingAccount)return;
     const token=await user.getIdTokenResult();
@@ -831,7 +923,9 @@ onAuthStateChanged(auth,async user=>{
       return;
     }
     if(token.claims.frossBrowserSession){
-      await waitForBrowserApproval(user,String(token.claims.frossBrowserSession));
+      const sessionId=String(token.claims.frossBrowserSession);
+      if(activeBrowserSessionId===sessionId && me?.uid===user.uid)return;
+      await waitForBrowserApproval(user,sessionId);
       return;
     }
     if(browserApprovalInProgress)return;
