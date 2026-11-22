@@ -20,6 +20,10 @@ service cloud.firestore {
       allow list: if false;
       allow create: if own(request.resource.data.uid)
         && request.resource.data.usernameLower == usernameLower
+        && request.resource.data.username is string
+        && request.resource.data.username == usernameLower
+        && getAfter(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.usernameLower == usernameLower
+        && getAfter(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.username == request.resource.data.username
         && request.resource.data.keys().hasOnly(["uid", "username", "usernameLower", "createdAt"]);
       allow update: if false;
       allow delete: if own(resource.data.uid);
@@ -98,8 +102,9 @@ service cloud.firestore {
           || (request.resource.data.lastMessage is string
             && request.resource.data.lastMessage.size() <= 120));
 
-      allow delete: if signedIn() && chatId != "general"
-        && request.auth.uid in resource.data.memberUids;
+      // A member may leave through the memberUids self-removal update,
+      // but only a future trusted admin flow may delete a chat document.
+      allow delete: if false;
 
       match /messages/{messageId} {
         allow read: if canReadChat(chatId);

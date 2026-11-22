@@ -239,8 +239,14 @@ function startChatList() {
   },e=>console.error("Chat list:",e));
 }
 async function ensureGeneral() {
-  const r=doc(db,"chats","general"),snap=await getDoc(r);
-  if(!snap.exists())await setDoc(r,{type:"general",title:"Общий чат",memberUids:[],memberProfiles:[],createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""});
+  const r=doc(db,"chats","general");
+  await runTransaction(db,async tx=>{
+    const snap=await tx.get(r);
+    if(!snap.exists())tx.set(r,{
+      type:"general",title:"Общий чат",memberUids:[],memberProfiles:[],
+      createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""
+    });
+  });
 }
 function head() {
   const c=cur==="general"?{id:"general",type:"general"}:chats.find(x=>x.id===cur);
