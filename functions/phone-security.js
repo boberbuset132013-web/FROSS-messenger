@@ -235,13 +235,23 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
     const now = Timestamp.now();
     const expiresAt = Timestamp.fromMillis(now.toMillis() + FIVE_MINUTES);
     const browserLabel = String(req.body?.browserLabel || "Браузер").replace(/[<>]/g, "").slice(0, 80);
-    await db.doc(`browserLoginRequests/${requestId}`).set({
-      sessionId: requestId,
-      uid: user.uid,
-      status: "pending",
-      browserLabel,
-      createdAt: now,
-      expiresAt,
+    const userRef = db.doc(`users/${user.uid}`);
+    const requestRef = db.doc(`browserLoginRequests/${requestId}`);
+    await db.runTransaction(async transaction => {
+      const latestProfile = await transaction.get(userRef);
+      const lastRequest = latestProfile.data()?.lastBrowserLoginRequestAt;
+      if (lastRequest && now.toMillis() - lastRequest.toMillis() < 30000) {
+        throw Object.assign(new Error("Подождите 30 секунд перед следующим запросом на вход."), { status: 429 });
+      }
+      transaction.update(userRef, { lastBrowserLoginRequestAt: now });
+      transaction.create(requestRef, {
+        sessionId: requestId,
+        uid: user.uid,
+        status: "pending",
+        browserLabel,
+        createdAt: now,
+        expiresAt,
+      });
     });
     await ensureSecurityBotMessage(user.uid, requestId, browserLabel, expiresAt);
     const activeDevices = await db.collection(`users/${user.uid}/trustedDevices`)
