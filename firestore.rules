@@ -52,11 +52,11 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow get: if own(uid);
+      allow get: if own(uid) && (!securityGateEnabled() || trustedDeviceSession() || approvedBrowserSession());
       allow list: if false;
       allow create: if own(uid)
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
-      allow update: if own(uid)
+      allow update: if own(uid) && verified()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["contactEmail", "settings", "updatedAt"]);
       allow delete: if own(uid);
@@ -76,7 +76,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"
         ]);
-      allow update: if own(uid)
+      allow update: if own(uid) && verified()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"])
         && (
