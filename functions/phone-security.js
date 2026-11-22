@@ -274,6 +274,7 @@ async function updateBrowserRequest(req, res, status) {
       status,
       resolvedAt,
       approvedDeviceId: status === "approved" ? deviceId : null,
+      sessionExpiresAt: status === "approved" ? Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000) : null,
     });
     const messageRef = db.doc(`chats/security_${user.uid}/messages/${requestId}`);
     await messageRef.set({
@@ -336,5 +337,30 @@ export const registerTrustedDevicePushToken = onRequest(async (req, res) => {
   } catch (error) {
     console.error("FROSS push token registration failed:", error);
     return sendError(res, error.status || 500, error.status ? error.message : "Не удалось зарегистрировать push-токен.");
+  }
+});
+
+
+export const refreshBrowserLoginSession = onRequest(async (req, res) => {
+  if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
+  if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
+  try {
+    const user = await requireFirebaseUser(req);
+    const requestId = String(req.body?.sessionId || "");
+    if (!/^[a-f0-9-]{36}$/i.test(requestId)) return sendError(res, 400, "Некорректная сессия браузера.");
+    const request = await db.doc(`browserLoginRequests/${requestId}`).get();
+    if (!request.exists || request.data()?.uid !== user.uid || request.data()?.status !== "approved") {
+      return sendError(res, 403, "Эта сессия браузера не подтверждена.");
+    }
+    const expiresAt = request.data()?.sessionExpiresAt;
+    if (!expiresAt || expiresAt.toMillis() <= Date.now()) {
+      return sendError(res, 410, "Срок действия сессии браузера истёк. Подтвердите новый вход в FROSS.");
+    }
+    const customToken = await auth.createCustomToken(user.uid, { frossBrowserSession: requestId });
+    return res.status(200).json({ ok: true, customToken, requestId });
+  } catch (error) {
+    console.error("FROSS browser session refresh failed:", error);
+    return sendError(res, error.status || 500, error.status ? error.message : "Не удалось восстановить сессию браузера.");
   }
 });
