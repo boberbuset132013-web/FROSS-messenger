@@ -1,57 +1,111 @@
-# FROSS Messenger
+# FROSS Messenger — Firebase edition
 
-FROSS Messenger — мессенджер на HTML/CSS/JS, Cloudflare Workers и Cloudflare D1.
+FROSS Messenger runs on Firebase Authentication, Cloud Firestore and Cloud Storage. Cloudflare Workers only serves the static web app.
 
-## Возможности V2
-- Регистрация с четырьмя шагами: имя, профиль, аватар, оформление и подтверждение правил тестовой версии.
-- Вход и выход, смена пароля, удаление аккаунта.
-- Личные чаты и групповые чаты.
-- Поиск пользователей по имени и отображаемому имени.
-- Профиль: отображаемое имя, описание, email и аватар.
-- Настройки интерфейса: тема, цвет акцента, размер шрифта, оформление сообщений и фона, время и плотность чата.
-- История сообщений сохраняется в D1; интерфейс обновляет её периодическими запросами раз в 2,5 секунды.
+## Firebase project
 
-## Структура проекта
-- `worker.js` — API, авторизация и работа с D1.
-- `public/index.html` — интерфейс сайта.
-- `migrations/0001_init.sql` — исходная схема первой версии.
-- `migrations/0002_profiles_chats.sql` — схема V2.
-- `UPGRADE_D1_V2.sql` — одноразовый SQL для обновления уже работающей базы, включая фиксацию истории миграций.
-- `prototype.html` — исходный HTML-прототип.
+- Project ID: `fross-ca5d6`
+- Web App ID: `1:200886619645:web:0f1bc9b750eedf22a05d94`
+- Auth domain: `fross-ca5d6.firebaseapp.com`
+- Storage bucket: `fross-ca5d6.firebasestorage.app`
 
-## Важно: обновление уже существующей базы
-У существующего экземпляра D1 схема `0001_init.sql` была создана вручную через D1 Console. Поэтому Wrangler не видел запись о применении этой миграции. **Не запускай просто `wrangler d1 migrations apply` на этой базе до заполнения таблицы `d1_migrations`** — Wrangler мог бы попытаться выполнить исходную миграцию повторно.
+The Firebase web config in `public/firebase-app.js` is client configuration, not an Admin credential. Never put a service-account JSON or private key in this repository.
 
-Порядок обновления:
-1. Сделай резервную копию D1 (например, через Time Travel / Export в Cloudflare).
-2. Открой D1 `fross-messenger-db` → Console.
-3. Открой в GitHub файл `UPGRADE_D1_V2.sql`, скопируй его целиком в Console и выполни один раз. Он добавляет профильные поля к существующим пользователям, создаёт `chats` и `chat_members`, а затем отмечает миграции `0001_init.sql` и `0002_profiles_chats.sql` как уже применённые в `d1_migrations`.
-4. Проверь Worker endpoint `/api/health`. В ответе должны быть таблицы `users`, `sessions`, `messages`, `chats`, `chat_members` и `tablesReady: true`.
-5. Только после успешной миграции переключи production на ветку `feature/messenger-v2` (или смержи её в `main`). Workers Builds опубликует новую версию.
+## Features in this version
 
-**Не запускай UPGRADE_D1_V2.sql повторно:** команды `ALTER TABLE ... ADD COLUMN` выполняются только один раз. Скрипт сохраняет существующие строки пользователей и сообщений; он не удаляет эти данные.
+- Firebase Authentication (Email/Password provider; users enter their username in the UI).
+- Username reservation and uniqueness in Firestore.
+- Private account settings and public profile documents.
+- Profile photo uploads to Cloud Storage.
+- Direct and group chats in Firestore.
+- Message subscriptions with Firestore `onSnapshot`.
+- Search by username.
+- Firestore and Storage security rules, plus the chat-list composite index.
 
-## Новая база с нуля
-Для пустой базы можно выполнить `schema.sql` целиком через D1 Console. Это полная схема V2. После ручного выполнения можно создать baseline таблицы миграций отдельно, если планируется использовать Wrangler migrations.
+### Username login design
 
-## Cloudflare / Wrangler
-- Worker: `fross-messenger`.
-- D1 database: `fross-messenger-db`.
-- Binding в Worker: `DB`.
-- Frontend assets: `public/`.
-- Конфигурация: `wrangler.toml`; Database ID уже настроен для текущей D1.
+To keep the existing username + password login flow, Firebase Auth uses an internal address of the form `<username>@fross-ca5d6.firebaseapp.com`. The optional contact email is stored privately in Firestore and is not used as the Auth login identifier. This first Firebase release does not yet have password-reset-by-contact-email; do not promise account recovery by email until a verified email-linking/recovery flow is added.
 
-Команда публикации:
-```sh
-npm run deploy
-```
+## Enable Firebase services before publishing
 
-После базовой фиксации истории миграций новые SQL-миграции можно добавлять в `migrations/` и применять командой:
-```sh
-npm run d1:migrate:prod
-```
+1. Open Firebase Console and select project `fross-ca5d6`.
+2. Authentication → Sign-in method → enable **Email/Password**.
+3. Firestore Database → create a **Standard** database in the region you prefer. Choose production mode (the repository contains the rules).
+4. Storage → Get started → create the default bucket `fross-ca5d6.firebasestorage.app`.
+   **Cloud Storage for Firebase requires the Blaze pay-as-you-go plan.** Usage may have no-cost quotas, but billing must be linked for Storage access. Check Google's current pricing and set budget alerts before enabling it.
+5. Authentication → Settings → Authorized domains: add the exact hostname of the deployed `workers.dev` site (and your custom domain, if you use one).
+6. From the repository root run:
+   ```sh
+   npm run firebase:deploy
+   ```
+   This deploys `firestore.rules`, `firestore.indexes.json` and `storage.rules`. Do not use Firebase test mode or permissive rules.
 
-## Текущие ограничения
-- Обновление чатов пока идёт polling-запросами, не WebSocket.
-- Голосовые и видеозвонки, вложения/облачное файловое хранилище, push-уведомления и сквозное шифрование пока не входят в V2.
-- Перед публичным запуском нужны rate limiting регистрации/входа, антиспам, восстановление аккаунта, политика хранения/удаления данных и дополнительный security review.
+## Safe D1 → Firebase migration
+
+The existing Cloudflare D1 database is treated as a read-only source. The migration does not delete or modify D1 rows. It copies:
+- users into Firebase Auth, preserving each existing D1 user ID as the Firebase UID;
+- existing PBKDF2-SHA256 password hashes;
+- profile fields and settings into Firestore;
+- D1 chats and messages into Firestore;
+- existing avatar data URLs into Cloud Storage, when present.
+
+The current Worker generated passwords with PBKDF2-SHA256, 100,000 rounds. Firebase Admin user import supports `PBKDF2_SHA256` and this round count, so existing passwords can be retained. The old sessions are not migrated: users must sign in again after cutover.
+
+### Before running the migration
+
+1. Keep the current Cloudflare Worker and D1 live. Do not merge the Firebase branch into `main` yet.
+2. Make a D1 backup using Cloudflare Time Travel or export. D1 export command:
+   ```sh
+   npm run migration:d1:export
+   ```
+   The output is `migration/d1-backup.sql`; it is ignored by Git and must remain private.
+3. Enable Firestore and Cloud Storage in Firebase. Storage requires Blaze billing.
+4. Create a Firebase service account with only the required Auth, Firestore and Storage permissions. Download its JSON key to a location outside this repository. Do not upload or paste it into chat.
+5. From the `migration` folder install the migration-only dependencies:
+   ```sh
+   cd migration
+   npm install
+   cd ..
+   ```
+6. Set local environment variables:
+   - `GOOGLE_APPLICATION_CREDENTIALS`: absolute path to the service-account JSON.
+   - `FIREBASE_PROJECT_ID=fross-ca5d6`.
+7. Run the import:
+   ```sh
+   npm run migration:firebase
+   ```
+   The script creates a private Firestore marker at `systemMigrations/d1-to-firebase-v1`. If the run is interrupted, run it again; already-imported Firebase Auth UIDs are skipped and Firestore writes are idempotent.
+8. Check the marker and counts in Firestore. Confirm users, chats and message counts before cutover.
+
+The script refuses to start if the target Firestore already contains user documents and no migration marker exists. It validates the legacy password-hash format before importing. If Firebase Auth reports an email/UID collision, stop and resolve it rather than overwriting a different account.
+
+### Cutover
+
+After a successful import and verification:
+1. Merge the Firebase migration pull request into `main`.
+2. Workers Builds deploys the new static front end.
+3. Test sign-in with a migrated username and its existing password, then test a new account, a DM, a group and an avatar upload.
+4. Keep the D1 database and its backup untouched for rollback until the Firebase version has been used successfully.
+
+## Data model
+
+- `users/{uid}`: private settings and contact email.
+- `publicUsers/{uid}`: username, display name, bio, avatar URL and presence.
+- `usernameIndex/{lowercaseUsername}`: username reservation and UID.
+- `chats/{chatId}`: chat type, member UIDs and last-message metadata.
+- `chats/{chatId}/messages/{messageId}`: immutable message records.
+
+## Cloudflare
+
+- `worker.js` only forwards requests to the `ASSETS` binding.
+- `wrangler.toml` serves `public/` and no longer binds D1.
+- Workers Builds deploy command: `npm run deploy`.
+
+## Current limitations / follow-up work
+
+- Password reset through the optional contact email is not implemented yet because Auth uses a private username-derived login address.
+- Chat attachments are allowed by Storage Rules but the UI currently uploads profile avatars only.
+- Push notifications, voice/video calls, end-to-end encryption, moderation and automated account-recovery are not included yet.
+- Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
+- Enable Firebase App Check (reCAPTCHA Enterprise for web) after testing it in monitoring mode; App Check complements Auth and Security Rules but does not replace them.
+- Account deletion removes the account/profile and removes the user from chats; historical messages remain visible to other participants as conversation history.

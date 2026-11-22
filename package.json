@@ -1,12 +1,14 @@
 {
   "name": "fross-messenger",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --config ./wrangler.toml --assets ./public/",
-    "d1:migrate:prod": "wrangler d1 migrations apply fross-messenger-db --remote"
+    "firebase:deploy": "npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project fross-ca5d6",
+    "migration:d1:export": "wrangler d1 export fross-messenger-db --remote --output=./migration/d1-backup.sql",
+    "migration:firebase": "node ./migration/migrate-d1-to-firebase.mjs ./migration/d1-backup.sql"
   },
   "devDependencies": {
     "wrangler": "4.166.0"
