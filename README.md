@@ -71,7 +71,7 @@ The **Delete ALL test accounts** button is deliberately hidden from ordinary use
    This file is ignored by Git. Leave the setting unset or `false` outside a deliberate test reset window.
 3. Assign the admin claim to your own Firebase UID using your service account:
    ```sh
-   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 node scripts/set-fross-admin.mjs YOUR_FIREBASE_UID
+   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 cd functions && GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 node set-fross-admin.mjs YOUR_FIREBASE_UID
    ```
 4. Deploy Functions with `npm run firebase:functions:deploy`, then sign out and back in so the admin token refreshes.
 5. In Settings → Account, the admin-only button appears. It requires typing `DELETE ALL ACCOUNTS` and a second browser confirmation. It deletes every Firebase Authentication user, all FROSS Firestore data and all files in the project's default Storage bucket, including the administrator account. There is no undo.
