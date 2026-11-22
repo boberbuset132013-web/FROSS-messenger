@@ -141,6 +141,7 @@ export const verifyPhoneWithPnv = onRequest(async (req, res) => {
       phoneVerificationMethod: "firebase-pnv",
       phoneVerifiedAt: now,
       phoneVerificationTest: isTestToken,
+      trustedDeviceIds: FieldValue.arrayUnion(deviceId),
       updatedAt: now,
     }, { merge: true });
     await deviceRef.set({
@@ -278,12 +279,20 @@ async function updateBrowserRequest(req, res, status) {
     }
 
     const resolvedAt = Timestamp.now();
+    const sessionExpiresAt = status === "approved"
+      ? Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000)
+      : null;
     await requestRef.update({
       status,
       resolvedAt,
       approvedDeviceId: status === "approved" ? deviceId : null,
-      sessionExpiresAt: status === "approved" ? Timestamp.fromMillis(resolvedAt.toMillis() + 30 * 24 * 60 * 60 * 1000) : null,
+      sessionExpiresAt,
     });
+    if (status === "approved") {
+      await db.doc(`users/${user.uid}`).update({
+        [`approvedBrowserSessions.${requestId}`]: { expiresAt: sessionExpiresAt },
+      });
+    }
     const messageRef = db.doc(`chats/security_${user.uid}/messages/${requestId}`);
     await messageRef.set({
       securityRequestStatus: status,
@@ -370,5 +379,42 @@ export const refreshBrowserLoginSession = onRequest(async (req, res) => {
   } catch (error) {
     console.error("FROSS browser session refresh failed:", error);
     return sendError(res, error.status || 500, error.status ? error.message : "Не удалось восстановить сессию браузера.");
+  }
+});
+
+
+export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "1GiB" }, async (req, res) => {
+  if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
+  if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
+  try {
+    const user = await requireFirebaseUser(req);
+    if (user.frossAdmin !== true) return sendError(res, 403, "Только администратор FROSS может менять этот режим.");
+    const enabled = req.body?.enabled === true;
+    let pageToken;
+    let updated = 0;
+    do {
+      const page = await auth.listUsers(1000, pageToken);
+      const batch = db.batch();
+      for (const account of page.users) {
+        batch.set(db.doc(`users/${account.uid}`), {
+          requireBrowserApproval: enabled,
+          securityGateUpdatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        updated++;
+      }
+      if (page.users.length) await batch.commit();
+      pageToken = page.pageToken;
+    } while (pageToken);
+
+    await db.doc("system/securityConfig").set({
+      requireBrowserApproval: enabled,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: user.uid,
+    }, { merge: true });
+    return res.status(200).json({ ok: true, enabled, updatedUsers: updated });
+  } catch (error) {
+    console.error("FROSS browser approval gate update failed:", error);
+    return sendError(res, error.status || 500, error.status ? error.message : "Не удалось изменить режим защиты браузера.");
   }
 });
