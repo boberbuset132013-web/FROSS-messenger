@@ -33,6 +33,10 @@ export default {async fetch(req,env){
    const tables=result.results.map(r=>r.name);
    return json({ok:true,service:"FROSS Messenger",database:true,tables,tablesReady:["users","sessions","messages","chats","chat_members"].every(n=>tables.includes(n))});
   }
+  // Set MAINTENANCE_MODE=true in Worker variables to pause all authenticated
+  // and anonymous API writes/reads during a final database export and cutover.
+  // /api/health remains available for operational checks.
+  if(env.MAINTENANCE_MODE==="true")return json({error:"Сервис временно на техническом обслуживании. Попробуйте позже."},503);
   if(!env.DB)return json({error:"Не настроена база D1 (binding DB)."},503);
 
   if(p==="/api/register"&&m==="POST"){
