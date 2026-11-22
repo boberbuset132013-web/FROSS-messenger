@@ -7,8 +7,8 @@ This is the first native Android companion for FROSS. It signs in to an existing
 1. In Firebase Console, open project `fross-ca5d6`.
 2. Add an Android app with package name `com.fross.messenger`.
 3. Download its `google-services.json` and put it at `android/app/google-services.json`. Do not commit this file if it contains project-specific configuration you do not want public.
-4. Add the app's SHA-256 signing certificate fingerprint in Firebase project settings.
-5. Enable Email/Password sign-in (and any provider used by the account).
+4. Add the app's SHA-1 and SHA-256 signing certificate fingerprints in Firebase project settings.
+5. Enable Email/Password and Google sign-in providers. The Android companion supports both existing FROSS account types.
 6. For PNV production, complete Firebase Phone Number Verification onboarding, billing setup, OAuth brand verification, privacy-policy review, and enable production mode. Production PNV is not a free service.
 
 Open the `android/` folder in Android Studio and sync Gradle. The app requires Google Play services. PNV production verification requires a supported carrier and a compatible device (Android 10+). The project minimum SDK is 24 so the app can install on older devices, but PNV may not work there.
