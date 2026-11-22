@@ -59,10 +59,13 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        auth.addIdTokenListener(idTokenListener)
         val signedIn = auth.currentUser
-        if (signedIn == null) showLogin() else {
+        if (signedIn == null) {
+            showLogin()
+        } else {
+            base("FROSS", "Подготовка защищённого устройства…")
             renewingSession = true
+            auth.addIdTokenListener(idTokenListener)
             CoroutineScope(Dispatchers.Main).launch {
                 try {
                     val claims = signedIn.getIdTokenResult(true).await().claims
@@ -74,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        if (signedIn == null) auth.addIdTokenListener(idTokenListener)
     }
 
     override fun onDestroy() {
@@ -197,7 +201,7 @@ class MainActivity : ComponentActivity() {
                 CoroutineScope(Dispatchers.Main).launch {
                     try {
                         val body = JSONObject()
-                            .put("pnvToken", result.token)
+                            .put("pnvToken", result.getToken())
                             .put("deviceId", deviceId)
                             .put("deviceName", Build.MANUFACTURER + " " + Build.MODEL)
                         val response = FrossApi.post("verifyPhoneWithPnv", body)
