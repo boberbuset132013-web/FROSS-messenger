@@ -167,4 +167,5 @@ export {
   rejectBrowserLogin,
   registerTrustedDevicePushToken,
   expireBrowserLoginRequests,
+  setBrowserApprovalGate,
 } from "./phone-security.js";
