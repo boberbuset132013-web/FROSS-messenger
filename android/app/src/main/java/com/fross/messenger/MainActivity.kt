@@ -262,7 +262,7 @@ class MainActivity : ComponentActivity() {
                         FirebasePnvStatusCodes.CARRIER_NOT_SUPPORTED ->
                             "Ваш мобильный оператор пока не поддерживает подтверждение без SMS."
                         FirebasePnvStatusCodes.UNSUPPORTED_OPERATION ->
-                            "На этом устройстве Firebase PNV недоступен. Нужен другой способ подтверждения."
+                            "На этом устройстве Firebase PNV недоступен. Без SMS сейчас подтвердить номер не получится."
                         FirebasePnvStatusCodes.CREDENTIAL_MANAGER_ERROR ->
                             "Подтверждение отменено или номер не удалось получить из SIM."
                         FirebasePnvStatusCodes.INVALID_TEST_NUMBER_ID ->
