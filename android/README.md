@@ -1,6 +1,6 @@
 # FROSS Android security app
 
-This is the first native Android companion for FROSS. It signs in to an existing FROSS account, verifies the account phone through Firebase Phone Number Verification (PNV), registers this Android installation as a trusted device, and displays browser login requests in the in-app **FROSS Security** bot.
+This is the first native Android companion for FROSS (it is the security/approval app, not yet the full chat client). Create the FROSS account on the website first; the app does not create new FROSS accounts. It signs in to an existing account with Email/Password or Google, verifies the account phone through Firebase Phone Number Verification (PNV), registers this Android installation as a trusted device, and displays browser login requests in the in-app **FROSS Security** bot.
 
 ## Firebase setup required before building
 
