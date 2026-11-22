@@ -134,8 +134,10 @@ service cloud.firestore {
           && (request.resource.data.text.size() > 0
             || ("attachment" in request.resource.data && request.resource.data.attachment is map))
           && request.resource.data.createdAt == request.time
+          && (!("profileColor" in request.resource.data) || request.resource.data.profileColor is string)
+          && (!("avatarUrl" in request.resource.data) || request.resource.data.avatarUrl is string)
           && request.resource.data.keys().hasOnly([
-            "senderUid", "username", "displayName", "text", "createdAt", "attachment"
+            "senderUid", "username", "displayName", "avatarUrl", "profileColor", "text", "createdAt", "attachment"
           ])
           && (!("attachment" in request.resource.data)
             || (request.resource.data.attachment.keys().hasOnly(["name", "type", "size", "url", "path"])
