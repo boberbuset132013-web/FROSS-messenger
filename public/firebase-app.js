@@ -8,10 +8,10 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
   query, where, orderBy, limit, limitToLast, startAt, endAt, getDocs,
-  onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayRemove
+  onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayRemove, arrayUnion
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 import {
-  getStorage, ref, uploadString, getDownloadURL, deleteObject
+  getStorage, ref, uploadString, uploadBytes, getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-storage.js";
 
 const firebaseConfig = {
@@ -28,14 +28,24 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true};
+const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
-let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null;
+let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
+}
+async function completeTotpSignIn(error) {
+  const sdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
+  const resolver=sdk.getMultiFactorResolver(auth,error);
+  const hint=resolver.hints.find(item=>item.factorId===sdk.TotpMultiFactorGenerator.FACTOR_ID);
+  if(!hint)throw new Error("Для этого аккаунта требуется другой способ второго фактора.");
+  const code=prompt("Введите шестизначный код из Google Authenticator:");
+  if(!code)throw new Error("Вход отменён.");
+  const assertion=sdk.TotpMultiFactorGenerator.assertionForSignIn(hint.uid,code.trim());
+  return await resolver.resolveSignIn(assertion);
 }
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none";
@@ -49,7 +59,7 @@ function showLogin() {
     const email=identifier.includes("@")?identifier:authEmail(identifier);
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
     if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
-  }catch(e){$("le").textContent=authError(e)}};
+  }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
@@ -214,7 +224,8 @@ function applyS(s) {
   r.style.setProperty("--fs",s.fs+"px");
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
-  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,system-ui,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":"Inter,system-ui,sans-serif");
+  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
+  r.style.setProperty("--bg",s.bgColor||"#0f1015");r.style.setProperty("--panel",s.panelColor||"#16181f");r.style.setProperty("--text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
 }
 function hue(s) {
@@ -224,7 +235,7 @@ function hue(s) {
 function avatar(el,o,on) {
   const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
   el.classList.toggle("on",!!on);
-  el.style.background=o?.avatarUrl||o?.avatar ? "":hue(name);
+  el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
   el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
   el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
 }
@@ -251,19 +262,19 @@ async function uploadAvatar(uid,dataUrl) {
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
-  return '<label>Тема</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select><label>Цвет акцента</label>'+swatches(pre+"ac",o.accent)+'<label>Свой цвет</label><input id="'+pre+'custom" type="color" value="'+o.accent+'" style="height:42px;padding:4px"><label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="20" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="sq">Прямоугольные</option></select><label>Шрифт интерфейса</label><select id="'+pre+'font"><option value="system">Системный</option><option value="rounded">Мягкий</option><option value="mono">Моноширинный</option></select>';
+  const color=(key,label)=>'<label>'+label+'</label><input type="color" id="'+pre+key+'" value="'+(o[key]||"#9181ff")+'" style="height:42px;padding:4px">';
+  return '<label>Тема приложения</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select>'+
+  '<label>Акцентный цвет</label>'+swatches(pre+"ac",o.accent)+color("custom","Свой акцент")+color("bgColor","Фон приложения")+color("panelColor","Панели и меню")+color("textColor","Основной текст")+color("incomingColor","Входящие сообщения")+color("outgoingColor","Мои сообщения")+color("profileColor","Публичный цвет профиля")+
+  '<label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="22" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="pill">Овальные</option><option value="square">Квадратные</option></select>'+
+  '<label>Шрифт</label><select id="'+pre+'font"><option value="system">Современный системный</option><option value="rounded">Мягкий округлый</option><option value="humanist">Чёткий гуманистический</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select>'+
+  '<label>Плотность</label><select id="'+pre+'density"><option value="comfortable">Просторная</option><option value="normal">Обычная</option><option value="compact">Компактная</option></select><label>Фон переписки</label><select id="'+pre+'wall"><option value="none">Чистый</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
 }
 function bindLook(o,pre) {
-  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";
-  $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};
-  $(pre+"custom").oninput=e=>{o.accent=e.target.value;[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===o.accent));applyS(o)};
-  $(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};
-  $(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};
-  $(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
-  $(pre+"ac").onclick=e=>{
-    const color=e.target.dataset.c;if(!color)return;o.accent=color;
-    [...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===color));applyS(o);
-  };
+  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";$(pre+"density").value=o.density||"normal";$(pre+"wall").value=o.wall||"none";
+  ["bgColor","panelColor","textColor","incomingColor","outgoingColor","profileColor"].forEach(k=>{$(pre+k).value=o[k]||DEF[k];$(pre+k).oninput=e=>{o[k]=e.target.value;applyS(o)}});
+  $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};$(pre+"density").onchange=e=>{o.density=e.target.value;applyS(o)};$(pre+"wall").onchange=e=>{o.wall=e.target.value;applyS(o)};
+  $(pre+"custom").oninput=e=>{o.accent=e.target.value;applyS(o)};$(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};$(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};$(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
+  $(pre+"ac").onclick=e=>{const color=e.target.dataset.c;if(!color)return;o.accent=color;applyS(o);[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===color))};
 }
 
 /* Four-step registration wizard */
@@ -374,6 +385,7 @@ function chatInfo(c) {
   if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
+    if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
     return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:isOnline(other)?"в сети":"@"+(other.username||"")};
   }
   return{title:c.title||"Группа",avatar:{title:c.title||"G"},sub:(c.memberUids||[]).length+" участн."};
@@ -403,7 +415,7 @@ async function searchUsers(term) {
   const q=term.trim().toLowerCase();if(q.length<2){found=[];renderList();return;}
   try{
     const users=await getDocs(query(collection(db,"publicUsers"),orderBy("usernameLower"),startAt(q),endAt(q+"\uf8ff"),limit(20)));
-    found=users.docs.filter(d=>d.id!==me.uid).map(d=>({uid:d.id,...d.data()}));renderList();
+    found=users.docs.filter(d=>d.id!==me.uid&&!d.data().deleted).map(d=>({uid:d.id,...d.data()}));renderList();
   }catch(e){console.error(e)}
 }
 function startChatList() {
@@ -433,6 +445,44 @@ function head() {
 function openChat(id) {
   cur=id;
   document.body.classList.add("ch");renderList();head();subscribeMessages();
+  const chat=chats.find(c=>c.id===id);if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
+}
+const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
+function openMessageMenu(message,mine,x,y) {
+  document.getElementById("message-menu")?.remove();
+  const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
+  const actions=[["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
+  if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
+  actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
+  if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
+  for(const item of actions){const b=document.createElement("button");b.textContent=item[0];b.onclick=item[1];menu.append(b)}
+  document.body.append(menu);menu.style.left=Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))+"px";menu.style.top=Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))+"px";
+  const close=e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener("pointerdown",close)}};
+  setTimeout(()=>document.addEventListener("pointerdown",close),0);
+}
+function showReactionPicker(message,menu) {
+  menu.replaceChildren();
+  MESSAGE_EMOJIS.forEach(emoji=>{const b=document.createElement("button");b.className="reaction-choice";b.textContent=emoji;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()});menu.remove()}catch(e){alert(authError(e))}};menu.append(b)});
+  const remove=document.createElement("button");remove.textContent="Убрать реакцию";remove.onclick=async()=>{try{await deleteDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));menu.remove()}catch(e){alert(authError(e))}};menu.append(remove);
+}
+async function editMessage(message) {
+  const value=prompt("Изменить сообщение:",message.text||"");if(value===null)return;
+  const text=value.trim();if(!text||text.length>4000)return alert("Сообщение должно содержать от 1 до 4000 символов.");
+  try{await updateDoc(doc(db,"chats",cur,"messages",message.id),{text,editedAt:serverTimestamp()})}catch(e){alert(authError(e))}
+}
+async function hideMessageForMe(message) {
+  try{await updateDoc(doc(db,"chats",cur,"messages",message.id),{hiddenFor:arrayUnion(me.uid)})}catch(e){alert(authError(e))}
+}
+async function deleteMessageForAll(message) {
+  if(!confirm("Удалить это сообщение у всех участников?"))return;
+  try{await deleteDoc(doc(db,"chats",cur,"messages",message.id))}catch(e){alert(authError(e))}
+}
+async function renderMessageReactions(messageId,host) {
+  try{
+    const snap=await getDocs(collection(db,"chats",cur,"messages",messageId,"reactions"));if(!host.isConnected)return;
+    const groups=new Map();snap.docs.forEach(d=>{const emoji=d.data().emoji;if(emoji)groups.set(emoji,(groups.get(emoji)||0)+1)});
+    if(groups.size){const bar=document.createElement("div");bar.className="reaction-bar";for(const [emoji,count] of groups){const b=document.createElement("button");b.textContent=emoji+" "+count;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",messageId,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()})}catch(e){alert(authError(e))}};bar.append(b)}host.append(bar)}
+  }catch(e){console.warn("Reaction load failed:",e)}
 }
 function subscribeMessages() {
   if(stopMessages)stopMessages();
@@ -440,6 +490,7 @@ function subscribeMessages() {
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
   stopMessages=onSnapshot(q,snapshot=>{
     const stick=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+    reactionStops.forEach(stop=>stop());reactionStops=[];
     box.innerHTML="";
     if(snapshot.empty)box.innerHTML='<div class="empty">Пока нет сообщений. Напишите первым!</div>';
     let previous="";
@@ -447,15 +498,27 @@ function subscribeMessages() {
       const m={id:s.id,...s.data()},mine=m.senderUid===me.uid,r=document.createElement("div");
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
       if(S.avatars&&!mine&&previous!==m.senderUid){
-        const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl});r.append(a);
+        const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
       const b=document.createElement("div");b.className="msg";
       if(!mine&&previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
         const n=document.createElement("b");n.textContent=m.displayName||m.username||"Пользователь";b.append(n);
       }
-      b.append(document.createTextNode(m.text||""));
-      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24});b.append(t);
-      r.append(b);box.append(r);previous=m.senderUid;
+      if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
+      if(m.attachment){
+        const a=m.attachment;
+        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading="lazy";b.append(img)}
+        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=a.url;audio.className="message-audio";b.append(audio)}
+        const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
+      }
+      if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
+      if(m.text){const body=document.createElement("div");body.textContent=m.text;b.append(body)}
+      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
+      r.append(b);box.append(r);
+      r.addEventListener("contextmenu",e=>{e.preventDefault();openMessageMenu(m,mine,e.clientX,e.clientY)});
+      let pressTimer;r.addEventListener("touchstart",e=>{pressTimer=setTimeout(()=>openMessageMenu(m,mine,e.touches[0]?.clientX||30,e.touches[0]?.clientY||80),550)},{passive:true});
+      ["touchend","touchmove","touchcancel"].forEach(ev=>r.addEventListener(ev,()=>clearTimeout(pressTimer),{passive:true}));
+      renderMessageReactions(m.id,b);previous=m.senderUid;
     });
     if(stick)box.scrollTop=box.scrollHeight;
   },e=>{box.textContent="Не удалось загрузить сообщения: "+e.message;});
@@ -513,12 +576,51 @@ async function send() {
   try{
     const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
     const messageRef=doc(collection(db,"chats",cur,"messages"));
-    batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,text,createdAt:serverTimestamp()});
+    batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,createdAt:serverTimestamp()});
     batch.update(chatRef,{lastMessage:text.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
     await batch.commit();
   }catch(e){alert(authError(e));input.value=text}
 }
 $("send").onclick=send;
+const attachmentButton=$("attach"),attachmentInput=$("attachment-input");
+if(attachmentButton&&attachmentInput){
+  attachmentButton.onclick=()=>attachmentInput.click();
+  attachmentInput.onchange=async()=>{
+    const file=attachmentInput.files?.[0];attachmentInput.value="";if(!file)return;
+    if(file.size>=20*1024*1024){alert("Максимальный размер файла — 20 МБ.");return}
+    try{
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)||"file";
+      const path="chatFiles/"+cur+"/"+me.uid+"/"+Date.now()+"_"+safeName;
+      const target=ref(storage,path);await uploadBytes(target,file,{contentType:file.type||"application/octet-stream"});
+      const url=await getDownloadURL(target),batch=writeBatch(db),messageRef=doc(collection(db,"chats",cur,"messages"));
+      const attachment={name:file.name.slice(0,180),type:file.type||"application/octet-stream",size:file.size,url,path};
+      const summary=(file.type.startsWith("image/")?"📷 ":"🎵 ")+file.name;
+      batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,createdAt:serverTimestamp()});
+      batch.update(doc(db,"chats",cur),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      await batch.commit();
+    }catch(e){alert("Не удалось отправить файл: "+authError(e))}
+  };
+}
+$("chat-settings").onclick=openChatSettings;
+async function openChatSettings(){
+  const chat=cur==="general"?{id:"general",type:"general"}:chats.find(c=>c.id===cur);if(!chat)return;
+  openM('<h3>Настройки чата</h3><p class="mut">'+esc(chat.title||chatInfo(chat).title)+'</p><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  $("clear-chat").onclick=async()=>{
+    try{
+      const snap=await getDocs(collection(db,"chats",cur,"messages"));
+      let batch=writeBatch(db),count=0;const batches=[];
+      for(const d of snap.docs){batch.update(d.ref,{hiddenFor:arrayUnion(me.uid)});count++;if(count===450){batches.push(batch);batch=writeBatch(db);count=0}}
+      if(count)batches.push(batch);for(const b of batches)await b.commit();
+      $("chat-settings-error").style.color="#3ddc84";$("chat-settings-error").textContent="Переписка очищена у вас.";
+    }catch(e){$("chat-settings-error").textContent=authError(e)}
+  };
+  $("delete-chat").onclick=async()=>{
+    if(cur==="general"){$("chat-settings-error").textContent="Общий чат нельзя удалить из списка.";return}
+    if(!confirm("Удалить чат из вашего списка? История останется у других участников."))return;
+    try{await updateDoc(doc(db,"chats",cur),{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});closeM();cur="general";openChat("general")}
+    catch(e){$("chat-settings-error").textContent=authError(e)}
+  };
+}
 $("inp").onkeydown=e=>{if(e.key==="Enter"&&(S.enter?!e.shiftKey:e.ctrlKey)){e.preventDefault();send()}};
 $("inp").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"};
 $("back").onclick=()=>document.body.classList.remove("ch");
@@ -568,8 +670,10 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||""};
-  openM('<h3 style="margin:0">Настройки</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Оформление</button><button data-i="2">Чат</button><button data-i="3">Аккаунт</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  const profileMode=window.FROSS_PROFILE_MODE===true;window.FROSS_PROFILE_MODE=false;
+  const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarReady:Promise.resolve()};
+  openM('<h3 style="margin:0">' +(profileMode?"Профиль":"Настройки") + '</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Кастомизация</button><button data-i="2">Общие</button><button data-i="3">Безопасность</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  document.querySelectorAll("#md .tabs button").forEach((b,i)=>b.style.display=(profileMode?(i<2):(i>=2))?"":"none");
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
   const show=async i=>{
     document.querySelectorAll("#md .tabs button").forEach((b,j)=>b.classList.toggle("a",i===j));
@@ -578,22 +682,19 @@ $("gb").onclick=()=>{
       c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Уникальный username — меняется и должен быть свободен</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">По username вас находят и открывают чат.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
       $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
-      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>e.target.files[0]&&pickImg(e.target.files[0],d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d})});
+      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>{const file=e.target.files?.[0];if(file)P.avatarReady=new Promise(resolve=>pickImg(file,d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d});resolve()}))};
       $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
     }
     if(i===1){
-      c.innerHTML=look(o,"s")+'<label>Фон чата</label><select id="sw"><option value="none">Без фона</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
-      bindLook(o,"s");$("sw").value=o.wall;$("sw").onchange=e=>{o.wall=e.target.value;applyS(o)};
+      c.innerHTML=look(o,"s");bindLook(o,"s");
     }
     if(i===2){
-      c.innerHTML=toggle("avatars","Аватары в сообщениях")+toggle("h24","24-часовое время")+toggle("enter","Enter — отправить","Выключено: Ctrl+Enter, Enter — новая строка")+'<label>Плотность сообщений</label><select id="sd"><option value="normal">Обычная</option><option value="compact">Компактная</option></select>';
-      $("sd").value=o.density;$("sd").onchange=e=>{o.density=e.target.value;applyS(o)};
-      c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+      c.innerHTML='<h4>Удобство</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<h4>Медиа</h4>'+toggle("autoDownload","Автоматически загружать вложения")+'<p class="mut">Настройки синхронизируются между устройствами.</p>';c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -603,6 +704,34 @@ $("gb").onclick=()=>{
         }catch(e){$("pe").textContent=authError(e)}
       };
       $("lo").onclick=logout;
+      const authSdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
+      const factors=authSdk.multiFactor(currentUser).enrolledFactors;
+      if(factors.length){
+        $("totp-status").textContent="Подключено: "+factors.map(f=>f.displayName||"Authenticator").join(", ");
+        $("totp-start").textContent="Добавить Authenticator";
+        const disable=document.createElement("button");disable.textContent="Отключить Authenticator";disable.style.marginTop="8px";$("totp-box").append(disable);
+        disable.onclick=async()=>{try{await authSdk.multiFactor(currentUser).unenroll(factors[0]);$("totp-status").textContent="Authenticator отключён.";disable.remove()}catch(e){$("totp-status").textContent=authError(e)}};
+      }
+      $("totp-start").onclick=async()=>{
+        const status=$("totp-status"),box=$("totp-box");
+        try{
+          const session=await authSdk.multiFactor(currentUser).getSession();
+          const secret=await authSdk.TotpMultiFactorGenerator.generateSecret(session);
+          const uri=secret.generateQrCodeUrl(currentUser.email||currentUser.uid,"FROSS Messenger");
+          box.innerHTML='<p>Отсканируйте QR-код в Google Authenticator, затем введите текущий код. Если QR не загрузится, добавьте ключ вручную.</p><img id="totp-qr" alt="QR-код настройки" style="display:block;width:220px;max-width:100%;margin:12px auto;border-radius:12px"><label>Секретный ключ (если QR недоступен)</label><code id="totp-secret" style="overflow-wrap:anywhere"></code><label>Шестизначный код</label><input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><div class="err" id="totp-error"></div><button class="pr" id="totp-confirm" style="width:100%">Подтвердить и включить</button>';
+          $("totp-secret").textContent=secret.secretKey;
+          try{const qrmod=await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");$("totp-qr").src=await qrmod.toDataURL(uri,{width:220,margin:2})}
+          catch(qrError){$("totp-qr").remove();$("totp-error").textContent="QR недоступен. Используйте секретный ключ вручную."}
+          $("totp-confirm").onclick=async()=>{
+            try{
+              const assertion=authSdk.TotpMultiFactorGenerator.assertionForEnrollment(secret,$("totp-code").value.trim());
+              await authSdk.multiFactor(currentUser).enroll(assertion,"FROSS Authenticator");
+              $("totp-error").style.color="#3ddc84";$("totp-error").textContent="Google Authenticator успешно подключён.";
+              $("totp-confirm").disabled=true;
+            }catch(e){$("totp-error").textContent=authError(e)}
+          };
+        }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
+      };
       let phoneConfirmation = null, phoneVerifier = null;
       $("phoneSend").onclick = async () => {
         try {
@@ -651,37 +780,30 @@ $("gb").onclick=()=>{
         };
       }
       $("dl").onclick=()=>{
-        const hasGoogle = currentUser.providerData.some(provider=>provider.providerId==="google.com");
-        const hasPassword = currentUser.providerData.some(provider=>provider.providerId==="password");
-        const reauthLabel = hasGoogle
-          ? "Подтвердите удаление через окно Google. Ваш профиль будет удалён, история сообщений останется у собеседников."
-          : "Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.";
-        $("db").innerHTML='<label>'+reauthLabel+'</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
+        const hasGoogle=currentUser.providerData.some(provider=>provider.providerId==="google.com");
+        const hasPassword=currentUser.providerData.some(provider=>provider.providerId==="password");
+        $("db").innerHTML='<label>Удаление аккаунта необратимо. Профиль станет помечен как удалённый. Личные чаты будут автоматически удалены через 24 часа, а в группах останется уведомление.</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password" placeholder="Пароль для подтверждения">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Подтвердить удаление аккаунта</button>';
         $("dk").onclick=async()=>{
           try{
-            if(hasGoogle) {
-              await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
-            } else if(hasPassword) {
-              await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
-            } else {
-              throw new Error("Для удаления аккаунта сначала войдите повторно через привязанный способ входа.");
-            }
-            const chatsSnap=await getDocs(query(collection(db,"chats"),where("memberUids","array-contains",me.uid)));
-            for(const c of chatsSnap.docs)await updateDoc(c.ref,{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});
-            await deleteDoc(doc(db,"usernameIndex",me.usernameLower||me.username.toLowerCase()));
-            await deleteDoc(doc(db,"publicUsers",me.uid));
-            await deleteDoc(doc(db,"users",me.uid));
-            if(me.avatarUrl)try{await deleteObject(ref(storage,"avatars/"+me.uid+"/avatar.jpg"))}catch{}
-            await deleteUser(currentUser);
+            if(!confirm("Удалить аккаунт? Личные чаты будут удалены через 24 часа. Это действие нельзя отменить."))return;
+            if(hasGoogle)await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
+            else if(hasPassword)await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            else throw new Error("Для удаления аккаунта войдите повторно через привязанный способ входа.");
+            const token=await currentUser.getIdToken(true);
+            const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/requestAccountDeletion",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:"{}"});
+            const result=await response.json().catch(()=>({}));
+            if(!response.ok)throw new Error(result.error||("HTTP "+response.status));
+            await signOut(auth);alert("Аккаунт помечен как удалённый. Личные чаты будут удалены в течение 24 часов.");
           }catch(e){$("de").textContent=authError(e)}
         };
       };
     }
   };
-  document.querySelectorAll("#md .tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(0);
+  document.querySelectorAll("#md .tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(profileMode?0:2);
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
     try{
+      await P.avatarReady;
       const username = P.username.trim().toLowerCase();
       if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
       const avatarUrl = await uploadAvatar(me.uid,P.avatarUrl);
@@ -698,19 +820,20 @@ $("gb").onclick=()=>{
           tx.set(newIndex,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
           tx.update(publicRef,{
             username,usernameLower:username,
-            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,lastSeenAt:serverTimestamp()
+            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,lastSeenAt:serverTimestamp()
           });
         });
       } else {
-        await updateDoc(publicRef,{displayName:P.displayName||username,bio:P.bio||"",avatarUrl});
+        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor},{merge:true});
       }
-      await updateDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()});
-      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});
+      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o},{merge:true});
+      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
       S=o;applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e))}
   };
 };
+$("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click()};
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{

@@ -20,20 +20,82 @@ let activeCall = null;
 let incomingStop = null;
 let audioElement = null;
 const seenIncoming = new Set();
+let screenStream=null,renegotiationSeen=0;
+const micSelect=$("mic-device"),outputSelect=$("audio-device"),remoteScreen=$("remote-screen");
+async function refreshCallDevices(){
+  if(!navigator.mediaDevices?.enumerateDevices)return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const fill=(select,kind,label)=>{if(!select)return;const old=select.value;select.replaceChildren();devices.filter(d=>d.kind===kind).forEach((d,i)=>{const o=document.createElement("option");o.value=d.deviceId;o.textContent=d.label||label+" "+(i+1);select.append(o)});if([...select.options].some(o=>o.value===old))select.value=old};
+    fill(micSelect,"audioinput","Микрофон");fill(outputSelect,"audiooutput","Динамик");
+  }catch(e){console.warn("Device enumeration failed:",e)}
+}
+async function changeMicrophone(deviceId){
+  if(!activeCall?.peer||!deviceId)return;
+  try{
+    const next=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:deviceId}},video:false});
+    const newTrack=next.getAudioTracks()[0],oldTrack=activeCall.stream.getAudioTracks()[0];
+    const sender=activeCall.peer.getSenders().find(s=>s.track?.kind==="audio");
+    if(sender)await sender.replaceTrack(newTrack);else activeCall.peer.addTrack(newTrack,next);
+    if(oldTrack){activeCall.stream.removeTrack(oldTrack);oldTrack.stop()}
+    activeCall.stream.addTrack(newTrack);$("call-status").textContent="Микрофон переключён.";
+  }catch(e){$("call-status").textContent="Не удалось переключить микрофон: "+e.message}
+}
+async function changeAudioOutput(deviceId){
+  if(!audioElement||!deviceId)return;
+  if(typeof audioElement.setSinkId!=="function"){$("call-status").textContent="Браузер не поддерживает выбор устройства вывода.";return}
+  try{await audioElement.setSinkId(deviceId)}catch(e){$("call-status").textContent="Не удалось выбрать устройство вывода: "+e.message}
+}
+function toggleRemoteAudio(){
+  if(!audioElement)return;
+  audioElement.muted=!audioElement.muted;
+  $("call-status").textContent=audioElement.muted?"Звук собеседника выключен.":"Звук собеседника включён.";
+  const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="output");
+  if(b)b.textContent=audioElement.muted?"Включить звук":"Выключить звук";
+}
+async function toggleMicrophone(){
+  const track=activeCall?.stream?.getAudioTracks()[0];if(!track)return;
+  track.enabled=!track.enabled;$("call-status").textContent=track.enabled?"Микрофон включён.":"Микрофон выключен.";
+  const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="mute");if(b)b.textContent=track.enabled?"Выключить микрофон":"Включить микрофон";
+}
+async function negotiateScreenShare(){
+  const call=activeCall;if(!call?.peer)return;
+  const offer=await call.peer.createOffer();await call.peer.setLocalDescription(offer);
+  const nonce=Date.now();call.pendingRenegotiation=nonce;
+  await updateDoc(call.ref,{renegotiateOffer:{type:offer.type,sdp:offer.sdp,from:signedInUser.uid,nonce}});
+}
+async function startScreenShare(){
+  if(!activeCall?.peer)return;
+  try{
+    screenStream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:854},height:{ideal:480},frameRate:{ideal:30,min:15}},audio:false});
+    const track=screenStream.getVideoTracks()[0],sender=activeCall.peer.getSenders().find(s=>s.track?.kind==="video");
+    if(sender)await sender.replaceTrack(track);else activeCall.peer.addTrack(track,screenStream);
+    track.onended=async()=>{try{const v=activeCall?.peer?.getSenders().find(s=>s.track?.kind==="video");if(v)await v.replaceTrack(null);screenStream=null;await negotiateScreenShare()}catch(e){console.warn(e)}};
+    await negotiateScreenShare();$("call-status").textContent="Демонстрация экрана включена (цель: 480p / 30 FPS).";
+  }catch(e){$("call-status").textContent="Не удалось начать демонстрацию: "+e.message}
+}
+if(micSelect)micSelect.onchange=()=>changeMicrophone(micSelect.value);
+if(outputSelect)outputSelect.onchange=()=>changeAudioOutput(outputSelect.value);
+if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener("devicechange",refreshCallDevices);
 
 function showCall(title, status, avatarText, actions) {
   $("call-title").textContent = title;
   $("call-status").textContent = status || "";
   $("call-avatar").textContent = avatarText || "☎";
   $("call-actions").replaceChildren();
-  for (const action of actions || []) {
+  const visibleActions=[...(actions||[])];
+  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:audioElement?.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
+  for (const action of visibleActions) {
     const button = document.createElement("button");
     button.textContent = action.label;
     button.className = action.danger ? "dg" : action.primary ? "pr" : "";
+    if(action.label.includes("микрофон"))button.dataset.action="mute";
+    if(action.label.includes("звук"))button.dataset.action="output";
     button.onclick = action.onClick;
     $("call-actions").append(button);
   }
   $("call-layer").classList.add("open");
+  refreshCallDevices();
 }
 function hideCall() {
   $("call-layer")?.classList.remove("open");
@@ -47,6 +109,8 @@ function stopMedia() {
     activeCall.peer.close();
   }
   if (activeCall?.stream) activeCall.stream.getTracks().forEach(track => track.stop());
+  if(screenStream){screenStream.getTracks().forEach(track=>track.stop());screenStream=null}
+  if(remoteScreen){remoteScreen.pause();remoteScreen.srcObject=null;remoteScreen.style.display="none"}
   if (audioElement) {
     audioElement.pause();
     audioElement.srcObject = null;
@@ -68,6 +132,7 @@ async function finishCall(status = "ended") {
 }
 function attachAudio(peer) {
   peer.ontrack = event => {
+    if(event.track.kind==="video"){if(remoteScreen){remoteScreen.srcObject=event.streams[0];remoteScreen.style.display="block";remoteScreen.play().catch(()=>{})}return}
     if (!audioElement) {
       audioElement = document.createElement("audio");
       audioElement.autoplay = true;
@@ -77,6 +142,8 @@ function attachAudio(peer) {
       document.body.append(audioElement);
     }
     audioElement.srcObject = event.streams[0];
+    if(outputSelect?.value)changeAudioOutput(outputSelect.value);
+    if(remoteScreen)remoteScreen.style.display="none";
     audioElement.play().catch(() => {
       $("call-status").textContent = "Разрешите воспроизведение звука в браузере.";
     });
@@ -102,6 +169,17 @@ function watchCallDocument(callId) {
   call.docStop = onSnapshot(doc(db,"calls",callId),async snapshot => {
     if (!snapshot.exists() || !activeCall) return;
     const data = snapshot.data();
+    if(data.renegotiateOffer&&data.renegotiateOffer.from!==signedInUser.uid&&data.renegotiateOffer.nonce!==renegotiationSeen){
+      renegotiationSeen=data.renegotiateOffer.nonce;
+      try{
+        await call.peer.setRemoteDescription(new RTCSessionDescription(data.renegotiateOffer));
+        const answer=await call.peer.createAnswer();await call.peer.setLocalDescription(answer);
+        await updateDoc(call.ref,{renegotiateAnswer:{type:answer.type,sdp:answer.sdp,from:signedInUser.uid,nonce:data.renegotiateOffer.nonce}});
+      }catch(e){$("call-status").textContent="Не удалось согласовать демонстрацию экрана: "+e.message}
+    }
+    if(data.renegotiateAnswer&&data.renegotiateAnswer.from!==signedInUser.uid&&call.pendingRenegotiation===data.renegotiateAnswer.nonce){
+      try{await call.peer.setRemoteDescription(new RTCSessionDescription(data.renegotiateAnswer));call.pendingRenegotiation=null}catch(e){console.warn("Renegotiation answer:",e)}
+    }
     if (data.status === "declined") {
       $("call-status").textContent = "Собеседник отклонил звонок.";
       setTimeout(() => { if (activeCall?.id === callId) stopMedia(); },1200);
