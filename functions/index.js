@@ -163,7 +163,7 @@ export {
   createTrustedDeviceSession,
   createBrowserLoginRequest,
   refreshBrowserLoginSession,
-  approveBrowserLogin,
+  verifyBrowserLoginCode,
   rejectBrowserLogin,
   registerTrustedDevicePushToken,
   expireBrowserLoginRequests,
