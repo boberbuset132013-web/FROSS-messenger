@@ -157,3 +157,12 @@ export const purgeDeletedChats = onSchedule("every 15 minutes", async () => {
     catch(error){console.error("Could not purge deleted chat "+chat.id,error)}
   }
 });
+
+export {
+  verifyPhoneWithPnv,
+  createTrustedDeviceSession,
+  createBrowserLoginRequest,
+  approveBrowserLogin,
+  rejectBrowserLogin,
+  expireBrowserLoginRequests,
+} from "./phone-security.js";
