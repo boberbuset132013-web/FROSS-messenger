@@ -26,6 +26,8 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.pnv.FirebasePhoneNumberVerification
+import com.google.firebase.pnv.FirebasePhoneNumberVerificationException
+import com.google.firebase.pnv.FirebasePnvStatusCodes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -249,10 +251,20 @@ class MainActivity : ComponentActivity() {
             }
             .addOnFailureListener { error ->
                 renewingSession = false
-                status.text = when {
-                    error.message?.contains("CARRIER_NOT_SUPPORTED") == true ->
-                        "Ваш мобильный оператор пока не поддерживает подтверждение без SMS."
-                    else -> error.message ?: "Проверка отменена или временно недоступна."
+                status.text = if (error is FirebasePhoneNumberVerificationException) {
+                    when (error.errorCode) {
+                        FirebasePnvStatusCodes.CARRIER_NOT_SUPPORTED ->
+                            "Ваш мобильный оператор пока не поддерживает подтверждение без SMS."
+                        FirebasePnvStatusCodes.UNSUPPORTED_OPERATION ->
+                            "На этом устройстве Firebase PNV недоступен. Нужен другой способ подтверждения."
+                        FirebasePnvStatusCodes.CREDENTIAL_MANAGER_ERROR ->
+                            "Подтверждение отменено или номер не удалось получить из SIM."
+                        FirebasePnvStatusCodes.INVALID_TEST_NUMBER_ID ->
+                            "Тестовый токен истёк. Создайте новый в Firebase Console."
+                        else -> error.message ?: "Проверка номера временно недоступна."
+                    }
+                } else {
+                    error.message ?: "Проверка отменена или временно недоступна."
                 }
             }
     }
