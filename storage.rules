@@ -11,7 +11,7 @@ service firebase.storage {
           || request.auth.token.legacyAccount == true
         )
         && firestore.exists(/databases/(default)/documents/chats/$(chatId))
-        && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids;
+        && (chatId == "general" || request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids);
     }
 
     match /avatars/{userId}/{fileName} {
