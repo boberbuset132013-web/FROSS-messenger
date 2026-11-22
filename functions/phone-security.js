@@ -48,6 +48,14 @@ async function requireFirebaseUser(req) {
   return decoded;
 }
 
+async function createFrossCustomToken(uid, additionalClaims) {
+  const record = await auth.getUser(uid);
+  return auth.createCustomToken(uid, {
+    ...(record.customClaims || {}),
+    ...additionalClaims,
+  });
+}
+
 function validateDeviceId(value) {
   return typeof value === "string" && /^[a-f0-9-]{20,64}$/i.test(value);
 }
@@ -145,7 +153,7 @@ export const verifyPhoneWithPnv = onRequest(async (req, res) => {
       lastSeenAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    const customToken = await auth.createCustomToken(user.uid, { frossDeviceId: deviceId });
+    const customToken = await createFrossCustomToken(user.uid, { frossDeviceId: deviceId });
     return res.status(200).json({
       ok: true,
       phoneNumber,
@@ -236,7 +244,7 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
         console.warn("FROSS Security push delivery failed:", pushError?.message);
       }
     }
-    const customToken = await auth.createCustomToken(user.uid, { frossBrowserSession: requestId });
+    const customToken = await createFrossCustomToken(user.uid, { frossBrowserSession: requestId });
     return res.status(200).json({ ok: true, mode: "approval-required", requestId, customToken, expiresInSeconds: 300 });
   } catch (error) {
     console.error("FROSS browser login request failed:", error);
@@ -357,7 +365,7 @@ export const refreshBrowserLoginSession = onRequest(async (req, res) => {
     if (!expiresAt || expiresAt.toMillis() <= Date.now()) {
       return sendError(res, 410, "Срок действия сессии браузера истёк. Подтвердите новый вход в FROSS.");
     }
-    const customToken = await auth.createCustomToken(user.uid, { frossBrowserSession: requestId });
+    const customToken = await createFrossCustomToken(user.uid, { frossBrowserSession: requestId });
     return res.status(200).json({ ok: true, customToken, requestId });
   } catch (error) {
     console.error("FROSS browser session refresh failed:", error);
