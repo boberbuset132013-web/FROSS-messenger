@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тестовый мессенджер</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--text:#1b1f24;--muted:#6b7480;--line:#e3e6ea;--accent:#2f7cf6;--mine:#2f7cf6;--mine-t:#fff;--their:#eceff3;--box-sizing:border-box;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1318;--panel:#171c23;--text:#e8ebef;--muted:#8b95a1;--line:#262d36;--their:#222a33;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1318;--panel:#171c23;--text:#e8ebef;--muted:#8b95a1;--line:#262d36;--their:#222a33;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{display:flex;height:100%}
+#side{width:300px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;flex:none}
+#me{padding:14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+#me b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list{flex:1;overflow:auto}
+.chat{display:flex;gap:10px;padding:10px 14px;cursor:pointer;align-items:center}
+.chat:hover{background:var(--bg)}.chat.on{background:var(--bg);box-shadow:inset 3px 0 var(--accent)}
+.av{width:38px;height:38px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;position:relative}
+.dot{position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;background:#3ec26d;border:2px solid var(--panel)}
+.ci{flex:1;min-width:0}.ci b,.ci small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci small{color:var(--muted)}
+.badge{background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:12px}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#head{padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+#head small{color:var(--muted);display:block}
+#back{display:none}
+button{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button.p{background:var(--accent);color:#fff;border-color:var(--accent)}
+#msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:6px}
+.m{max-width:75%;padding:8px 12px;border-radius:14px;background:var(--their);align-self:flex-start;word-wrap:break-word;overflow-wrap:anywhere}
+.m.me{background:var(--mine);color:var(--mine-t);align-self:flex-end}
+.m .n{font-size:12px;font-weight:600;color:var(--accent);display:block}
+.m time{display:block;font-size:11px;opacity:.65;text-align:right;margin-top:2px}
+.empty{margin:auto;color:var(--muted);text-align:center}
+#form{display:flex;gap:8px;padding:10px 14px;background:var(--panel);border-top:1px solid var(--line)}
+#inp{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:20px;padding:10px 14px;font:inherit;outline:none}
+#login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9}
+#login div{background:var(--panel);padding:28px;border-radius:14px;border:1px solid var(--line);width:min(340px,90%);text-align:center}
+#login input{width:100%;margin:14px 0;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:10px;font:inherit}
+#login p{color:var(--muted);font-size:13px;margin:0}
+@media(max-width:700px){#side{width:100%}#main{display:none}.chatting #side{display:none}.chatting #main{display:flex}#back{display:block}}
+</style>
+</head>
+<body>
+<div id="login"><div>
+<h2 style="margin:0 0 6px">💬 Тестовый мессенджер</h2>
+<p>Введите имя. Откройте вторую вкладку под другим именем, чтобы переписываться.</p>
+<input id="nm" maxlength="20" placeholder="Ваше имя" autofocus>
+<button class="p" id="go" style="width:100%">Войти</button>
+</div></div>
+<div id="app">
+<aside id="side">
+<div id="me"><div class="av" id="meav"></div><b id="mename"></b><button id="clr" title="Очистить историю">🗑</button><button id="out" title="Выйти">⎋</button></div>
+<div id="list"></div>
+</aside>
+<section id="main">
+<div id="head"><button id="back">←</button><div class="av" id="hav"></div><div><b id="htitle"></b><small id="hsub"></small></div></div>
+<div id="msgs"></div>
+<div id="form"><input id="inp" placeholder="Сообщение…" autocomplete="off"><button class="p" id="send">Отправить</button></div>
+</section>
+</div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var me=null,cur='general',msgs=[],users={},unread={},ch=null;
+try{ch=new BroadcastChannel('test-messenger')}catch(e){}
+function load(){try{msgs=JSON.parse(localStorage.getItem('tm_msgs')||'[]')}catch(e){msgs=[]}}
+function save(){try{localStorage.setItem('tm_msgs',JSON.stringify(msgs.slice(-500)))}catch(e){}}
+function color(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return 'hsl('+h+',55%,48%)'}
+function av(el,name,on){el.textContent=name[0].toUpperCase();el.style.background=color(name);el.innerHTML=el.textContent+(on?'<i class="dot"></i>':'')}
+function dm(a,b){return 'dm:'+[a,b].sort().join('|')}
+function title(id){if(id==='general')return'Общий чат';if(id==='bot')return'Эхо-бот';return id.slice(3).split('|').filter(function(x){return x!==me})[0]||me}
+function post(t,d){if(ch)ch.postMessage(Object.assign({t:t,from:me},d||{}))}
+function now(){var d=new Date();return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)}
+function visible(m){return m.chat==='general'||m.chat==='bot'&&(m.from===me||m.to===me)||m.chat.indexOf('dm:')===0&&m.chat.slice(3).split('|').indexOf(me)>-1}
+function chatIds(){var s={general:1,bot:1};Object.keys(users).forEach(function(u){if(u!==me)s[dm(me,u)]=1});
+msgs.forEach(function(m){if(m.chat.indexOf('dm:')===0&&visible(m))s[m.chat]=1});return Object.keys(s)}
+function renderList(){var l=$('list');l.innerHTML='';
+chatIds().forEach(function(id){var t=title(id),last=msgs.filter(function(m){return m.chat===id&&visible(m)}).pop();
+var online=id==='bot'||id.indexOf('dm:')===0&&users[t];
+var e=document.createElement('div');e.className='chat'+(id===cur?' on':'');
+var a=document.createElement('div');a.className='av';av(a,id==='general'?'#':t,online);
+var c=document.createElement('div');c.className='ci';var b=document.createElement('b');b.textContent=t;var s=document.createElement('small');s.textContent=last?(last.from===me?'Вы: ':'')+last.text:'Нет сообщений';
+c.appendChild(b);c.appendChild(s);e.appendChild(a);e.appendChild(c);
+if(unread[id]){var u=document.createElement('span');u.className='badge';u.textContent=unread[id];e.appendChild(u)}
+e.onclick=function(){cur=id;unread[id]=0;document.body.classList.add('chatting');render()};l.appendChild(e)})}
+function renderHead(){var t=title(cur);av($('hav'),cur==='general'?'#':t,false);$('htitle').textContent=t;
+var n=Object.keys(users).length;$('hsub').textContent=cur==='general'?'Онлайн: '+n:cur==='bot'?'Команды: /help':(users[t]?'в сети':'не в сети')}
+function renderMsgs(){var box=$('msgs');box.innerHTML='';
+var list=msgs.filter(function(m){return m.chat===cur&&visible(m)});
+if(!list.length){var e=document.createElement('div');e.className='empty';e.textContent='Пока пусто. Напишите первое сообщение!';box.appendChild(e)}
+list.forEach(function(m){var d=document.createElement('div');d.className='m'+(m.from===me?' me':'');
+if(m.from!==me&&cur==='general'){var n=document.createElement('span');n.className='n';n.textContent=m.from;d.appendChild(n)}
+d.appendChild(document.createTextNode(m.text));var t=document.createElement('time');t.textContent=m.time;d.appendChild(t);box.appendChild(d)});
+box.scrollTop=box.scrollHeight}
+function render(){renderList();renderHead();renderMsgs()}
+function add(m,mine){msgs.push(m);if(mine){save();post('msg')}
+if(m.chat!==cur&&m.from!==me)unread[m.chat]=(unread[m.chat]||0)+1;render()}
+function send(){var v=$('inp').value.trim();if(!v)return;$('inp').value='';
+var m={id:Date.now()+Math.random(),chat:cur,from:me,text:v,time:now()};
+if(cur==='bot')m.to=me;add(m,true);if(cur==='bot')setTimeout(bot,500,v)}
+function bot(v){var r;
+if(v==='/help')r='Команды: /help, /time, /ping, /random. Всё остальное я повторяю.';
+else if(v==='/time')r='Сейчас '+new Date().toLocaleString('ru-RU');
+else if(v==='/ping')r='pong 🏓';
+else if(v==='/random')r='Ваше число: '+Math.floor(Math.random()*100);
+else r='Эхо: '+v;
+add({id:Date.now()+Math.random(),chat:'bot',from:'Эхо-бот',to:me,text:r,time:now()},true)}
+function hello(){post('hello')}
+function prune(){var t=Date.now();Object.keys(users).forEach(function(u){if(t-users[u]>8000)delete users[u]});users[me]=t;renderList();renderHead()}
+function start(name){me=name;try{sessionStorage.setItem('tm_name',name)}catch(e){}
+$('login').style.display='none';av($('meav'),me,true);$('mename').textContent=me;load();users[me]=Date.now();render();hello();
+setInterval(function(){hello();prune()},3000);
+if(ch)ch.onmessage=function(e){var d=e.data;
+if(d.t==='hello'){var isNew=!users[d.from];users[d.from]=Date.now();if(isNew){hello();renderList();renderHead()}}
+else if(d.t==='bye'){delete users[d.from];renderList();renderHead()}
+else if(d.t==='msg'){var old=msgs.length;load();var fresh=msgs.slice(old);
+if(msgs.length<old)msgs=msgs;fresh.forEach(function(m){if(m.chat!==cur&&m.from!==me&&visible(m))unread[m.chat]=(unread[m.chat]||0)+1});render()}
+else if(d.t==='clear'){msgs=[];render()}}}
+window.addEventListener('beforeunload',function(){if(me)post('bye')});
+window.addEventListener('storage',function(e){if(e.key==='tm_msgs'&&me){load();render()}});
+$('go').onclick=function(){var v=$('nm').value.trim();if(v)start(v)};
+$('nm').onkeydown=function(e){if(e.key==='Enter')$('go').click()};
+$('inp').onkeydown=function(e){if(e.key==='Enter')send()};
+$('send').onclick=send;
+$('back').onclick=function(){document.body.classList.remove('chatting')};
+$('clr').onclick=function(){if(confirm('Очистить всю историю?')){msgs=[];save();post('clear');render()}};
+$('out').onclick=function(){post('bye');try{sessionStorage.removeItem('tm_name')}catch(e){};location.reload()};
+var saved=null;try{saved=sessionStorage.getItem('tm_name')}catch(e){}
+if(saved)start(saved);
+})();
+</script>
+</body>
+</html>
