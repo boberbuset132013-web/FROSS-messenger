@@ -225,7 +225,7 @@ function applyS(s) {
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
   r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
-  r.style.setProperty("--custom-bg",s.bgColor||"#0f1015");r.style.setProperty("--custom-panel",s.panelColor||"#16181f");r.style.setProperty("--custom-text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
+  r.style.setProperty("--bg",s.bgColor||"#0f1015");r.style.setProperty("--panel",s.panelColor||"#16181f");r.style.setProperty("--text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
 }
 function hue(s) {
@@ -445,6 +445,7 @@ function head() {
 function openChat(id) {
   cur=id;
   document.body.classList.add("ch");renderList();head();subscribeMessages();
+  const chat=chats.find(c=>c.id===id);if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
 }
 const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
 function openMessageMenu(message,mine,x,y) {
@@ -497,7 +498,7 @@ function subscribeMessages() {
       const m={id:s.id,...s.data()},mine=m.senderUid===me.uid,r=document.createElement("div");
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
       if(S.avatars&&!mine&&previous!==m.senderUid){
-        const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl});r.append(a);
+        const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
       const b=document.createElement("div");b.className="msg";
       if(!mine&&previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
@@ -575,7 +576,7 @@ async function send() {
   try{
     const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
     const messageRef=doc(collection(db,"chats",cur,"messages"));
-    batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,text,createdAt:serverTimestamp()});
+    batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,createdAt:serverTimestamp()});
     batch.update(chatRef,{lastMessage:text.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
     await batch.commit();
   }catch(e){alert(authError(e));input.value=text}
@@ -594,7 +595,7 @@ if(attachmentButton&&attachmentInput){
       const url=await getDownloadURL(target),batch=writeBatch(db),messageRef=doc(collection(db,"chats",cur,"messages"));
       const attachment={name:file.name.slice(0,180),type:file.type||"application/octet-stream",size:file.size,url,path};
       const summary=(file.type.startsWith("image/")?"📷 ":"🎵 ")+file.name;
-      batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,text:"",attachment,createdAt:serverTimestamp()});
+      batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,createdAt:serverTimestamp()});
       batch.update(doc(db,"chats",cur),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
       await batch.commit();
     }catch(e){alert("Не удалось отправить файл: "+authError(e))}
