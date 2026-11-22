@@ -84,10 +84,12 @@ The script refuses to start if the target Firestore already contains user docume
 ### Cutover
 
 After a successful import and verification:
-1. Merge the Firebase migration pull request into `main`.
-2. Workers Builds deploys the new static front end.
-3. Test sign-in with a migrated username and its existing password, then test a new account, a DM, a group and an avatar upload.
-5. Keep the D1 database and its backup untouched for rollback until the Firebase version has been used successfully.
+1. Confirm V2 PR #1 has been merged into `main`.
+2. Open Firebase PR #2 and, if its base is still `feature/messenger-v2`, click **Edit** and change the base branch to `main`. Review the changed-file list before merging.
+3. Merge Firebase PR #2 into `main`.
+4. Workers Builds deploys the new static front end. The new Worker no longer binds or queries D1.
+5. Test sign-in with a migrated username and its existing password, then test a new account, a DM, a group and an avatar upload.
+6. Keep the D1 database and its backup untouched for rollback until the Firebase version has been used successfully.
 
 ## Data model
 
