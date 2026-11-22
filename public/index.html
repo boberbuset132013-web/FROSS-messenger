@@ -27,6 +27,17 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 .meter{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:-6px 0 10px}.meter b{display:block;height:100%;width:0;transition:.2s}
 #app{height:100%;display:none;grid-template-columns:320px 1fr}
 #call{margin-left:auto;display:none;color:var(--accent);font-size:19px}
+.message-menu{position:fixed;z-index:80;display:flex;flex-direction:column;min-width:190px;max-width:260px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px #0008}
+.message-menu button{border:0;text-align:left;background:transparent;padding:9px 11px}
+.message-menu button:hover,.reaction-bar button:hover{background:var(--p2)}
+.message-menu .reaction-choice{font-size:23px;text-align:center;display:inline-flex;padding:8px}
+.reaction-bar{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}.reaction-bar button{padding:3px 7px;font-size:12px}
+.message-image{display:block;max-width:min(320px,70vw);max-height:280px;object-fit:contain;border-radius:10px;margin:4px 0}
+.message-audio{display:block;max-width:280px;width:100%;margin:5px 0}.attachment-link{display:block;color:inherit;font-size:13px;margin:5px 0;overflow-wrap:anywhere}
+.call-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;text-align:left}
+.call-tools label{margin:0}.call-tools select{margin:4px 0 0;padding:7px}
+#remote-screen{display:none;width:100%;max-height:42vh;background:#000;border-radius:12px;margin-top:12px}
+#local-screen-preview{display:none}
 #call-layer{position:fixed;inset:0;background:#000b;display:none;place-items:center;padding:18px;z-index:30;backdrop-filter:blur(8px)}
 #call-layer.open{display:grid}
 .call-card{width:min(390px,100%);padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--panel);text-align:center;box-shadow:0 22px 70px #0007}
@@ -91,9 +102,9 @@ button:active{transform:scale(.97)}button:focus-visible,input:focus-visible,text
 <div id="app">
 <aside class="side"><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="ic" id="nb" title="Новый чат">✏️</button><button class="ic" id="gb" title="Настройки">⚙️</button></div>
 <div class="sb"><input id="q" placeholder="🔍 Поиск чатов и людей"></div><div class="list" id="list"></div></aside>
-<main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div><button class="ic" id="call" title="Голосовой звонок" aria-label="Голосовой звонок">📞</button></div>
+<main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div><button class="ic" id="chat-settings" title="Настройки чата" aria-label="Настройки чата">⋯</button><button class="ic" id="call" title="Голосовой звонок" aria-label="Голосовой звонок">📞</button></div>
 <div class="msgs" id="msgs"></div>
-<div class="comp"><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
+<div class="comp"><button id="attach" title="Прикрепить фото, музыку или файл">＋</button><input id="attachment-input" type="file" accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.zip" hidden><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
-<div id="call-layer" aria-live="polite"><div class="call-card"><div class="av" id="call-avatar">☎</div><h3 id="call-title">Звонок</h3><div class="call-status" id="call-status"></div><div class="call-actions" id="call-actions"></div></div></div>
+<div id="call-layer" aria-live="polite"><div class="call-card"><div class="av" id="call-avatar">☎</div><h3 id="call-title">Звонок</h3><div class="call-status" id="call-status"></div><video id="remote-screen" autoplay playsinline></video><div class="call-tools"><label>Микрофон<select id="mic-device"></select></label><label>Вывод звука<select id="audio-device"></select></label></div><div class="call-actions" id="call-actions"></div></div></div>
 <script type="module" src="/firebase-app.js"></script></body></html>
