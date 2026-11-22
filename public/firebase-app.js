@@ -57,9 +57,11 @@ function showLogin() {
     const identifier=$("lu").value.trim().toLowerCase();
     if(!identifier)throw Error("Введите email или имя пользователя.");
     const email=identifier.includes("@")?identifier:authEmail(identifier);
+    browserApprovalInProgress=true;
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
-    if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
-  }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
+    if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);browserApprovalInProgress=false;await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
+    await startBrowserApproval(result.user);
+  }catch(e){browserApprovalInProgress=false;await signOut(auth).catch(()=>{});try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
