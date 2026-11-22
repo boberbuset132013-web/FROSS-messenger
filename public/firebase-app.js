@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential,
+  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
   EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
   sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
@@ -650,14 +650,27 @@ $("gb").onclick=()=>{
           };
         };
       }
-      $("dl").onclick=()=>{$("db").innerHTML='<label>Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.</label><input id="dp" type="password"><div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
+      $("dl").onclick=()=>{
+        const hasGoogle = currentUser.providerData.some(provider=>provider.providerId==="google.com");
+        const hasPassword = currentUser.providerData.some(provider=>provider.providerId==="password");
+        const reauthLabel = hasGoogle
+          ? "Подтвердите удаление через окно Google. Ваш профиль будет удалён, история сообщений останется у собеседников."
+          : "Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.";
+        $("db").innerHTML='<label>'+reauthLabel+'</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
         $("dk").onclick=async()=>{
           try{
-            await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            if(hasGoogle) {
+              await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
+            } else if(hasPassword) {
+              await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            } else {
+              throw new Error("Для удаления аккаунта сначала войдите повторно через привязанный способ входа.");
+            }
             const chatsSnap=await getDocs(query(collection(db,"chats"),where("memberUids","array-contains",me.uid)));
             for(const c of chatsSnap.docs)await updateDoc(c.ref,{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});
             await deleteDoc(doc(db,"usernameIndex",me.usernameLower||me.username.toLowerCase()));
-            await deleteDoc(doc(db,"publicUsers",me.uid));await deleteDoc(doc(db,"users",me.uid));
+            await deleteDoc(doc(db,"publicUsers",me.uid));
+            await deleteDoc(doc(db,"users",me.uid));
             if(me.avatarUrl)try{await deleteObject(ref(storage,"avatars/"+me.uid+"/avatar.jpg"))}catch{}
             await deleteUser(currentUser);
           }catch(e){$("de").textContent=authError(e)}
