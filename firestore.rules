@@ -47,7 +47,10 @@ service cloud.firestore {
     }
 
     match /publicUsers/{uid} {
-      allow get, list: if verified();
+      // A newly authenticated user may read their own missing profile during registration,
+      // even if the identity provider has not populated email_verified yet.
+      allow get: if own(uid) || verified();
+      allow list: if verified();
       allow create: if own(uid)
         && request.resource.data.username is string
         && request.resource.data.usernameLower is string
