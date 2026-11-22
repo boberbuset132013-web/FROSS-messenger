@@ -54,11 +54,7 @@ The current Worker generated passwords with PBKDF2-SHA256, 100,000 rounds. Fireb
 ### Before running the migration
 
 1. Keep the current Cloudflare Worker and D1 live. Do not merge the Firebase branch into `main` yet.
-2. Make a D1 backup using Cloudflare Time Travel or export. D1 export command:
-   ```sh
-   npm run migration:d1:export
-   ```
-   The output is `migration/d1-backup.sql`; it is ignored by Git and must remain private.
+2. First finish and deploy the existing V2 PR (#1), including its one-time D1 schema upgrade if that has not already been applied. V2 adds a maintenance switch to the Worker.
 3. Enable Firestore and Cloud Storage in Firebase. Storage requires Blaze billing.
 4. Create a Firebase service account with only the required Auth, Firestore and Storage permissions. Download its JSON key to a location outside this repository. Do not upload or paste it into chat.
 5. From the `migration` folder install the migration-only dependencies:
@@ -70,12 +66,18 @@ The current Worker generated passwords with PBKDF2-SHA256, 100,000 rounds. Fireb
 6. Set local environment variables:
    - `GOOGLE_APPLICATION_CREDENTIALS`: absolute path to the service-account JSON.
    - `FIREBASE_PROJECT_ID=fross-ca5d6`.
-7. Run the import:
+7. Schedule a short maintenance window. In Cloudflare → Workers & Pages → `fross-messenger` → Settings → Variables and Secrets, add the plain-text variable `MAINTENANCE_MODE=true`, then save/deploy. The old API will return HTTP 503 for application routes while `/api/health` remains available. This pauses writes so messages are not lost between export and cutover.
+8. While maintenance is enabled, create the final D1 export:
+   ```sh
+   npm run migration:d1:export
+   ```
+   The output is `migration/d1-backup.sql`; it is ignored by Git and must remain private. Do not turn maintenance off while the export/import is in progress.
+9. Run the import:
    ```sh
    npm run migration:firebase
    ```
    The script creates a private Firestore marker at `systemMigrations/d1-to-firebase-v1`. If the run is interrupted, run it again; already-imported Firebase Auth UIDs are skipped and Firestore writes are idempotent.
-8. Check the marker and counts in Firestore. Confirm users, chats and message counts before cutover.
+10. Check the marker and counts in Firestore. Confirm users, chats and message counts before cutover. Keep maintenance enabled until the Firebase front end and rules are deployed and tested.
 
 The script refuses to start if the target Firestore already contains user documents and no migration marker exists. It validates the legacy password-hash format before importing. If Firebase Auth reports an email/UID collision, stop and resolve it rather than overwriting a different account.
 
@@ -85,7 +87,7 @@ After a successful import and verification:
 1. Merge the Firebase migration pull request into `main`.
 2. Workers Builds deploys the new static front end.
 3. Test sign-in with a migrated username and its existing password, then test a new account, a DM, a group and an avatar upload.
-4. Keep the D1 database and its backup untouched for rollback until the Firebase version has been used successfully.
+5. Keep the D1 database and its backup untouched for rollback until the Firebase version has been used successfully.
 
 ## Data model
 
