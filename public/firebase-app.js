@@ -171,14 +171,14 @@ async function googleLogin(){
       });
     }
     creatingAccount = false;
-    await boot(user);
+    await startBrowserApproval(user);
   }catch(e){
     if (e?.code === "auth/account-exists-with-different-credential") {
       try {
         const linkedUser = await linkGoogleToExistingAccount(e);
         if (linkedUser) {
           creatingAccount = false;
-          await boot(linkedUser);
+          await startBrowserApproval(linkedUser);
           return;
         }
       } catch (linkError) {
@@ -186,6 +186,7 @@ async function googleLogin(){
       }
     }
     creatingAccount = false;
+    browserApprovalInProgress = false;
     const message = e?.message === "username-taken"
       ? "Это имя пользователя уже занято. Выберите другое."
       : authError(e);
