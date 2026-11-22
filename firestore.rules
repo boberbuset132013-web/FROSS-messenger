@@ -153,10 +153,12 @@ service cloud.firestore {
             && request.resource.data.editedAt == request.time)
           ||
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hiddenFor"])
-            && request.auth.uid in request.resource.data.hiddenFor
             && request.resource.data.hiddenFor is list
-            && (!("hiddenFor" in resource.data)
-              || request.resource.data.hiddenFor.hasAll(resource.data.hiddenFor)))
+            && request.auth.uid in request.resource.data.hiddenFor
+            && (("hiddenFor" in resource.data
+              && request.resource.data.hiddenFor.hasAll(resource.data.hiddenFor)
+              && request.resource.data.hiddenFor.size() <= resource.data.hiddenFor.size() + 1)
+              || (!("hiddenFor" in resource.data) && request.resource.data.hiddenFor.size() == 1)))
         );
         allow delete: if canReadChat(chatId)
           && resource.data.senderUid == request.auth.uid;
