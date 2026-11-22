@@ -293,6 +293,7 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
         status: "pending",
         browserLabel,
         codeHash,
+        messageReady: false,
         attempts: 0,
         maxAttempts: 5,
         createdAt: now,
@@ -300,6 +301,7 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
       });
     });
     await ensureSecurityBotMessage(user.uid, requestId, browserLabel, expiresAt, code);
+    await requestRef.update({ messageReady: true });
     const activeDevices = await db.collection(`users/${user.uid}/trustedDevices`)
       .where("status", "==", "active").get();
     const pushTokens = activeDevices.docs.map(item => item.data()?.fcmToken).filter(value => typeof value === "string" && value.length > 20).slice(0, 500);
