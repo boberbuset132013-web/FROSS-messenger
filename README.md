@@ -28,7 +28,7 @@ The Firebase web config in `public/firebase-app.js` is client configuration, not
 
 New registrations require a real email address and password. Firebase sends a verification link; until the address is verified, Firestore chat access is denied by Security Rules. Password reset is available by email. Google sign-in is also supported; first-time Google users choose a unique FROSS username.
 
-For accounts migrated from the older username-only version, the previous internal address `<username>@fross-ca5d6.firebaseapp.com` remains supported as a compatibility login. These legacy accounts are not email-verified and therefore do not get the new email-verification gate until a separate account-linking flow is completed. Their optional contact email is not an authentication credential.
+For accounts migrated from the older username-only version, the previous internal address `<username>@fross-ca5d6.firebaseapp.com` remains supported as a compatibility login. The migration script assigns these accounts a server-side Firebase custom claim (`legacyAccount: true`); Security Rules trust this Admin-SDK claim, not an email suffix. Their optional contact email is not an authentication credential. A later account-linking flow should replace this compatibility path with a verified real email.
 
 Firebase's built-in Email/Password provider sends a verification link, not a numeric one-time code on every login. Requiring a fresh six-digit code at every login needs a trusted server-side OTP service (for example, Cloud Functions plus a transactional email provider); do not implement OTP generation or validation in browser code.
 
