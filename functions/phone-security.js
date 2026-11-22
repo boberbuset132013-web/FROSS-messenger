@@ -453,8 +453,9 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
         for (let offset = 0; offset < page.users.length; offset += 400) {
           const chunk = page.users.slice(offset, offset + 400);
           const profiles = await db.getAll(...chunk.map(account => db.doc(`users/${account.uid}`)));
-          for (const profile of profiles) {
-            const data = profile.data() || {};
+          for (let index = 0; index < profiles.length; index++) {
+            if (chunk[index].disabled) continue;
+            const data = profiles[index].data() || {};
             const ready = data.phoneVerified === true
               && (data.phoneVerificationTest !== true || process.env.FROSS_ALLOW_PNV_TEST_TOKENS === "true")
               && Array.isArray(data.trustedDeviceIds)
