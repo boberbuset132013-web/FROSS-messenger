@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --config ./wrangler.toml --assets ./public/",
-    "firebase:deploy": "npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project fross-ca5d6",
+    "firebase:deploy": "npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage,functions --project fross-ca5d6",
     "migration:d1:export": "wrangler d1 export fross-messenger-db --remote --output=./migration/d1-backup.sql",
     "migration:firebase": "node ./migration/migrate-d1-to-firebase.mjs ./migration/d1-backup.sql",
-    "validate": "node --check public/firebase-app.js && node --check migration/migrate-d1-to-firebase.mjs && python3 scripts/validate_project.py"
+    "validate": "node --check public/firebase-app.js && node --check migration/migrate-d1-to-firebase.mjs && python3 scripts/validate_project.py",
+    "firebase:functions:deploy": "npx firebase-tools deploy --only functions --project fross-ca5d6",
+    "firebase:rules:deploy": "npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project fross-ca5d6"
   },
   "devDependencies": {
     "wrangler": "4.166.0"
