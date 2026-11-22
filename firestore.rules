@@ -197,13 +197,17 @@ service cloud.firestore {
       allow list: if verified() && resource.data.calleeUid == request.auth.uid;
       allow update: if callParticipant()
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["offer", "answer", "status", "updatedAt", "acceptedAt", "endedAt"])
+          .hasOnly(["offer", "answer", "status", "updatedAt", "acceptedAt", "endedAt", "renegotiateOffer", "renegotiateAnswer"])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["offer"])
           || request.auth.uid == resource.data.callerUid)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["answer"])
           || request.auth.uid == resource.data.calleeUid)
         && (!("status" in request.resource.data)
-          || request.resource.data.status in ["preparing", "ringing", "accepted", "declined", "ended"]);
+          || request.resource.data.status in ["preparing", "ringing", "accepted", "declined", "ended"])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["renegotiateOffer"])
+          || request.resource.data.renegotiateOffer.from == request.auth.uid)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["renegotiateAnswer"])
+          || request.resource.data.renegotiateAnswer.from == request.auth.uid);
       allow delete: if false;
 
       match /{candidateSet}/{candidateId} {
