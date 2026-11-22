@@ -71,7 +71,8 @@ The **Delete ALL test accounts** button is deliberately hidden from ordinary use
    This file is ignored by Git. Leave the setting unset or `false` outside a deliberate test reset window.
 3. Assign the admin claim to your own Firebase UID using your service account:
    ```sh
-   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 cd functions && GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 node set-fross-admin.mjs YOUR_FIREBASE_UID
+   cd functions
+   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/service-account.json FIREBASE_PROJECT_ID=fross-ca5d6 node set-fross-admin.mjs YOUR_FIREBASE_UID
    ```
 4. Deploy Functions with `npm run firebase:functions:deploy`, then sign out and back in so the admin token refreshes.
 5. In Settings → Account, the admin-only button appears. It requires typing `DELETE ALL ACCOUNTS` and a second browser confirmation. It deletes every Firebase Authentication user, all FROSS Firestore data and all files in the project's default Storage bucket, including the administrator account. There is no undo.
@@ -135,6 +136,7 @@ After a successful import and verification:
 - `usernameIndex/{lowercaseUsername}`: username reservation and UID.
 - `chats/{chatId}`: chat type, member UIDs and last-message metadata.
 - `chats/{chatId}/messages/{messageId}`: immutable message records.
+- `calls/{callId}` plus `callerCandidates` / `calleeCandidates`: short-lived peer-to-peer voice-call signaling documents.
 
 ## Cloudflare
 
@@ -146,7 +148,7 @@ After a successful import and verification:
 
 - Numeric email OTP on every login is not implemented; the current verified-email flow uses Firebase's signed verification link.
 - Chat attachments are allowed by Storage Rules but the UI currently uploads profile avatars only.
-- Push notifications, voice/video calls, end-to-end encryption, moderation and automated account-recovery are not included yet.
+- Voice calls are implemented as a WebRTC audio baseline with Firestore signaling and public STUN servers. TURN relay credentials are still needed for reliable calling through restrictive NAT/firewall networks. Video calls, push notifications, end-to-end encryption, moderation and automated account-recovery are not included yet.
 - Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
 - Enable Firebase App Check (reCAPTCHA Enterprise for web) after testing it in monitoring mode; App Check complements Auth and Security Rules but does not replace them.
 - Account deletion removes the account/profile and removes the user from chats; historical messages remain visible to other participants as conversation history.
