@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy --config ./wrangler.toml --assets ./public/",
     "firebase:deploy": "npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage --project fross-ca5d6",
     "migration:d1:export": "wrangler d1 export fross-messenger-db --remote --output=./migration/d1-backup.sql",
-    "migration:firebase": "node ./migration/migrate-d1-to-firebase.mjs ./migration/d1-backup.sql"
+    "migration:firebase": "node ./migration/migrate-d1-to-firebase.mjs ./migration/d1-backup.sql",
+    "validate": "node --check public/firebase-app.js && python3 scripts/validate_project.py"
   },
   "devDependencies": {
     "wrangler": "4.166.0"
