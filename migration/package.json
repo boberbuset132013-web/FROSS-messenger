@@ -1,0 +1,12 @@
+{
+  "name": "fross-messenger-d1-migration",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.1",
+    "sql.js": "1.17.0"
+  }
+}
