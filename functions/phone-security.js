@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getMessaging } from "firebase-admin/messaging";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -217,6 +218,24 @@ export const createBrowserLoginRequest = onRequest(async (req, res) => {
       expiresAt,
     });
     await ensureSecurityBotMessage(user.uid, requestId, browserLabel, expiresAt);
+    const activeDevices = await db.collection(`users/${user.uid}/trustedDevices`)
+      .where("status", "==", "active").get();
+    const pushTokens = activeDevices.docs.map(item => item.data()?.fcmToken).filter(value => typeof value === "string" && value.length > 20).slice(0, 500);
+    if (pushTokens.length) {
+      try {
+        await getMessaging().sendEachForMulticast({
+          tokens: pushTokens,
+          notification: {
+            title: "FROSS Security",
+            body: "Подтвердите вход в FROSS через браузер.",
+          },
+          data: { type: "browser_login_request", requestId },
+          android: { priority: "high", notification: { channelId: "fross_security" } },
+        });
+      } catch (pushError) {
+        console.warn("FROSS Security push delivery failed:", pushError?.message);
+      }
+    }
     const customToken = await auth.createCustomToken(user.uid, { frossBrowserSession: requestId });
     return res.status(200).json({ ok: true, mode: "approval-required", requestId, customToken, expiresInSeconds: 300 });
   } catch (error) {
@@ -290,4 +309,32 @@ export const expireBrowserLoginRequests = onSchedule("every 5 minutes", async ()
     }, { merge: true });
   }
   if (!expired.empty) await batch.commit();
+});
+
+
+export const registerTrustedDevicePushToken = onRequest(async (req, res) => {
+  if (!cors(req, res)) return sendError(res, 403, "Origin is not allowed.");
+  if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== "POST") return sendError(res, 405, "Method not allowed.");
+  try {
+    const user = await requireFirebaseUser(req);
+    const deviceId = String(req.body?.deviceId || "");
+    const fcmToken = String(req.body?.fcmToken || "");
+    if (!validateDeviceId(deviceId) || fcmToken.length < 20 || fcmToken.length > 4096) {
+      return sendError(res, 400, "Некорректные данные push-устройства.");
+    }
+    if (user.frossDeviceId !== deviceId) {
+      return sendError(res, 403, "Push-токен можно зарегистрировать только для текущего доверенного устройства.");
+    }
+    const deviceRef = db.doc(`users/${user.uid}/trustedDevices/${deviceId}`);
+    const device = await deviceRef.get();
+    if (!device.exists || device.data()?.status !== "active") {
+      return sendError(res, 403, "Устройство не зарегистрировано.");
+    }
+    await deviceRef.update({ fcmToken, lastSeenAt: FieldValue.serverTimestamp() });
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error("FROSS push token registration failed:", error);
+    return sendError(res, error.status || 500, error.status ? error.message : "Не удалось зарегистрировать push-токен.");
+  }
 });
