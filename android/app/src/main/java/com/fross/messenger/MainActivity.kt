@@ -66,7 +66,13 @@ class MainActivity : ComponentActivity() {
                     val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                         .getResult(ApiException::class.java)
                     val credential = GoogleAuthProvider.getCredential(account.idToken, null)
-                    auth.signInWithCredential(credential).await()
+                    val signIn = auth.signInWithCredential(credential).await()
+                    if (signIn.additionalUserInfo?.isNewUser == true) {
+                        signIn.user?.delete()?.await()
+                        auth.signOut()
+                        status.text = "Сначала создайте аккаунт FROSS на сайте, затем войдите в приложение."
+                        return@launch
+                    }
                     renewingSession = true
                     try { establishExistingDevice() } finally { renewingSession = false }
                 } catch (error: Exception) {
