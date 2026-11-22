@@ -59,8 +59,9 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 .msgs[data-w=grid]{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:24px 24px}
 .mr{display:flex;gap:8px;align-items:flex-end;max-width:78%}.mr.me{align-self:flex-end;flex-direction:row-reverse}
 .mr .av{width:30px;height:30px;font-size:13px}.mr.nf{margin-left:38px}
-.msg{padding:var(--pad) calc(var(--pad) + 3px);background:var(--bubble);border-radius:var(--br);overflow-wrap:anywhere;white-space:pre-wrap}
-.me .msg{background:var(--accent);color:#fff}.msg b{display:block;font-size:12px;color:var(--accent);white-space:normal}
+.msg{padding:var(--pad) calc(var(--pad) + 3px);background:var(--incoming,var(--bubble));border-radius:var(--br);overflow-wrap:anywhere;white-space:pre-wrap}
+.me .msg{background:var(--outgoing,var(--accent));color:#fff}
+:root{--bg:var(--custom-bg,#0f1015);--panel:var(--custom-panel,#16181f);--text:var(--custom-text,#f2f3f7)}.msg b{display:block;font-size:12px;color:var(--accent);white-space:normal}
 .msg time{display:block;text-align:right;font-size:10px;opacity:.6}
 .comp{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel);align-items:flex-end}
 .comp textarea{margin:0;border-radius:20px;resize:none;max-height:120px;padding:11px 16px}.comp .pr{border-radius:20px}
@@ -100,7 +101,7 @@ button:active{transform:scale(.97)}button:focus-visible,input:focus-visible,text
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
-<aside class="side"><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="ic" id="nb" title="Новый чат">✏️</button><button class="ic" id="gb" title="Настройки">⚙️</button></div>
+<aside class="side"><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="ic" id="nb" title="Новый чат">✏️</button><button class="ic" id="profile-settings" title="Профиль и кастомизация">👤</button><button class="ic" id="gb" title="Полные настройки">⚙️</button></div>
 <div class="sb"><input id="q" placeholder="🔍 Поиск чатов и людей"></div><div class="list" id="list"></div></aside>
 <main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div><button class="ic" id="chat-settings" title="Настройки чата" aria-label="Настройки чата">⋯</button><button class="ic" id="call" title="Голосовой звонок" aria-label="Голосовой звонок">📞</button></div>
 <div class="msgs" id="msgs"></div>
