@@ -76,14 +76,18 @@ function showCall(title, status, avatarText, actions) {
   $("call-status").textContent = status || "";
   $("call-avatar").textContent = avatarText || "☎";
   $("call-actions").replaceChildren();
-  const visibleActions=[...(actions||[])];\n  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});}\n  for (const action of visibleActions) {
+  const visibleActions=[...(actions||[])];
+  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});}
+  for (const action of visibleActions) {
     const button = document.createElement("button");
     button.textContent = action.label;
     button.className = action.danger ? "dg" : action.primary ? "pr" : "";
-    if(action.label.includes("микрофон"))button.dataset.action="mute";\n    button.onclick = action.onClick;
+    if(action.label.includes("микрофон"))button.dataset.action="mute";
+    button.onclick = action.onClick;
     $("call-actions").append(button);
   }
-  $("call-layer").classList.add("open");\n  refreshCallDevices();
+  $("call-layer").classList.add("open");
+  refreshCallDevices();
 }
 function hideCall() {
   $("call-layer")?.classList.remove("open");
@@ -96,7 +100,9 @@ function stopMedia() {
     activeCall.peer.ontrack = null;
     activeCall.peer.close();
   }
-  if (activeCall?.stream) activeCall.stream.getTracks().forEach(track => track.stop());\n  if(screenStream){screenStream.getTracks().forEach(track=>track.stop());screenStream=null}\n  if(remoteScreen){remoteScreen.pause();remoteScreen.srcObject=null;remoteScreen.style.display="none"}
+  if (activeCall?.stream) activeCall.stream.getTracks().forEach(track => track.stop());
+  if(screenStream){screenStream.getTracks().forEach(track=>track.stop());screenStream=null}
+  if(remoteScreen){remoteScreen.pause();remoteScreen.srcObject=null;remoteScreen.style.display="none"}
   if (audioElement) {
     audioElement.pause();
     audioElement.srcObject = null;
@@ -117,7 +123,8 @@ async function finishCall(status = "ended") {
   stopMedia();
 }
 function attachAudio(peer) {
-  peer.ontrack = event => {\n    if(event.track.kind==="video"){if(remoteScreen){remoteScreen.srcObject=event.streams[0];remoteScreen.style.display="block";remoteScreen.play().catch(()=>{})}return}
+  peer.ontrack = event => {
+    if(event.track.kind==="video"){if(remoteScreen){remoteScreen.srcObject=event.streams[0];remoteScreen.style.display="block";remoteScreen.play().catch(()=>{})}return}
     if (!audioElement) {
       audioElement = document.createElement("audio");
       audioElement.autoplay = true;
@@ -126,7 +133,8 @@ function attachAudio(peer) {
       audioElement.style.display = "none";
       document.body.append(audioElement);
     }
-    audioElement.srcObject = event.streams[0];\n    if(remoteScreen)remoteScreen.style.display="none";
+    audioElement.srcObject = event.streams[0];
+    if(remoteScreen)remoteScreen.style.display="none";
     audioElement.play().catch(() => {
       $("call-status").textContent = "Разрешите воспроизведение звука в браузере.";
     });
