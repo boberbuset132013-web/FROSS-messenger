@@ -393,6 +393,7 @@ function head() {
   const c=cur==="general"?{id:"general",type:"general"}:chats.find(x=>x.id===cur);
   if(!c)return;
   const i=chatInfo(c);avatar($("hav"),i.avatar,isOnline(i.avatar));$("ht").textContent=i.title;$("hs").textContent=i.sub;
+  if ($("call")) $("call").style.display = c.type==="dm" ? "block" : "none";
 }
 function openChat(id) {
   cur=id;
@@ -671,3 +672,5 @@ onAuthStateChanged(auth,async user=>{
     showLogin();
   }
 });
+
+import("./voice-calls.js").catch(error => console.error("Voice calls failed to load:", error));
