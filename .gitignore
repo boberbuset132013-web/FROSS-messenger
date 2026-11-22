@@ -4,3 +4,10 @@ node_modules/
 .env
 .env.*
 !.env.example
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+migration/node_modules/
+migration/d1-backup.sql
+migration/service-account*.json
+**/*service-account*.json
