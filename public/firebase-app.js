@@ -386,6 +386,7 @@ function isOnline(u) {
 }
 function chatInfo(c) {
   if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
+  if(c.type==="system")return{title:c.title||"FROSS Security",avatar:{title:"F",profileColor:"#9181ff"},sub:"Системный бот безопасности"};
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
     if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
@@ -447,8 +448,12 @@ function head() {
 }
 function openChat(id) {
   cur=id;
+  const selectedChat=chats.find(c=>c.id===id);
+  const systemChat=selectedChat?.type==="system";
+  $("inp").disabled=!!systemChat;$("send").disabled=!!systemChat;$("attach").disabled=!!systemChat;
+  $("inp").placeholder=systemChat?"Системный чат — только уведомления":"Сообщение…";
   document.body.classList.add("ch");renderList();head();subscribeMessages();
-  const chat=chats.find(c=>c.id===id);if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
+  const chat=selectedChat;if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
 }
 const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
 function openMessageMenu(message,mine,x,y) {
@@ -515,6 +520,7 @@ function subscribeMessages() {
         const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
+      if(m.securityRequestId){const tag=document.createElement("small");tag.textContent="FROSS SECURITY · "+({pending:"ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ",approved:"ПОДТВЕРЖДЕНО",denied:"ОТКЛОНЕНО",expired:"ИСТЕКЛО"}[m.securityRequestStatus]||"ЗАПРОС");tag.style.cssText="display:block;font-size:10px;letter-spacing:.06em;font-weight:700;opacity:.8;margin-bottom:5px";b.append(tag)}
       if(m.text){const body=document.createElement("div");body.textContent=m.text;b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
       r.append(b);box.append(r);
@@ -575,6 +581,7 @@ async function boot(user) {
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
 async function send() {
+  if(chats.find(c=>c.id===cur)?.type==="system")return;
   const input=$("inp"),text=input.value.trim();if(!text)return;input.value="";input.style.height="";
   try{
     const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
