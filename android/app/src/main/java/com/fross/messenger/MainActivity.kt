@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
         if (signedIn != null && !renewingSession) {
             CoroutineScope(Dispatchers.Main).launch {
                 try {
-                    val claims = signedIn.getIdTokenResult(false).await().claims
+                    val claims = signedIn.getIdToken(false).await().claims
                     if (claims["frossDeviceId"] != deviceId && !renewingSession) {
                         renewingSession = true
                         try { establishExistingDevice() } finally { renewingSession = false }
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
             auth.addIdTokenListener(idTokenListener)
             CoroutineScope(Dispatchers.Main).launch {
                 try {
-                    val claims = signedIn.getIdTokenResult(true).await().claims
+                    val claims = signedIn.getIdToken(true).await().claims
                     if (claims["frossDeviceId"] == deviceId) openSignedIn() else establishExistingDevice()
                 } catch (error: Exception) {
                     showLogin(error.message ?: "Войдите в аккаунт FROSS.")
@@ -191,7 +191,7 @@ class MainActivity : ComponentActivity() {
                 CoroutineScope(Dispatchers.Main).launch {
                     try {
                         val result = auth.signInWithEmailAndPassword(email, pass).await()
-                        val token = result.user?.getIdTokenResult(true)?.await()
+                        val token = result.user?.getIdToken(true)?.await()
                         if (result.user?.providerData?.any { it.providerId == "password" } == true &&
                             result.user?.isEmailVerified != true && token?.claims?.get("legacyAccount") != true) {
                             auth.signOut()
