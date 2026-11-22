@@ -37,6 +37,16 @@ window.FROSS = {get authUser(){return currentUser},get profile(){return me},get 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
 }
+async function completeTotpSignIn(error) {
+  const sdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
+  const resolver=sdk.getMultiFactorResolver(auth,error);
+  const hint=resolver.hints.find(item=>item.factorId===sdk.TotpMultiFactorGenerator.FACTOR_ID);
+  if(!hint)throw new Error("Для этого аккаунта требуется другой способ второго фактора.");
+  const code=prompt("Введите шестизначный код из Google Authenticator:");
+  if(!code)throw new Error("Вход отменён.");
+  const assertion=sdk.TotpMultiFactorGenerator.assertionForSignIn(hint.uid,code.trim());
+  return await resolver.resolveSignIn(assertion);
+}
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none";
   $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
@@ -49,7 +59,7 @@ function showLogin() {
     const email=identifier.includes("@")?identifier:authEmail(identifier);
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
     if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
-  }catch(e){$("le").textContent=authError(e)}};
+  }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
