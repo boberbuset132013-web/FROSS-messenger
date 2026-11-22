@@ -8,10 +8,10 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
   query, where, orderBy, limit, limitToLast, startAt, endAt, getDocs,
-  onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayRemove
+  onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayRemove, arrayUnion
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 import {
-  getStorage, ref, uploadString, getDownloadURL, deleteObject
+  getStorage, ref, uploadString, uploadBytes, getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-storage.js";
 
 const firebaseConfig = {
@@ -434,6 +434,43 @@ function openChat(id) {
   cur=id;
   document.body.classList.add("ch");renderList();head();subscribeMessages();
 }
+const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀"];
+function openMessageMenu(message,mine,x,y) {
+  document.getElementById("message-menu")?.remove();
+  const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
+  const actions=[["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
+  if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
+  actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
+  if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
+  for(const item of actions){const b=document.createElement("button");b.textContent=item[0];b.onclick=item[1];menu.append(b)}
+  document.body.append(menu);menu.style.left=Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))+"px";menu.style.top=Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))+"px";
+  const close=e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener("pointerdown",close)}};
+  setTimeout(()=>document.addEventListener("pointerdown",close),0);
+}
+function showReactionPicker(message,menu) {
+  menu.replaceChildren();
+  MESSAGE_EMOJIS.forEach(emoji=>{const b=document.createElement("button");b.className="reaction-choice";b.textContent=emoji;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()});menu.remove()}catch(e){alert(authError(e))}};menu.append(b)});
+  const remove=document.createElement("button");remove.textContent="Убрать реакцию";remove.onclick=async()=>{try{await deleteDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));menu.remove()}catch(e){alert(authError(e))}};menu.append(remove);
+}
+async function editMessage(message) {
+  const value=prompt("Изменить сообщение:",message.text||"");if(value===null)return;
+  const text=value.trim();if(!text||text.length>4000)return alert("Сообщение должно содержать от 1 до 4000 символов.");
+  try{await updateDoc(doc(db,"chats",cur,"messages",message.id),{text,editedAt:serverTimestamp()})}catch(e){alert(authError(e))}
+}
+async function hideMessageForMe(message) {
+  try{await updateDoc(doc(db,"chats",cur,"messages",message.id),{hiddenFor:arrayUnion(me.uid)})}catch(e){alert(authError(e))}
+}
+async function deleteMessageForAll(message) {
+  if(!confirm("Удалить это сообщение у всех участников?"))return;
+  try{await deleteDoc(doc(db,"chats",cur,"messages",message.id))}catch(e){alert(authError(e))}
+}
+async function renderMessageReactions(messageId,host) {
+  try{
+    const snap=await getDocs(collection(db,"chats",cur,"messages",messageId,"reactions"));if(!host.isConnected)return;
+    const groups=new Map();snap.docs.forEach(d=>{const emoji=d.data().emoji;if(emoji)groups.set(emoji,(groups.get(emoji)||0)+1)});
+    if(groups.size){const bar=document.createElement("div");bar.className="reaction-bar";for(const [emoji,count] of groups){const b=document.createElement("button");b.textContent=emoji+" "+count;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",messageId,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()})}catch(e){alert(authError(e))}};bar.append(b)}host.append(bar)}
+  }catch(e){console.warn("Reaction load failed:",e)}
+}
 function subscribeMessages() {
   if(stopMessages)stopMessages();
   const box=$("msgs");box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
@@ -453,9 +490,20 @@ function subscribeMessages() {
       if(!mine&&previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
         const n=document.createElement("b");n.textContent=m.displayName||m.username||"Пользователь";b.append(n);
       }
-      b.append(document.createTextNode(m.text||""));
-      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24});b.append(t);
-      r.append(b);box.append(r);previous=m.senderUid;
+      if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
+      if(m.attachment){
+        const a=m.attachment;
+        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading="lazy";b.append(img)}
+        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=a.url;audio.className="message-audio";b.append(audio)}
+        const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
+      }
+      if(m.text){const body=document.createElement("div");body.textContent=m.text;b.append(body)}
+      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
+      r.append(b);box.append(r);
+      r.addEventListener("contextmenu",e=>{e.preventDefault();openMessageMenu(m,mine,e.clientX,e.clientY)});
+      let pressTimer;r.addEventListener("touchstart",e=>{pressTimer=setTimeout(()=>openMessageMenu(m,mine,e.touches[0]?.clientX||30,e.touches[0]?.clientY||80),550)},{passive:true});
+      ["touchend","touchmove","touchcancel"].forEach(ev=>r.addEventListener(ev,()=>clearTimeout(pressTimer),{passive:true}));
+      renderMessageReactions(m.id,b);previous=m.senderUid;
     });
     if(stick)box.scrollTop=box.scrollHeight;
   },e=>{box.textContent="Не удалось загрузить сообщения: "+e.message;});
@@ -519,6 +567,45 @@ async function send() {
   }catch(e){alert(authError(e));input.value=text}
 }
 $("send").onclick=send;
+const attachmentButton=$("attach"),attachmentInput=$("attachment-input");
+if(attachmentButton&&attachmentInput){
+  attachmentButton.onclick=()=>attachmentInput.click();
+  attachmentInput.onchange=async()=>{
+    const file=attachmentInput.files?.[0];attachmentInput.value="";if(!file)return;
+    if(file.size>20*1024*1024){alert("Максимальный размер файла — 20 МБ.");return}
+    try{
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)||"file";
+      const path="chatFiles/"+cur+"/"+me.uid+"/"+Date.now()+"_"+safeName;
+      const target=ref(storage,path);await uploadBytes(target,file,{contentType:file.type||"application/octet-stream"});
+      const url=await getDownloadURL(target),batch=writeBatch(db),messageRef=doc(collection(db,"chats",cur,"messages"));
+      const attachment={name:file.name.slice(0,180),type:file.type||"application/octet-stream",size:file.size,url,path};
+      const summary=(file.type.startsWith("image/")?"📷 ":"🎵 ")+file.name;
+      batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,text:"",attachment,createdAt:serverTimestamp()});
+      batch.update(doc(db,"chats",cur),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      await batch.commit();
+    }catch(e){alert("Не удалось отправить файл: "+authError(e))}
+  };
+}
+$("chat-settings").onclick=openChatSettings;
+async function openChatSettings(){
+  const chat=cur==="general"?{id:"general",type:"general"}:chats.find(c=>c.id===cur);if(!chat)return;
+  openM('<h3>Настройки чата</h3><p class="mut">'+esc(chat.title||chatInfo(chat).title)+'</p><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  $("clear-chat").onclick=async()=>{
+    try{
+      const snap=await getDocs(query(collection(db,"chats",cur,"messages"),limit(450)));
+      let batch=writeBatch(db),count=0;const batches=[];
+      for(const d of snap.docs){batch.update(d.ref,{hiddenFor:arrayUnion(me.uid)});count++;if(count===450){batches.push(batch);batch=writeBatch(db);count=0}}
+      if(count)batches.push(batch);for(const b of batches)await b.commit();
+      $("chat-settings-error").style.color="#3ddc84";$("chat-settings-error").textContent="Переписка очищена у вас.";
+    }catch(e){$("chat-settings-error").textContent=authError(e)}
+  };
+  $("delete-chat").onclick=async()=>{
+    if(cur==="general"){$("chat-settings-error").textContent="Общий чат нельзя удалить из списка.";return}
+    if(!confirm("Удалить чат из вашего списка? История останется у других участников."))return;
+    try{await updateDoc(doc(db,"chats",cur),{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});closeM();cur="general";openChat("general")}
+    catch(e){$("chat-settings-error").textContent=authError(e)}
+  };
+}
 $("inp").onkeydown=e=>{if(e.key==="Enter"&&(S.enter?!e.shiftKey:e.ctrlKey)){e.preventDefault();send()}};
 $("inp").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"};
 $("back").onclick=()=>document.body.classList.remove("ch");
@@ -702,9 +789,9 @@ $("gb").onclick=()=>{
           });
         });
       } else {
-        await updateDoc(publicRef,{displayName:P.displayName||username,bio:P.bio||"",avatarUrl});
+        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl},{merge:true});
       }
-      await updateDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()});
+      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});
       S=o;applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
