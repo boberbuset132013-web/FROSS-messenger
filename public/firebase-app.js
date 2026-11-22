@@ -665,7 +665,7 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||""};
+  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",avatarReady:Promise.resolve()};
   openM('<h3 style="margin:0">Настройки</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Оформление</button><button data-i="2">Чат</button><button data-i="3">Аккаунт</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
   const show=async i=>{
@@ -675,7 +675,7 @@ $("gb").onclick=()=>{
       c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Уникальный username — меняется и должен быть свободен</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">По username вас находят и открывают чат.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
       $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
-      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>e.target.files[0]&&pickImg(e.target.files[0],d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d})});
+      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>{const file=e.target.files?.[0];if(file)P.avatarReady=new Promise(resolve=>pickImg(file,d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d});resolve()}))};
       $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
     }
     if(i===1){
@@ -802,7 +802,7 @@ $("gb").onclick=()=>{
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
     try{
-      const username = P.username.trim().toLowerCase();
+      await P.avatarReady;\n      const username = P.username.trim().toLowerCase();
       if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
       const avatarUrl = await uploadAvatar(me.uid,P.avatarUrl);
       const publicRef = doc(db,"publicUsers",me.uid);
@@ -824,7 +824,7 @@ $("gb").onclick=()=>{
       } else {
         await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl},{merge:true});
       }
-      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
+      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o},{merge:true});
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});
       S=o;applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
