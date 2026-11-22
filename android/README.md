@@ -62,6 +62,6 @@ Cloud Functions in `functions/phone-security.js`:
 - `setBrowserApprovalGate` (administrator-only rollout switch)
 - `initializeSecurityGateForNewUser` (marks newly created accounts when the gate is enabled)
 
-Before deploying Functions, copy `functions/.env.example` to `functions/.env.fross-ca5d6` and set `FROSS_BROWSER_OTP_SECRET` to a unique random secret generated with `openssl rand -hex 32`. This secret is required to hash the six-digit codes; never commit the copied environment file.
+Before deploying Functions, store the browser-code HMAC key in Firebase Secret Manager: run `firebase functions:secrets:set FROSS_BROWSER_OTP_SECRET` and enter a unique value generated with `openssl rand -hex 32`. Do not put this key in the repository or in a committed `.env` file.
 
 All HTTP endpoints require a Firebase ID token. The expiry job and new-user initializer are server-triggered. PNV JWTs are verified server-side against Google's published JWKS, issuer and audience, and each PNV token can be consumed only once. Browser codes are HMAC-hashed, expire after five minutes, and allow at most five attempts. Test PNV tokens are rejected unless an explicit test-only environment flag is set.
