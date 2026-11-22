@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebas
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential,
-  EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup,
+  EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
   sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
@@ -105,6 +105,21 @@ function askGoogleProfile(user) {
   });
 }
 
+async function linkGoogleToExistingAccount(error) {
+  const googleCredential = GoogleAuthProvider.credentialFromError(error);
+  if (!googleCredential) throw error;
+  const credentials = await new Promise(resolve => {
+    openM('<h3 style="margin:0">Аккаунт уже существует</h3><p class="mut">Для этого Google email уже есть аккаунт FROSS. Войдите в него по паролю, чтобы безопасно привязать Google.</p><label>Email существующего аккаунта</label><input id="linkEmail" type="email" autocomplete="username"><label>Пароль FROSS</label><input id="linkPassword" type="password" autocomplete="current-password"><div class="err" id="linkError"></div><div class="row"><button id="linkCancel">Отмена</button><button class="pr" id="linkContinue">Войти и связать</button></div>');
+    $("linkCancel").onclick=()=>{closeM();resolve(null)};
+    $("linkContinue").onclick=()=>resolve({email:$("linkEmail").value.trim(),password:$("linkPassword").value});
+  });
+  if (!credentials) return null;
+  if (!credentials.email || !credentials.password) throw new Error("Введите email и пароль существующего аккаунта.");
+  const signed = await signInWithEmailAndPassword(auth,credentials.email,credentials.password);
+  const linked = await linkWithCredential(signed.user,googleCredential);
+  return linked.user;
+}
+
 async function googleLogin(){
   try{
     creatingAccount = true;
@@ -138,9 +153,21 @@ async function googleLogin(){
     creatingAccount = false;
     await boot(user);
   }catch(e){
+    if (e?.code === "auth/account-exists-with-different-credential") {
+      try {
+        const linkedUser = await linkGoogleToExistingAccount(e);
+        if (linkedUser) {
+          creatingAccount = false;
+          await boot(linkedUser);
+          return;
+        }
+      } catch (linkError) {
+        if ($("le")) $("le").textContent = authError(linkError);
+      }
+    }
     creatingAccount = false;
     const message = e?.message === "username-taken"
-      ? "Это имя пользователя уже занято. Войдите через Google ещё раз и выберите другое."
+      ? "Это имя пользователя уже занято. Выберите другое."
       : authError(e);
     await signOut(auth).catch(()=>{});
     if ($("le")) $("le").textContent = message;
