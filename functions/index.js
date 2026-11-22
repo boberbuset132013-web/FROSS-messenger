@@ -132,7 +132,7 @@ export const requestAccountDeletion = onRequest(async (req, res) => {
         senderUid:uid,username:"deleted",displayName:"Аккаунт удалён",text,
         accountDeletedNotice:true,createdAt:FieldValue.serverTimestamp()
       });
-      const update={lastMessage:text,lastMessageAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()};
+      const update={lastMessage:text,lastMessageAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),memberProfiles:(chat.memberProfiles||[]).map(member=>member.uid===uid?{...member,deleted:true,displayName:"Аккаунт удалён",username:"deleted",avatarUrl:"",profileColor:profile.profileColor||"#777777"}:member)};
       if(isDm){update.deletionScheduledAt=now;update.deleteAfter=deleteAfter;update.deletionNotice="Этот чат будет удалён через 24 часа."}
       batch.update(chatDoc.ref,update);
     }
