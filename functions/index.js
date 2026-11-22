@@ -38,7 +38,7 @@ export const testDeleteAllAccounts = onRequest(async (req, res) => {
     }
 
     const firestore = getFirestore();
-    const bucket = getStorage().bucket();
+    const bucket = getStorage().bucket("fross-ca5d6.firebasestorage.app");
     const collections = ["users", "publicUsers", "usernameIndex", "chats", "calls"];
     for (const name of collections) {
       await firestore.recursiveDelete(firestore.collection(name));
