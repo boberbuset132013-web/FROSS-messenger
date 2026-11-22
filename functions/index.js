@@ -105,6 +105,7 @@ export const requestAccountDeletion = onRequest(async (req, res) => {
     const match=(req.get("Authorization")||"").match(/^Bearer\\s+(.+)$/i);
     if(!match)return res.status(401).json({error:"Firebase ID token is required."});
     const decoded=await getAuth().verifyIdToken(match[1],true);
+    if(!decoded.auth_time||Date.now()/1000-decoded.auth_time>300)return res.status(401).json({error:"Please sign in again before deleting your account."});
     const uid=decoded.uid,auth=getAuth(),firestore=getFirestore();
     const user=await auth.getUser(uid);
     const profileRef=firestore.doc("publicUsers/"+uid);
