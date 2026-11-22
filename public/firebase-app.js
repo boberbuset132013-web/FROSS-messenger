@@ -259,7 +259,7 @@ async function googleLogin(){
         tx.set(doc(db,"users",user.uid),{
           contactEmail:user.email||"",settings:{...DEF},
           createdAt:serverTimestamp(),authProvider:"google"
-        });
+        },{merge:true});
       });
     }
     creatingAccount = false;
@@ -456,7 +456,7 @@ function wiz(n) {
         });
         tx.set(doc(db,"users",uid),{
           contactEmail:W.email,settings:W.settings,createdAt:serverTimestamp(),authProvider:"password"
-        });
+        },{merge:true});
       });
       creatingAccount=false;
       await signOut(auth);
