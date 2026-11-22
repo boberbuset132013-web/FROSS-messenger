@@ -777,28 +777,20 @@ $("gb").onclick=()=>{
         };
       }
       $("dl").onclick=()=>{
-        const hasGoogle = currentUser.providerData.some(provider=>provider.providerId==="google.com");
-        const hasPassword = currentUser.providerData.some(provider=>provider.providerId==="password");
-        const reauthLabel = hasGoogle
-          ? "Подтвердите удаление через окно Google. Ваш профиль будет удалён, история сообщений останется у собеседников."
-          : "Введите пароль для удаления аккаунта. Ваш профиль будет удалён, история сообщений останется у собеседников.";
-        $("db").innerHTML='<label>'+reauthLabel+'</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Удалить аккаунт</button>';
+        const hasGoogle=currentUser.providerData.some(provider=>provider.providerId==="google.com");
+        const hasPassword=currentUser.providerData.some(provider=>provider.providerId==="password");
+        $("db").innerHTML='<label>Удаление аккаунта необратимо. Профиль станет помечен как удалённый. Личные чаты будут автоматически удалены через 24 часа, а в группах останется уведомление.</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password" placeholder="Пароль для подтверждения">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Подтвердить удаление аккаунта</button>';
         $("dk").onclick=async()=>{
           try{
-            if(hasGoogle) {
-              await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
-            } else if(hasPassword) {
-              await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
-            } else {
-              throw new Error("Для удаления аккаунта сначала войдите повторно через привязанный способ входа.");
-            }
-            const chatsSnap=await getDocs(query(collection(db,"chats"),where("memberUids","array-contains",me.uid)));
-            for(const c of chatsSnap.docs)await updateDoc(c.ref,{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});
-            await deleteDoc(doc(db,"usernameIndex",me.usernameLower||me.username.toLowerCase()));
-            await deleteDoc(doc(db,"publicUsers",me.uid));
-            await deleteDoc(doc(db,"users",me.uid));
-            if(me.avatarUrl)try{await deleteObject(ref(storage,"avatars/"+me.uid+"/avatar.jpg"))}catch{}
-            await deleteUser(currentUser);
+            if(!confirm("Удалить аккаунт? Личные чаты будут удалены через 24 часа. Это действие нельзя отменить."))return;
+            if(hasGoogle)await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
+            else if(hasPassword)await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
+            else throw new Error("Для удаления аккаунта войдите повторно через привязанный способ входа.");
+            const token=await currentUser.getIdToken(true);
+            const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/requestAccountDeletion",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:"{}"});
+            const result=await response.json().catch(()=>({}));
+            if(!response.ok)throw new Error(result.error||("HTTP "+response.status));
+            await signOut(auth);alert("Аккаунт помечен как удалённый. Личные чаты будут удалены в течение 24 часов.");
           }catch(e){$("de").textContent=authError(e)}
         };
       };
