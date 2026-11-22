@@ -47,7 +47,7 @@ function showLogin() {
     if(!identifier)throw Error("Введите email или имя пользователя.");
     const email=identifier.includes("@")?identifier:authEmail(identifier);
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
-    if(!result.user.emailVerified&&!result.user.email.endsWith("@fross-ca5d6.firebaseapp.com")){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}
+    if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
   }catch(e){$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
@@ -485,8 +485,8 @@ $("gb").onclick=()=>{
 };
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
-onAuthStateChanged(auth,user=>{
-  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified&&!user.email.endsWith("@fross-ca5d6.firebaseapp.com")){signOut(auth);return}bootFromAuth(user)}}
+onAuthStateChanged(auth,async user=>{
+  if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
     if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
