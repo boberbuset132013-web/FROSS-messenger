@@ -680,7 +680,7 @@ $("gb").onclick=()=>{
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -690,6 +690,29 @@ $("gb").onclick=()=>{
         }catch(e){$("pe").textContent=authError(e)}
       };
       $("lo").onclick=logout;
+      const authSdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
+      const factors=authSdk.multiFactor(currentUser).enrolledFactors;
+      if(factors.length){$("totp-status").textContent="Подключено: "+factors.map(f=>f.displayName||"Authenticator").join(", ");$("totp-start").textContent="Добавить Authenticator"}
+      $("totp-start").onclick=async()=>{
+        const status=$("totp-status"),box=$("totp-box");
+        try{
+          const qrmod=await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");
+          const session=await authSdk.multiFactor(currentUser).getSession();
+          const secret=await authSdk.TotpMultiFactorGenerator.generateSecret(session);
+          const uri=secret.generateQrCodeUrl(currentUser.email||currentUser.uid,"FROSS Messenger");
+          const qr=await qrmod.toDataURL(uri,{width:220,margin:2});
+          box.innerHTML='<p>Отсканируйте QR-код в Google Authenticator, затем введите текущий код.</p><img id="totp-qr" alt="QR-код настройки" style="display:block;width:220px;max-width:100%;margin:12px auto;border-radius:12px"><label>Секретный ключ (если QR недоступен)</label><code id="totp-secret" style="overflow-wrap:anywhere"></code><label>Шестизначный код</label><input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><div class="err" id="totp-error"></div><button class="pr" id="totp-confirm" style="width:100%">Подтвердить и включить</button>';
+          $("totp-qr").src=qr;$("totp-secret").textContent=secret.secretKey;
+          $("totp-confirm").onclick=async()=>{
+            try{
+              const assertion=authSdk.TotpMultiFactorGenerator.assertionForEnrollment(secret,$("totp-code").value.trim());
+              await authSdk.multiFactor(currentUser).enroll(assertion,"FROSS Authenticator");
+              $("totp-error").style.color="#3ddc84";$("totp-error").textContent="Google Authenticator успешно подключён.";
+              $("totp-confirm").disabled=true;
+            }catch(e){$("totp-error").textContent=authError(e)}
+          };
+        }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
+      };
       let phoneConfirmation = null, phoneVerifier = null;
       $("phoneSend").onclick = async () => {
         try {
