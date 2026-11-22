@@ -28,7 +28,7 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true};
+const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
@@ -224,7 +224,8 @@ function applyS(s) {
   r.style.setProperty("--fs",s.fs+"px");
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
-  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,system-ui,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":"Inter,system-ui,sans-serif");
+  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
+  r.style.setProperty("--custom-bg",s.bgColor||"#0f1015");r.style.setProperty("--custom-panel",s.panelColor||"#16181f");r.style.setProperty("--custom-text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
 }
 function hue(s) {
@@ -234,7 +235,7 @@ function hue(s) {
 function avatar(el,o,on) {
   const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
   el.classList.toggle("on",!!on);
-  el.style.background=o?.avatarUrl||o?.avatar ? "":hue(name);
+  el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
   el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
   el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
 }
@@ -261,19 +262,19 @@ async function uploadAvatar(uid,dataUrl) {
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
-  return '<label>Тема</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select><label>Цвет акцента</label>'+swatches(pre+"ac",o.accent)+'<label>Свой цвет</label><input id="'+pre+'custom" type="color" value="'+o.accent+'" style="height:42px;padding:4px"><label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="20" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="sq">Прямоугольные</option></select><label>Шрифт интерфейса</label><select id="'+pre+'font"><option value="system">Системный</option><option value="rounded">Мягкий</option><option value="mono">Моноширинный</option></select>';
+  const color=(key,label)=>'<label>'+label+'</label><input type="color" id="'+pre+key+'" value="'+(o[key]||"#9181ff")+'" style="height:42px;padding:4px">';
+  return '<label>Тема приложения</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select>'+
+  '<label>Акцентный цвет</label>'+swatches(pre+"ac",o.accent)+color("custom","Свой акцент")+color("bgColor","Фон приложения")+color("panelColor","Панели и меню")+color("textColor","Основной текст")+color("incomingColor","Входящие сообщения")+color("outgoingColor","Мои сообщения")+color("profileColor","Публичный цвет профиля")+
+  '<label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="22" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="pill">Овальные</option><option value="square">Квадратные</option></select>'+
+  '<label>Шрифт</label><select id="'+pre+'font"><option value="system">Современный системный</option><option value="rounded">Мягкий округлый</option><option value="humanist">Чёткий гуманистический</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select>'+
+  '<label>Плотность</label><select id="'+pre+'density"><option value="comfortable">Просторная</option><option value="normal">Обычная</option><option value="compact">Компактная</option></select><label>Фон переписки</label><select id="'+pre+'wall"><option value="none">Чистый</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
 }
 function bindLook(o,pre) {
-  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";
-  $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};
-  $(pre+"custom").oninput=e=>{o.accent=e.target.value;[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===o.accent));applyS(o)};
-  $(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};
-  $(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};
-  $(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
-  $(pre+"ac").onclick=e=>{
-    const color=e.target.dataset.c;if(!color)return;o.accent=color;
-    [...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===color));applyS(o);
-  };
+  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";$(pre+"density").value=o.density||"normal";$(pre+"wall").value=o.wall||"none";
+  ["bgColor","panelColor","textColor","incomingColor","outgoingColor","profileColor"].forEach(k=>{$(pre+k).value=o[k]||DEF[k];$(pre+k).oninput=e=>{o[k]=e.target.value;applyS(o)}});
+  $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};$(pre+"density").onchange=e=>{o.density=e.target.value;applyS(o)};$(pre+"wall").onchange=e=>{o.wall=e.target.value;applyS(o)};
+  $(pre+"custom").oninput=e=>{o.accent=e.target.value;applyS(o)};$(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};$(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};$(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
+  $(pre+"ac").onclick=e=>{const color=e.target.dataset.c;if(!color)return;o.accent=color;applyS(o);[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===color))};
 }
 
 /* Four-step registration wizard */
@@ -666,8 +667,10 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const backup=JSON.parse(JSON.stringify(S)),o={...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",avatarReady:Promise.resolve()};
-  openM('<h3 style="margin:0">Настройки</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Оформление</button><button data-i="2">Чат</button><button data-i="3">Аккаунт</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  const profileMode=window.FROSS_PROFILE_MODE===true;window.FROSS_PROFILE_MODE=false;
+  const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarReady:Promise.resolve()};
+  openM('<h3 style="margin:0">' +(profileMode?"Профиль":"Настройки") + '</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Кастомизация</button><button data-i="2">Общие</button><button data-i="3">Безопасность</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  document.querySelectorAll("#md .tabs button").forEach((b,i)=>b.style.display=(profileMode?(i<2):(i>=2))?"":"none");
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
   const show=async i=>{
     document.querySelectorAll("#md .tabs button").forEach((b,j)=>b.classList.toggle("a",i===j));
@@ -680,13 +683,10 @@ $("gb").onclick=()=>{
       $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
     }
     if(i===1){
-      c.innerHTML=look(o,"s")+'<label>Фон чата</label><select id="sw"><option value="none">Без фона</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
-      bindLook(o,"s");$("sw").value=o.wall;$("sw").onchange=e=>{o.wall=e.target.value;applyS(o)};
+      c.innerHTML=look(o,"s");bindLook(o,"s");
     }
     if(i===2){
-      c.innerHTML=toggle("avatars","Аватары в сообщениях")+toggle("h24","24-часовое время")+toggle("enter","Enter — отправить","Выключено: Ctrl+Enter, Enter — новая строка")+'<label>Плотность сообщений</label><select id="sd"><option value="normal">Обычная</option><option value="compact">Компактная</option></select>';
-      $("sd").value=o.density;$("sd").onchange=e=>{o.density=e.target.value;applyS(o)};
-      c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+      c.innerHTML='<h4>Удобство</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<h4>Медиа</h4>'+toggle("autoDownload","Автоматически загружать вложения")+'<p class="mut">Настройки синхронизируются между устройствами.</p>';c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
@@ -804,7 +804,7 @@ $("gb").onclick=()=>{
       };
     }
   };
-  document.querySelectorAll("#md .tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(0);
+  document.querySelectorAll("#md .tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(profileMode?0:2);
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
     try{
@@ -825,14 +825,14 @@ $("gb").onclick=()=>{
           tx.set(newIndex,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
           tx.update(publicRef,{
             username,usernameLower:username,
-            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,lastSeenAt:serverTimestamp()
+            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,lastSeenAt:serverTimestamp()
           });
         });
       } else {
-        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl},{merge:true});
+        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor},{merge:true});
       }
       await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o},{merge:true});
-      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,contactEmail:P.contactEmail||""});
+      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
       S=o;applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e))}
