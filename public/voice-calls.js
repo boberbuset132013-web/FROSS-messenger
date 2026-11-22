@@ -89,7 +89,8 @@ function showCall(title, status, avatarText, actions) {
     const button = document.createElement("button");
     button.textContent = action.label;
     button.className = action.danger ? "dg" : action.primary ? "pr" : "";
-    if(action.label.includes("микрофон"))button.dataset.action="mute";\n    if(action.label.includes("звук"))button.dataset.action="output";
+    if(action.label.includes("микрофон"))button.dataset.action="mute";
+    if(action.label.includes("звук"))button.dataset.action="output";
     button.onclick = action.onClick;
     $("call-actions").append(button);
   }
