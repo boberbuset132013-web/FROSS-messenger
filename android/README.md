@@ -58,5 +58,8 @@ Cloud Functions in `functions/phone-security.js`:
 - `refreshBrowserLoginSession`
 - `approveBrowserLogin`
 - `rejectBrowserLogin`
+- `expireBrowserLoginRequests` (scheduled cleanup)
+- `setBrowserApprovalGate` (administrator-only rollout switch)
+- `initializeSecurityGateForNewUser` (marks newly created accounts when the gate is enabled)
 
 All endpoints require a Firebase ID token. PNV JWTs are verified server-side against Google's published JWKS, issuer and audience. Test tokens are rejected unless an explicit test-only environment flag is set.
