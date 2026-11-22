@@ -548,6 +548,9 @@ export const setBrowserApprovalGate = onRequest({ timeoutSeconds: 540, memory: "
     const user = await requireFirebaseUser(req);
     if (user.frossAdmin !== true) return sendError(res, 403, "Только администратор FROSS может менять этот режим.");
     const enabled = req.body?.enabled === true;
+    if (enabled && (process.env.FROSS_BROWSER_OTP_SECRET || "").length < 32) {
+      return sendError(res, 503, "Сначала настройте FROSS_BROWSER_OTP_SECRET на сервере.");
+    }
     let pageToken;
     const accountUids = [];
     let readyUsers = 0;
