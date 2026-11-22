@@ -582,7 +582,7 @@ if(attachmentButton&&attachmentInput){
   attachmentButton.onclick=()=>attachmentInput.click();
   attachmentInput.onchange=async()=>{
     const file=attachmentInput.files?.[0];attachmentInput.value="";if(!file)return;
-    if(file.size>20*1024*1024){alert("Максимальный размер файла — 20 МБ.");return}
+    if(file.size>=20*1024*1024){alert("Максимальный размер файла — 20 МБ.");return}
     try{
       const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)||"file";
       const path="chatFiles/"+cur+"/"+me.uid+"/"+Date.now()+"_"+safeName;
