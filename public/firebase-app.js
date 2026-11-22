@@ -703,7 +703,12 @@ $("gb").onclick=()=>{
       $("lo").onclick=logout;
       const authSdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
       const factors=authSdk.multiFactor(currentUser).enrolledFactors;
-      if(factors.length){$("totp-status").textContent="Подключено: "+factors.map(f=>f.displayName||"Authenticator").join(", ");$("totp-start").textContent="Добавить Authenticator"}
+      if(factors.length){
+        $("totp-status").textContent="Подключено: "+factors.map(f=>f.displayName||"Authenticator").join(", ");
+        $("totp-start").textContent="Добавить Authenticator";
+        const disable=document.createElement("button");disable.textContent="Отключить Authenticator";disable.style.marginTop="8px";$("totp-box").append(disable);
+        disable.onclick=async()=>{try{await authSdk.multiFactor(currentUser).unenroll(factors[0]);$("totp-status").textContent="Authenticator отключён.";disable.remove()}catch(e){$("totp-status").textContent=authError(e)}};
+      }
       $("totp-start").onclick=async()=>{
         const status=$("totp-status"),box=$("totp-box");
         try{
