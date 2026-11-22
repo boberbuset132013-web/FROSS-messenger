@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --config ./wrangler.toml --assets ./public/",
     "d1:migrate:prod": "wrangler d1 migrations apply fross-messenger-db --remote"
   },
   "devDependencies": {
