@@ -4,7 +4,9 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { setGlobalOptions } from "firebase-functions/v2";
 
 initializeApp();
@@ -156,4 +158,142 @@ export const purgeDeletedChats = onSchedule("every 15 minutes", async () => {
     try{await firestore.recursiveDelete(chat.ref)}
     catch(error){console.error("Could not purge deleted chat "+chat.id,error)}
   }
+});
+
+
+// Textbee-backed phone verification. The API key is a Firebase Secret and is never
+// sent to the browser. OTPs are short-lived, HMAC-protected and rate-limited.
+const textbeeApiKey = defineSecret("TEXTBEE_API_KEY");
+const PHONE_OTP_TTL_MS = 5 * 60 * 1000;
+const PHONE_OTP_COOLDOWN_MS = 60 * 1000;
+const PHONE_OTP_MAX_PER_HOUR = 3;
+const PHONE_OTP_MAX_ATTEMPTS = 5;
+
+function phoneOtpDigest(secret, uid, phone, challengeId, code) {
+  return createHmac("sha256", secret)
+    .update([uid, phone, challengeId, code].join(":"))
+    .digest();
+}
+
+export const sendPhoneVerificationCode = onCall({ secrets: [textbeeApiKey] }, async request => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Войдите в аккаунт.");
+  const phone = String(request.data?.phone || "").trim();
+  if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) {
+    throw new HttpsError("invalid-argument", "Введите номер в международном формате, например +31612345678.");
+  }
+
+  const uid = request.auth.uid;
+  const apiKey = textbeeApiKey.value();
+  if (!apiKey) throw new HttpsError("failed-precondition", "SMS-шлюз ещё не настроен администратором.");
+  const db = getFirestore();
+  const now = Date.now();
+  const challengeId = randomInt(0, 0x7fffffff).toString(16) + "-" + randomInt(0, 0x7fffffff).toString(16);
+  const code = String(randomInt(0, 1000000)).padStart(6, "0");
+  const phoneKey = createHmac("sha256", apiKey).update(phone).digest("hex");
+  const challengeRef = db.doc("phoneOtpChallenges/" + uid);
+  const userRateRef = db.doc("phoneOtpUserLimits/" + uid);
+  const phoneRateRef = db.doc("phoneOtpRateLimits/" + phoneKey);
+
+  await db.runTransaction(async tx => {
+    const [challengeSnap, userRateSnap, phoneRateSnap] = await Promise.all([
+      tx.get(challengeRef), tx.get(userRateRef), tx.get(phoneRateRef)
+    ]);
+    const existing = challengeSnap.exists ? challengeSnap.data() : {};
+    if (existing.lastSentAt && now - existing.lastSentAt < PHONE_OTP_COOLDOWN_MS) {
+      throw new HttpsError("resource-exhausted", "Подождите минуту перед повторной отправкой кода.");
+    }
+    const cutoff = now - 60 * 60 * 1000;
+    const userTimes = (userRateSnap.exists ? userRateSnap.data().sentAt : []).filter(t => t > cutoff);
+    const phoneTimes = (phoneRateSnap.exists ? phoneRateSnap.data().sentAt : []).filter(t => t > cutoff);
+    if (userTimes.length >= PHONE_OTP_MAX_PER_HOUR || phoneTimes.length >= PHONE_OTP_MAX_PER_HOUR) {
+      throw new HttpsError("resource-exhausted", "Лимит отправки для этого аккаунта или номера исчерпан. Попробуйте через час.");
+    }
+    tx.set(challengeRef, {
+      phone, challengeId,
+      codeHash: phoneOtpDigest(apiKey, uid, phone, challengeId, code).toString("hex"),
+      createdAt: now, expiresAt: now + PHONE_OTP_TTL_MS,
+      lastSentAt: now, attempts: 0
+    });
+    tx.set(userRateRef, { sentAt: [...userTimes, now], updatedAt: now });
+    tx.set(phoneRateRef, { sentAt: [...phoneTimes, now], updatedAt: now });
+  });
+
+  try {
+    const response = await fetch("https://api.textbee.dev/api/v1/gateway/send-sms", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipients: [phone],
+        message: "FROSS Messenger: ваш код подтверждения " + code + ". Действует 5 минут. Никому не сообщайте этот код."
+      })
+    });
+    if (!response.ok) {
+      await challengeRef.delete().catch(() => {});
+      if (response.status === 429) {
+        throw new HttpsError("resource-exhausted", "Достигнут бесплатный лимит SMS Textbee. Попробуйте позже.");
+      }
+      console.error("Textbee send failed with HTTP", response.status);
+      throw new HttpsError("unavailable", "Не удалось отправить SMS. Проверьте, включён ли телефон-шлюз.");
+    }
+    return { ok: true, expiresInSeconds: 300, resendAfterSeconds: 60 };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    await challengeRef.delete().catch(() => {});
+    console.error("Textbee request failed:", error?.message || "unknown error");
+    throw new HttpsError("unavailable", "SMS-шлюз временно недоступен.");
+  }
+});
+
+export const verifyPhoneVerificationCode = onCall({ secrets: [textbeeApiKey] }, async request => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Войдите в аккаунт.");
+  const code = String(request.data?.code || "").trim();
+  if (!/^\\d{6}$/.test(code)) throw new HttpsError("invalid-argument", "Введите шестизначный код из SMS.");
+
+  const uid = request.auth.uid;
+  const apiKey = textbeeApiKey.value();
+  if (!apiKey) throw new HttpsError("failed-precondition", "SMS-шлюз ещё не настроен администратором.");
+  const db = getFirestore();
+  const challengeRef = db.doc("phoneOtpChallenges/" + uid);
+  const now = Date.now();
+
+  const result = await db.runTransaction(async tx => {
+    const snap = await tx.get(challengeRef);
+    if (!snap.exists) return { error: "Код не найден. Запросите новый SMS." };
+    const challenge = snap.data();
+    if (challenge.expiresAt <= now) {
+      tx.delete(challengeRef);
+      return { error: "Срок действия кода истёк. Запросите новый." };
+    }
+    if (challenge.attempts >= PHONE_OTP_MAX_ATTEMPTS) {
+      tx.delete(challengeRef);
+      return { error: "Слишком много неправильных попыток. Запросите новый код." };
+    }
+    const expected = Buffer.from(challenge.codeHash, "hex");
+    const actual = phoneOtpDigest(apiKey, uid, challenge.phone, challenge.challengeId, code);
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      const attempts = challenge.attempts + 1;
+      if (attempts >= PHONE_OTP_MAX_ATTEMPTS) tx.delete(challengeRef);
+      else tx.update(challengeRef, { attempts });
+      return { error: attempts >= PHONE_OTP_MAX_ATTEMPTS
+        ? "Слишком много неправильных попыток. Запросите новый код."
+        : "Неверный код. Осталось попыток: " + (PHONE_OTP_MAX_ATTEMPTS - attempts) + "." };
+    }
+    tx.delete(challengeRef);
+    return { phone: challenge.phone };
+  });
+
+  if (result.error) throw new HttpsError("permission-denied", result.error);
+  try {
+    await getAuth().updateUser(uid, { phoneNumber: result.phone });
+  } catch (error) {
+    if (error?.code === "auth/phone-number-already-exists") {
+      throw new HttpsError("already-exists", "Этот номер уже привязан к другому аккаунту FROSS.");
+    }
+    console.error("Firebase phone update failed:", error?.message || "unknown error");
+    throw new HttpsError("internal", "Код принят, но Firebase не смог привязать номер. Запросите новый код и повторите.");
+  }
+  await db.doc("users/" + uid).set({
+    phoneNumber: result.phone, phoneVerified: true, updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, phoneNumber: result.phone };
 });
