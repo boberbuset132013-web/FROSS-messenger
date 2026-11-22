@@ -7,7 +7,7 @@ service cloud.firestore {
     function verified() {
       return signedIn() && (
         request.auth.token.email_verified == true
-        || request.auth.token.email.matches('.*@fross-ca5d6[.]firebaseapp[.]com')
+        || request.auth.token.legacyAccount == true
       );
     }
     function own(uid) {
