@@ -5,7 +5,7 @@
 :root[data-theme=light]{color-scheme:light;--bg:#eef0f5;--panel:#fff;--p2:#f4f5f9;--line:#e1e4ec;--text:#1b1e27;--muted:#6c7285;--bubble:#e9ecf3}
 @media(prefers-color-scheme:light){:root[data-theme=auto]{color-scheme:light;--bg:#eef0f5;--panel:#fff;--p2:#f4f5f9;--line:#e1e4ec;--text:#1b1e27;--muted:#6c7285;--bubble:#e9ecf3}}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--text);font:var(--fs)/1.45 Inter,system-ui,sans-serif}
+body{background:var(--bg);color:var(--text);font:var(--fs)/1.45 var(--font,Inter,system-ui,sans-serif)}
 button,input,textarea,select{font:inherit;color:var(--text)}
 button{cursor:pointer;border:1px solid var(--line);border-radius:10px;background:var(--p2);padding:9px 14px}
 button:hover{filter:brightness(1.1)}
@@ -26,6 +26,14 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 .sum{background:var(--p2);border-radius:12px;padding:14px;display:flex;gap:14px;align-items:center}
 .meter{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin:-6px 0 10px}.meter b{display:block;height:100%;width:0;transition:.2s}
 #app{height:100%;display:none;grid-template-columns:320px 1fr}
+#call{margin-left:auto;display:none;color:var(--accent);font-size:19px}
+#call-layer{position:fixed;inset:0;background:#000b;display:none;place-items:center;padding:18px;z-index:30;backdrop-filter:blur(8px)}
+#call-layer.open{display:grid}
+.call-card{width:min(390px,100%);padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--panel);text-align:center;box-shadow:0 22px 70px #0007}
+.call-card .av{width:76px;height:76px;margin:0 auto 12px;font-size:30px}
+.call-actions{display:flex;gap:10px;margin-top:18px}
+.call-actions button{flex:1}
+.call-status{color:var(--muted);margin-top:8px;min-height:22px}
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .me{padding:12px 14px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line)}.me .t{flex:1;min-width:0}
 .t b,.t small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.t small{color:var(--muted);font-size:12px}
@@ -37,6 +45,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 .msgs{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:4px}
 .msgs[data-w=dots]{background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:18px 18px}
 .msgs[data-w=grad]{background-image:linear-gradient(160deg,color-mix(in srgb,var(--accent) 16%,var(--bg)),var(--bg))}
+.msgs[data-w=grid]{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:24px 24px}
 .mr{display:flex;gap:8px;align-items:flex-end;max-width:78%}.mr.me{align-self:flex-end;flex-direction:row-reverse}
 .mr .av{width:30px;height:30px;font-size:13px}.mr.nf{margin-left:38px}
 .msg{padding:var(--pad) calc(var(--pad) + 3px);background:var(--bubble);border-radius:var(--br);overflow-wrap:anywhere;white-space:pre-wrap}
@@ -82,8 +91,9 @@ button:active{transform:scale(.97)}button:focus-visible,input:focus-visible,text
 <div id="app">
 <aside class="side"><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="ic" id="nb" title="Новый чат">✏️</button><button class="ic" id="gb" title="Настройки">⚙️</button></div>
 <div class="sb"><input id="q" placeholder="🔍 Поиск чатов и людей"></div><div class="list" id="list"></div></aside>
-<main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div></div>
+<main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div><button class="ic" id="call" title="Голосовой звонок" aria-label="Голосовой звонок">📞</button></div>
 <div class="msgs" id="msgs"></div>
 <div class="comp"><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
+<div id="call-layer" aria-live="polite"><div class="call-card"><div class="av" id="call-avatar">☎</div><h3 id="call-title">Звонок</h3><div class="call-status" id="call-status"></div><div class="call-actions" id="call-actions"></div></div></div>
 <script type="module" src="/firebase-app.js"></script></body></html>
