@@ -62,7 +62,7 @@ service cloud.firestore {
         ]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "lastSeenAt"])
+          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"])
         && (
           (request.resource.data.username == resource.data.username
             && request.resource.data.usernameLower == resource.data.usernameLower)
