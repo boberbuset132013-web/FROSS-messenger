@@ -5,10 +5,4 @@ compatibility_date = "2026-11-22"
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/api/*"]
-
-[[d1_databases]]
-binding = "DB"
-database_name = "fross-messenger-db"
-database_id = "596ed828-09ff-4a30-b6df-97d33c12f262"
-migrations_dir = "migrations"
+run_worker_first = []
