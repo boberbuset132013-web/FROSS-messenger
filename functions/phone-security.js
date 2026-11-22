@@ -61,6 +61,16 @@ function validateDeviceId(value) {
   return typeof value === "string" && /^[a-f0-9-]{20,64}$/i.test(value);
 }
 
+function hasValidPnvHeader(token) {
+  try {
+    const encodedHeader = token.split(".")[0];
+    const header = JSON.parse(Buffer.from(encodedHeader, "base64url").toString("utf8"));
+    return header.typ === "JWT" && header.alg === "ES256";
+  } catch {
+    return false;
+  }
+}
+
 async function ensureSecurityBotMessage(uid, requestId, browserLabel, expiresAt) {
   const chatRef = db.doc(`chats/security_${uid}`);
   const now = Timestamp.now();
@@ -100,6 +110,10 @@ export const verifyPhoneWithPnv = onRequest(async (req, res) => {
       return sendError(res, 400, "Некорректный токен подтверждения номера.");
     }
     if (!validateDeviceId(deviceId)) return sendError(res, 400, "Некорректный идентификатор устройства.");
+
+    if (!hasValidPnvHeader(pnvToken)) {
+      return sendError(res, 403, "Неподдерживаемый формат PNV-токена.");
+    }
 
     let payload;
     try {
