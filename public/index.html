@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title><meta name="theme-color" content="#080611"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/fross-icon.webp" type="image/webp"><link rel="apple-touch-icon" href="/fross-icon.webp">
 <style>
 :root{color-scheme:dark;--bg:#0f1015;--panel:#16181f;--p2:#1d2029;--line:#282b37;--text:#f2f3f7;--muted:#9a9fb0;--accent:#9181ff;--bubble:#232632;--br:16px;--fs:15px;--pad:10px;--danger:#ff6b6b}
 :root[data-theme=light]{color-scheme:light;--bg:#eef0f5;--panel:#fff;--p2:#f4f5f9;--line:#e1e4ec;--text:#1b1e27;--muted:#6c7285;--bubble:#e9ecf3}
@@ -178,14 +178,34 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
 @media(prefers-reduced-motion:reduce){#avatar-crop-preview{scroll-behavior:auto}}
 #auth .card{max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:700px){#auth .card{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
+
+/* Supplied FROSS mascot art and consistent interface motion */
+.mascot-image{width:220px;height:154px;right:-2px;top:0;object-fit:cover;object-position:center;border:0;border-radius:0;transform:none;scale:1;filter:drop-shadow(0 0 18px #9b37ff66)}
+@media(max-width:700px){.brandbar{height:132px}.mascot-image{width:190px;height:132px;right:-3px;top:0}}
+#list .it{animation:fross-enter .32s both;transition:background .2s,border-color .2s,transform .2s}
+#list .it:active{transform:scale(.985)}
+.mr{animation:fross-pop .24s cubic-bezier(.2,.8,.2,1) both}
+.head,.comp,.me,.side-bottom,.sb{transition:background .25s,border-color .25s}
+.ov{opacity:0;visibility:hidden;transition:opacity .22s ease,visibility .22s ease}
+.ov.o{opacity:1;visibility:visible}
+.ov.o .md{animation:fross-enter .28s cubic-bezier(.2,.8,.2,1) both}
+.md{transition:transform .22s,opacity .22s}
+.tabs button{transition:color .2s,background .2s,box-shadow .2s}
+input,textarea,select{transition:border-color .2s,box-shadow .2s,background .2s}
+#fross-update-banner{position:fixed;z-index:120;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #b65cff66;border-radius:16px;background:#170d27f2;color:#fff;box-shadow:0 14px 44px #0009;backdrop-filter:blur(18px);opacity:0;transform:translateY(18px);pointer-events:none;transition:opacity .25s,transform .25s}
+#fross-update-banner.visible{opacity:1;transform:translateY(0);pointer-events:auto}
+#fross-update-banner span{font-size:13px;line-height:1.35}
+#fross-update-banner button{white-space:nowrap;font-size:12px;padding:9px 12px}
+@media(max-width:420px){#fross-update-banner{align-items:flex-start;flex-direction:column}#fross-update-banner button{width:100%}}
+@media(prefers-reduced-motion:reduce){#list .it,.mr,.ov,.ov.o .md,#fross-update-banner{animation:none!important;transition:none!important}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
-<aside class="side"><div class="brandbar"><div class="brandmark">FROSS <small>MESSENGER</small></div><div class="mascot" id="fross-mascot" aria-label="Персонаж FROSS"><div class="mascot-orbit orbit-a"></div><div class="mascot-orbit orbit-b"></div><div class="mascot-spark spark-a"></div><div class="mascot-spark spark-b"></div><div class="mascot-body"><div class="mascot-eye left"></div><div class="mascot-eye right"></div><div class="mascot-shine"></div></div><div class="mascot-shadow"></div></div></div><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="icon-btn" id="profile-settings" title="Профиль и кастомизация" aria-label="Профиль"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.7-4 3.2-6 7.5-6s6.8 2 7.5 6"/></svg></button><button class="icon-btn" id="gb" title="Настройки" aria-label="Настройки"><svg viewBox="0 0 24 24"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg></button></div>
+<aside class="side"><div class="brandbar"><div class="brandmark">FROSS <small>MESSENGER</small></div><img class="mascot mascot-image" id="fross-mascot" src="/fross-mascot.webp" alt="Персонаж FROSS"></div><div class="me"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><button class="icon-btn" id="profile-settings" title="Профиль и кастомизация" aria-label="Профиль"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.7-4 3.2-6 7.5-6s6.8 2 7.5 6"/></svg></button><button class="icon-btn" id="gb" title="Настройки" aria-label="Настройки"><svg viewBox="0 0 24 24"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg></button></div>
 <div class="sb"><div class="searchbox"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg><input id="q" placeholder="Найти человека или чат"></div></div><div class="list" id="list"></div><div class="side-bottom"><button id="nb" class="create-btn"><span class="create-plus">+</span><span>Создать</span></button><button class="nav-item active" id="nav-chats"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v11H9l-5 3z"/><path d="M8 9h8M8 13h5"/></svg><span>Чаты</span></button><button class="nav-item" id="nav-people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c.5-3.5 2.5-5.5 6-5.5s5.5 2 6 5.5M16 5.5a3 3 0 0 1 0 5.8M17 15c2.2.5 3.5 2.1 4 5"/></svg><span>Люди</span></button></div></aside>
 <main class="main"><div class="head"><button class="ic" id="back">←</button><div class="av" id="hav"></div><div class="t"><b id="ht"></b><small id="hs"></small></div><button class="ic" id="chat-settings" title="Настройки чата" aria-label="Настройки чата">⋯</button><button class="ic" id="call" title="Голосовой звонок" aria-label="Голосовой звонок">📞</button></div>
 <div class="msgs" id="msgs"></div>
 <div class="comp"><button id="attach" title="Прикрепить фото, музыку или файл">＋</button><input id="attachment-input" type="file" accept="*/*" multiple hidden><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
 <div id="call-layer" aria-live="polite"><div class="call-card"><div class="av" id="call-avatar">☎</div><h3 id="call-title">Звонок</h3><div class="call-status" id="call-status"></div><video id="remote-screen" autoplay playsinline></video><div class="call-tools"><label>Микрофон<select id="mic-device"></select></label><label>Вывод звука<select id="audio-device"></select></label></div><div class="call-actions" id="call-actions"></div></div></div>
-<script type="module" src="/firebase-app.js"></script></body></html>
+<script src="/pwa.js" defer></script><script type="module" src="/firebase-app.js"></script></body></html>
