@@ -1074,7 +1074,7 @@ import("./voice-calls.js").catch(error => console.error("Voice calls failed to l
   if(people)people.onclick=()=>{
     document.body.classList.remove("ch");
     chats?.classList.remove("active");people.classList.add("active");
-    window.FROSS_PROFILE_MODE=false;$("gb").click();
+    window.FROSS_SETTINGS_START=1;$("gb").click();
   };
   if(chats)chats.onclick=()=>{
     if(q){q.value="";q.placeholder="Найти человека или чат";q.dispatchEvent(new Event("input"));}
