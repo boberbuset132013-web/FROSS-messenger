@@ -78,10 +78,46 @@ if(micSelect)micSelect.onchange=()=>changeMicrophone(micSelect.value);
 if(outputSelect)outputSelect.onchange=()=>changeAudioOutput(outputSelect.value);
 if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener("devicechange",refreshCallDevices);
 
-function showCall(title, status, avatarText, actions) {
+let ringAudioContext=null,ringOscillators=[],ringGain=null,ringTimer=null;
+function stopRingbackTone(){
+  if(ringTimer){clearInterval(ringTimer);ringTimer=null}
+  if(ringGain&&ringAudioContext){
+    try{ringGain.gain.cancelScheduledValues(ringAudioContext.currentTime);ringGain.gain.setTargetAtTime(0,ringAudioContext.currentTime,.04)}catch{}
+  }
+  if(ringOscillators.length)ringOscillators.forEach(oscillator=>{try{oscillator.stop()}catch{}});
+  ringOscillators=[];ringGain=null;
+  if(ringAudioContext){const context=ringAudioContext;ringAudioContext=null;context.close().catch(()=>{})}
+}
+function startRingbackTone(incoming=false){
+  stopRingbackTone();
+  try{
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)return;
+    ringAudioContext=new AudioContextClass();
+    ringGain=ringAudioContext.createGain();ringGain.gain.value=0;ringGain.connect(ringAudioContext.destination);
+    const frequencies=incoming?[660,880]:[440,480];
+    frequencies.forEach(frequency=>{
+      const oscillator=ringAudioContext.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;oscillator.connect(ringGain);oscillator.start();ringOscillators.push(oscillator);
+    });
+    const pulse=()=>{
+      if(!ringAudioContext||!ringGain)return;
+      const now=ringAudioContext.currentTime,duration=incoming?0.75:1.65;
+      ringGain.gain.cancelScheduledValues(now);ringGain.gain.setValueAtTime(0,now);
+      ringGain.gain.linearRampToValueAtTime(.035,now+.06);
+      ringGain.gain.setValueAtTime(.035,now+duration-.08);
+      ringGain.gain.linearRampToValueAtTime(0,now+duration);
+    };
+    ringAudioContext.resume().catch(()=>{});
+    pulse();ringTimer=setInterval(pulse,incoming?3200:6000);
+  }catch(error){console.warn("FROSS call tone unavailable:",error?.message||error)}
+}
+
+function showCall(title, status, avatarText, actions, profile) {
   $("call-title").textContent = title;
   $("call-status").textContent = status || "";
-  $("call-avatar").textContent = avatarText || "☎";
+  const avatarElement=$("call-avatar");
+  if(profile&&window.FROSS?.renderAvatar)window.FROSS.renderAvatar(avatarElement,profile);
+  else{avatarElement.style.backgroundImage="none";avatarElement.style.background="#6f3296";avatarElement.textContent=avatarText||"☎"}
   $("call-actions").replaceChildren();
   const visibleActions=[...(actions||[])];
   if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:audioElement?.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
@@ -98,9 +134,11 @@ function showCall(title, status, avatarText, actions) {
   refreshCallDevices();
 }
 function hideCall() {
+  stopRingbackTone();
   $("call-layer")?.classList.remove("open");
 }
 function stopMedia() {
+  stopRingbackTone();
   if (activeCall?.docStop) activeCall.docStop();
   if (activeCall?.candidateStop) activeCall.candidateStop();
   if (activeCall?.peer) {
@@ -181,16 +219,19 @@ function watchCallDocument(callId) {
       try{await call.peer.setRemoteDescription(new RTCSessionDescription(data.renegotiateAnswer));call.pendingRenegotiation=null}catch(e){console.warn("Renegotiation answer:",e)}
     }
     if (data.status === "declined") {
+      stopRingbackTone();
       $("call-status").textContent = "Собеседник отклонил звонок.";
       setTimeout(() => { if (activeCall?.id === callId) stopMedia(); },1200);
       return;
     }
     if (data.status === "ended") {
+      stopRingbackTone();
       $("call-status").textContent = "Звонок завершён.";
       setTimeout(() => { if (activeCall?.id === callId) stopMedia(); },700);
       return;
     }
     if (call.role === "caller" && data.answer && !call.peer.currentRemoteDescription) {
+      stopRingbackTone();
       try {
         await call.peer.setRemoteDescription(new RTCSessionDescription(data.answer));
         $("call-status").textContent = "Соединение установлено. Говорите!";
@@ -198,7 +239,7 @@ function watchCallDocument(callId) {
         $("call-status").textContent = "Не удалось принять ответ: " + e.message;
       }
     }
-    if (data.status === "accepted") $("call-status").textContent = "Соединение устанавливается…";
+    if (data.status === "accepted") {stopRingbackTone();$("call-status").textContent = "Соединение устанавливается…";}
   },error => {
     $("call-status").textContent = "Связь с сервером потеряна: " + error.message;
   });
@@ -254,7 +295,8 @@ async function startOutgoingCall() {
     const calleeUid = (chat.memberUids || []).find(uid => uid !== profile.uid);
     if (!calleeUid) throw new Error("Не удалось определить собеседника.");
     const peerProfile = (chat.memberProfiles || []).find(item => item.uid === calleeUid) || {};
-    showCall("Звоним: "+(peerProfile.displayName||peerProfile.username||"пользователь"),"Запрашиваем микрофон…","☎",[
+    peerProfile.uid=calleeUid;
+    showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Запрашиваем микрофон…","☎",[
       {label:"Отменить",danger:true,onClick:()=>finishCall("ended")}
     ]);
     const stream = await getMicrophone();
@@ -273,9 +315,10 @@ async function startOutgoingCall() {
       offer:{type:offer.type,sdp:offer.sdp},
       status:"ringing",updatedAt:serverTimestamp()
     });
-    showCall("Звоним: "+(peerProfile.displayName||peerProfile.username||"пользователь"),"Ожидаем ответа…",String(peerProfile.displayName||peerProfile.username||"☎")[0],[
+    showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Вызов… идут гудки",String(peerProfile.displayName||peerProfile.username||"☎")[0],[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
     ]);
+    startRingbackTone(false);
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"calleeCandidates");
   } catch (e) {
@@ -298,13 +341,15 @@ async function showIncomingCall(snapshot) {
     if (profile.exists()) caller = profile.data();
   } catch {}
   if (activeCall) return;
-  showCall("Входящий звонок",caller.displayName||caller.username||"Пользователь звонит…",String(caller.displayName||caller.username||"☎")[0],[
+  caller.uid=data.callerUid;
+  showCall(caller.displayName||caller.username||"Собеседник","Входящий звонок",String(caller.displayName||caller.username||"☎")[0],[
     {label:"Отклонить",danger:true,onClick:async()=>{
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
-      hideCall();
+      stopRingbackTone();hideCall();
     }},
-    {label:"Ответить",primary:true,onClick:()=>acceptCall(callId,data,caller)}
-  ]);
+    {label:"Ответить",primary:true,onClick:()=>{stopRingbackTone();acceptCall(callId,data,caller)}}
+  ],caller);
+  startRingbackTone(true);
 }
 async function acceptCall(callId, data, caller) {
   if (activeCall) return;
@@ -321,9 +366,10 @@ async function acceptCall(callId, data, caller) {
       answer:{type:answer.type,sdp:answer.sdp},
       status:"accepted",acceptedAt:serverTimestamp(),updatedAt:serverTimestamp()
     });
-    showCall("Разговор с "+(caller.displayName||caller.username||"пользователем"),"Соединяемся…",String(caller.displayName||caller.username||"☎")[0],[
+    showCall(caller.displayName||caller.username||"Собеседник","Соединяемся…",String(caller.displayName||caller.username||"☎")[0],[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
-    ]);
+    ],caller);
+    stopRingbackTone();
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"callerCandidates");
   } catch (e) {

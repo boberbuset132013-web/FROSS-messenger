@@ -439,6 +439,103 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
   background-size:24px 24px,24px 24px,auto!important;
 }
 
+
+/* FROSS plum canvas and clean messages: no black halo, shadow or dark inset */
+.main,.side,.msgs,.mr,.msg,.comp{box-shadow:none!important;filter:none!important}
+.main{background:linear-gradient(145deg,#170d23 0%,#1c1029 54%,#140b20 100%)!important}
+.msgs{
+  background-color:#180f25!important;
+  background-image:
+    radial-gradient(#c184f01b 1px,transparent 1px),
+    radial-gradient(ellipse at 18% 15%,#8734bf2a,transparent 48%),
+    radial-gradient(ellipse at 82% 80%,#7030a51f,transparent 52%)!important;
+  background-size:24px 24px,auto,auto!important;
+  border:0!important;
+}
+.msg{
+  background:linear-gradient(145deg,#392548 0%,#2d1b3b 100%)!important;
+  color:#f8efff!important;border:0!important;outline:0!important;
+  box-shadow:none!important;text-shadow:none!important;
+}
+.mr.me .msg,.me .msg{
+  background:linear-gradient(135deg,#a842e9 0%,#7628bd 100%)!important;
+  color:#fff!important;border:0!important;box-shadow:none!important;
+}
+.mr:not(.me) .msg{background:linear-gradient(145deg,#3a2849,#2c1b3b)!important}
+.msg time{color:inherit!important;opacity:.7}
+.msg b,.sender-profile{color:#e7c7ff!important}
+.attachment-link{color:#f2dfff!important;text-decoration:none!important}
+.comp{border-top:0!important;background:#180f25!important}
+.side{border-right:1px solid #3b2451!important}
+.it,.it.a{box-shadow:none!important}
+.it.a{border-color:#a855f744!important}
+.profile-public-card{
+  position:relative;overflow:hidden;padding:18px;border:1px solid #9a53d477;border-radius:22px;
+  background:radial-gradient(ellipse at 88% 0%,#a855f72c,transparent 46%),linear-gradient(145deg,#1e1230,#130c20);
+}
+.profile-public-card:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(#dcb7ff12 1px,transparent 1px);background-size:17px 17px;mask-image:linear-gradient(120deg,#000,transparent 78%)}
+.profile-public-card>*{position:relative}
+.profile-public-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px;font-size:10px;letter-spacing:.13em;font-weight:850;color:#dcb6ff}
+.profile-live{font-size:11px;font-weight:600;letter-spacing:0;color:#b5a2c9}
+.profile-live.online{color:#78e7b5}
+.profile-public-card-main{display:flex;align-items:center;gap:15px;min-width:0}
+.profile-public-card-main .av{width:86px;height:86px;box-shadow:none}
+.profile-public-card-identity{min-width:0}
+.profile-public-card-identity h3{font-size:21px;line-height:1.2;margin:0 0 7px;overflow-wrap:anywhere}
+.profile-public-card-identity .profile-handle{font-size:13px}
+.profile-phone-row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:16px;padding:11px 12px;border:1px solid #b65cff30;border-radius:13px;background:#ffffff08;font-size:12px}
+.profile-phone-row span{color:#b7a3ca}
+.profile-phone-row b{overflow-wrap:anywhere;color:#f3ddff}
+.profile-public-bio{margin:15px 0 0;padding-top:13px;border-top:1px solid #ffffff17;color:#d6c4e7;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:16px}
+.profile-public-actions{display:flex;gap:9px;margin-top:17px}
+.profile-public-actions>*{flex:1}
+.phone-methods{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.phone-verify-status{font-size:12px;color:#c8afd9;min-height:20px;margin:8px 0}
+.phone-visibility{display:flex;align-items:center;gap:8px;margin:12px 0;padding:11px;border:1px solid var(--line);border-radius:12px;background:#ffffff06}
+.phone-visibility input{width:17px;height:17px;margin:0;accent-color:var(--accent)}
+/* Cinematic call window with a planet, orbiting rings and the real profile avatar */
+#call-layer{position:fixed;inset:0;z-index:90;display:none;place-items:center;padding:18px;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#482066a8 0%,#160a27ed 55%,#090511f5 100%);backdrop-filter:blur(12px)}
+#call-layer.open{display:grid}
+.call-universe{position:relative;isolation:isolate;width:min(540px,100%);min-height:min(720px,94dvh);display:grid;place-items:center;overflow:hidden;border-radius:30px;background:radial-gradient(ellipse at 50% 35%,#54277570,transparent 52%),linear-gradient(180deg,#170d29db,#0d0819ed);border:1px solid #bb82e44d}
+.call-starfield{position:absolute;inset:0;opacity:.75;background-image:radial-gradient(#ecd7ff9c 1px,transparent 1.5px),radial-gradient(#a966ec88 1px,transparent 1.5px);background-size:39px 39px,71px 71px;background-position:5px 8px,19px 25px;animation:call-stars-drift 28s linear infinite}
+.call-planet{position:absolute;z-index:-1;width:min(76vw,390px);aspect-ratio:1;border-radius:50%;top:10%;left:50%;transform:translateX(-50%);background:radial-gradient(circle at 32% 23%,#f4d9ff 0,#c589e9 5%,#8a4eb6 20%,#49236f 48%,#21102f 72%,#100919 100%);box-shadow:inset -30px -18px 44px #08030eaa,0 0 65px #a855f733}
+.call-planet:after{content:"";position:absolute;left:-17%;right:-17%;top:41%;height:24%;border:2px solid #d6a8ff76;border-left-color:#8b54b7aa;border-right-color:#e7c5ff7a;border-radius:50%;transform:rotate(-17deg);box-shadow:0 0 20px #a855f766}
+.call-orbit{position:absolute;left:50%;top:29%;width:min(92vw,480px);height:180px;border:1px solid #c88bff39;border-radius:50%;pointer-events:none}
+.call-orbit-a{transform:translate(-50%,-50%) rotate(-24deg)}
+.call-orbit-b{transform:translate(-50%,-50%) rotate(34deg) scale(.83);border-color:#e1b9ff26}
+.call-card{position:relative;z-index:2;width:min(440px,calc(100% - 28px));padding:24px 22px 18px;text-align:center;border:1px solid #c58af64a;border-radius:26px;background:linear-gradient(160deg,#1a1029dd,#10091cef);backdrop-filter:blur(18px)}
+.call-kicker{display:flex;align-items:center;justify-content:center;gap:8px;color:#cda5f1;font-size:10px;letter-spacing:.2em;font-weight:850;margin-bottom:16px}
+.call-kicker span{width:6px;height:6px;background:#c77aff;border-radius:50%;box-shadow:0 0 12px #cb7bff}
+.call-avatar-wrap{position:relative;width:132px;height:132px;margin:2px auto 18px;display:grid;place-items:center}
+.call-avatar-glow{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,#c56cff38,transparent 68%);animation:call-avatar-pulse 2.7s ease-in-out infinite}
+.call-avatar-wrap:before,.call-avatar-wrap:after{content:"";position:absolute;inset:3px;border:1px solid #dbb1ff88;border-radius:50%;animation:call-ring-pulse 3s ease-out infinite}
+.call-avatar-wrap:after{inset:-8px;animation-delay:1.4s;border-color:#b879e955}
+.call-card .av{position:relative;width:104px;height:104px;font-size:35px;border:3px solid #e4bfffaa;box-shadow:none}
+.call-card h3{font-size:23px;margin:5px 0 4px;color:#fff;overflow-wrap:anywhere}
+.call-status{min-height:24px;color:#c9b5dd;font-size:13px;margin:7px 0 14px}
+.call-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 8px;text-align:left}
+.call-tools label{display:block;min-width:0;margin:0;color:#bca7d0;font-size:11px}
+.call-tools select{margin:5px 0 0;padding:9px 8px;background:#251636;border-color:#674687;border-radius:11px;font-size:12px}
+.call-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px}
+.call-actions button{flex:1 1 104px;min-height:44px;border-radius:13px;background:#28183a;border-color:#674584;color:#f2e5ff;font-size:13px}
+.call-actions button.dg{background:linear-gradient(135deg,#fa617e,#c92f62);border:0;color:white}
+.call-actions button.pr{background:linear-gradient(135deg,#bd59f5,#8128c7);border:0;color:white}
+.call-footer{margin-top:17px;color:#937ba9;font-size:9px;letter-spacing:.15em}
+@keyframes call-stars-drift{to{background-position:55px 82px,-33px 70px}}
+@keyframes call-avatar-pulse{50%{transform:scale(1.12);opacity:.55}}
+@keyframes call-ring-pulse{0%{transform:scale(.9);opacity:.75}100%{transform:scale(1.28);opacity:0}}
+@media(max-width:520px){
+  #call-layer{padding:8px}
+  .call-universe{min-height:min(700px,94dvh);border-radius:24px}
+  .call-card{padding:19px 14px 14px;width:calc(100% - 20px)}
+  .call-planet{top:13%;width:88vw}
+  .call-tools{gap:6px}
+  .call-actions button{flex:1 1 42%;font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .call-starfield,.call-avatar-glow,.call-avatar-wrap:before,.call-avatar-wrap:after{animation:none!important}
+}
+
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>
@@ -455,5 +552,19 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
 <div class="msgs" id="msgs"></div>
 <div class="comp"><button id="attach" title="Прикрепить фото, музыку или файл">＋</button><input id="attachment-input" type="file" accept="*/*" multiple hidden><textarea id="inp" rows="1" maxlength="4000" placeholder="Сообщение…"></textarea><button class="pr" id="send">➤</button></div></main></div>
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
-<div id="call-layer" aria-live="polite"><div class="call-card"><div class="av" id="call-avatar">☎</div><h3 id="call-title">Звонок</h3><div class="call-status" id="call-status"></div><video id="remote-screen" autoplay playsinline></video><div class="call-tools"><label>Микрофон<select id="mic-device"></select></label><label>Вывод звука<select id="audio-device"></select></label></div><div class="call-actions" id="call-actions"></div></div></div>
-<script src="/pwa.js" defer></script><script type="module" src="/firebase-app.js"></script></body></html>
+<div id="call-layer" aria-live="polite">
+  <div class="call-universe">
+    <div class="call-starfield"></div><div class="call-planet"></div><div class="call-orbit call-orbit-a"></div><div class="call-orbit call-orbit-b"></div>
+    <section class="call-card">
+      <div class="call-kicker"><span></span> FROSS VOICE</div>
+      <div class="call-avatar-wrap"><div class="call-avatar-glow"></div><div class="av big" id="call-avatar">☎</div></div>
+      <h3 id="call-title">Звонок</h3>
+      <div class="call-status" id="call-status"></div>
+      <video id="remote-screen" autoplay playsinline></video>
+      <div class="call-tools"><label>Микрофон<select id="mic-device"></select></label><label>Вывод звука<select id="audio-device"></select></label></div>
+      <div class="call-actions" id="call-actions"></div>
+      <div class="call-footer">СОЕДИНЕНИЕ ЗАЩИЩЕНО · FROSS</div>
+    </section>
+  </div>
+</div>
+<script src="https://st.max.ru/js/max-web-app.js"></script><script src="/pwa.js" defer></script><script type="module" src="/firebase-app.js"></script></body></html>
