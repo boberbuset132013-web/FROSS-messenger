@@ -54,9 +54,9 @@ function showLogin() {
   $("gr").onclick=googleLogin;
   $("reset").onclick=async()=>{const email=$("lu").value.trim();if(!email.includes("@")){$("le").textContent="Сначала введите email.";return}try{await sendPasswordResetEmail(auth,email);$("le").textContent="Письмо для сброса пароля отправлено."}catch(e){$("le").textContent=authError(e)}};
   $("lg").onclick=async()=>{try{
-    const identifier=$("lu").value.trim().toLowerCase();
+    const identifier=$("lu").value.trim();
     if(!identifier)throw Error("Введите email или имя пользователя.");
-    const email=identifier.includes("@")?identifier:authEmail(identifier);
+    const email=identifier.includes("@")?identifier.toLowerCase():authEmail(identifier);
     const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
     if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
   }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
@@ -240,18 +240,49 @@ function avatar(el,o,on) {
   el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
 }
 function pickImg(file,cb) {
-  const fr=new FileReader();
-  fr.onload=()=>{
+  if(!file || !file.type?.startsWith("image/")) return;
+  const reader=new FileReader();
+  reader.onerror=()=>alert("Не удалось прочитать изображение.");
+  reader.onload=()=>{
     const image=new Image();
+    image.onerror=()=>alert("Не удалось открыть изображение.");
     image.onload=()=>{
-      const c=document.createElement("canvas");c.width=c.height=160;
-      const side=Math.min(image.width,image.height);
-      c.getContext("2d").drawImage(image,(image.width-side)/2,(image.height-side)/2,side,side,0,0,160,160);
-      cb(c.toDataURL("image/jpeg",.82));
+      let zoom=1,panX=0,panY=0,drag=null;
+      const base=Math.max(240/image.width,240/image.height);
+      const drawPreview=()=>{
+        const w=image.width*base*zoom,h=image.height*base*zoom;
+        preview.style.backgroundImage='url("'+reader.result+'")';
+        preview.style.backgroundSize=w+"px "+h+"px";
+        preview.style.backgroundPosition="calc(50% + "+panX+"px) calc(50% + "+panY+"px)";
+        zoomValue.textContent=Math.round(zoom*100)+"%";
+      };
+      openM('<h3 style="margin:0 0 6px">Настроить фото</h3><p class="mut">Передвигай изображение пальцем и настрой масштаб. В профиль попадёт круглая область.</p><div id="avatar-crop-preview" role="img" aria-label="Предпросмотр круглого аватара"></div><label>Масштаб <span id="avatar-zoom-value">100%</span></label><input id="avatar-zoom" type="range" min="1" max="3" step=".01" value="1"><div class="row"><button id="avatar-crop-cancel">Отмена</button><button class="pr" id="avatar-crop-save">Применить фото</button></div>');
+      const preview=$("avatar-crop-preview"),zoomInput=$("avatar-zoom"),zoomValue=$("avatar-zoom-value");
+      preview.style.backgroundImage='url("'+reader.result+'")';
+      preview.style.backgroundRepeat="no-repeat";
+      preview.style.touchAction="none";
+      preview.style.cursor="grab";
+      drawPreview();
+      zoomInput.oninput=()=>{zoom=Number(zoomInput.value);drawPreview()};
+      preview.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,px:panX,py:panY};preview.setPointerCapture(e.pointerId);preview.style.cursor="grabbing"};
+      preview.onpointermove=e=>{if(!drag)return;panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;const w=image.width*base*zoom,h=image.height*base*zoom;panX=Math.max(-(w-240)/2,Math.min((w-240)/2,panX));panY=Math.max(-(h-240)/2,Math.min((h-240)/2,panY));drawPreview()};
+      preview.onpointerup=()=>{drag=null;preview.style.cursor="grab"};
+      preview.onpointercancel=()=>{drag=null;preview.style.cursor="grab"};
+      $("avatar-crop-cancel").onclick=closeM;
+      $("avatar-crop-save").onclick=()=>{
+        const c=document.createElement("canvas");c.width=c.height=320;
+        const scale=Math.max(320/image.width,320/image.height)*zoom;
+        const w=image.width*scale,h=image.height*scale;
+        const x=(320-w)/2+panX*(320/240),y=(320-h)/2+panY*(320/240);
+        const ctx=c.getContext("2d");
+        ctx.save();ctx.beginPath();ctx.arc(160,160,160,0,Math.PI*2);ctx.clip();
+        ctx.drawImage(image,0,0,image.width,image.height,x,y,w,h);ctx.restore();
+        closeM();cb(c.toDataURL("image/jpeg",.88));
+      };
     };
-    image.src=fr.result;
+    image.src=reader.result;
   };
-  fr.readAsDataURL(file);
+  reader.readAsDataURL(file);
 }
 async function uploadAvatar(uid,dataUrl) {
   if(!dataUrl)return "";
@@ -281,7 +312,7 @@ function bindLook(o,pre) {
 function wiz(n) {
   const bar='<div class="logo">FROSS</div><div class="steps">'+[1,2,3,4].map(i=>'<i class="'+(i<=n?"d":"")+'"></i>').join("")+'</div><b>Шаг '+n+' из 4</b>';
   let h=bar;
-  if(n===1)h+='<label>Уникальный username — по нему вас находят</label><input id="u" maxlength="20" autocomplete="username" placeholder="латиница, цифры, _"><div class="mut" id="ua">3–20 символов: латиница, цифры и _</div><label>Email для входа и подтверждения</label><input id="e" type="email" autocomplete="email" required><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password"><small class="mut">На этот адрес придёт письмо со ссылкой подтверждения. После подтверждения можно войти по email и паролю.</small>';
+  if(n===1)h+='<label>Уникальный username — по нему вас находят</label><input id="u" maxlength="20" autocomplete="username" placeholder="латиница, цифры, _"><div class="mut" id="ua">3–20 символов: латиница, цифры и _</div><label>Email для входа и подтверждения</label><input id="e" type="email" autocomplete="email" required><label>Пароль</label><input id="p" type="password" placeholder="от 8 символов" autocomplete="new-password" autocapitalize="off" spellcheck="false"><div class="meter"><b id="mt"></b></div><label>Повторите пароль</label><input id="p2" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false"><small class="mut">На этот адрес придёт письмо со ссылкой подтверждения. После подтверждения можно войти по email и паролю.</small>';
   if(n===2)h+='<div style="display:flex;gap:14px;align-items:center;margin-top:10px"><div class="av big" id="pav"></div><div><button id="up">📷 Загрузить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать</button></div></div><label>Никнейм (может повторяться)</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea>';
   if(n===3)h+='<p class="mut">Оформление можно будет поменять в настройках</p>'+look(W.settings,"w");
   if(n===4)h+='<div class="sum"><div class="av big" id="pav"></div><div><b>'+esc(W.display_name||W.username)+'</b><br><span class="mut">@'+esc(W.username)+(W.email?" · "+esc(W.email):"")+'</span><br><span class="mut">'+esc(W.bio)+'</span></div></div><label style="margin-top:14px"><input type="checkbox" id="tos">Принимаю правила тестовой версии</label>';
@@ -826,7 +857,11 @@ $("gb").onclick=()=>{
       } else {
         await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor},{merge:true});
       }
-      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o},{merge:true});
+      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
+      const savedProfile=await getDoc(publicRef);
+      if(!savedProfile.exists())throw new Error("Профиль не сохранился в Firebase. Проверьте правила Firestore.");
+      const savedSettings=await getDoc(doc(db,"users",me.uid));
+      if(!savedSettings.exists()||!savedSettings.data().settings)throw new Error("Настройки не сохранились в Firebase.");
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
       S=o;applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
