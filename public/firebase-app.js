@@ -664,7 +664,8 @@ async function loadCurrentProfile() {
   if(!snap.exists())throw new Error("Профиль Firebase не найден.");
   const p=snap.data(),v=priv.exists()?priv.data():{};
   me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{}};
-  let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}\n  S={...DEF,...cached,...me.settings};applyS(S);fillMe();
+  let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}
+  S={...DEF,...cached,...me.settings};applyS(S);fillMe();
 }
 function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="@"+me.username}
 async function boot(user) {
@@ -968,7 +969,9 @@ $("gb").onclick=()=>{
       const persisted=savedSettings.data().settings;
       for(const key of Object.keys(o))if(JSON.stringify(persisted[key]??DEF[key])!==JSON.stringify(o[key]))throw new Error("Firebase не сохранил параметр «"+key+"». Проверьте правила Firestore.");
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
-      S={...DEF,...o};me.settings={...S};\n      try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}\n      applyS(S);fillMe();closeM();head();renderList();
+      S={...DEF,...o};me.settings={...S};
+      try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
+      applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e))}
   };
