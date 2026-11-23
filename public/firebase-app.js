@@ -1069,7 +1069,7 @@ $("gb").onclick=()=>{
     }catch(e){alert(authError(e));saveButton.disabled=false;saveButton.textContent=originalLabel}
   };
 };
-$("profile-settings").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
+$("me-profile").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
