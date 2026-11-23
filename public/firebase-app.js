@@ -620,8 +620,9 @@ function subscribeMessages() {
       }
       if(m.attachment){
         const a=m.attachment;
-        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading="lazy";b.append(img)}
-        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=a.url;audio.className="message-audio";b.append(audio)}
+        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading=S.autoDownload?"eager":"lazy";b.append(img)}
+        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;audio.src=a.url;audio.className="message-audio";b.append(audio)}
+        if(a.type?.startsWith("video/")){const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.src=a.url;video.className="message-video";b.append(video)}
         const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
@@ -739,20 +740,36 @@ async function send() {
 }
 $("send").onclick=send;
 const attachmentButton=$("attach"),attachmentInput=$("attachment-input");
+async function optimizeChatImage(file) {
+  if(!S.compressImages || !file.type?.startsWith("image/") || file.type==="image/gif" || file.size<700*1024 || typeof createImageBitmap!=="function")return file;
+  try{
+    const bitmap=await createImageBitmap(file);
+    const scale=Math.min(1,1920/Math.max(bitmap.width,bitmap.height));
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+    canvas.getContext("2d").drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/webp",.84));
+    if(!blob||blob.size>=file.size)return file;
+    const name=file.name.replace(/\.[^.]+$/,"")+".webp";
+    return new File([blob],name,{type:"image/webp",lastModified:file.lastModified||Date.now()});
+  }catch(error){console.warn("Image optimization skipped:",error);return file}
+}
 if(attachmentButton&&attachmentInput){
   attachmentButton.onclick=()=>attachmentInput.click();
   attachmentInput.onchange=async()=>{
     const files=[...(attachmentInput.files||[])];attachmentInput.value="";
     for(const file of files) {
-      if(file.size>=20*1024*1024){alert("Файл «"+file.name+"» больше лимита 20 МБ.");continue}
-      const chatId=cur,path="chatFiles/"+chatId+"/"+me.uid+"/"+Date.now()+"_"+crypto.randomUUID().slice(0,8)+"_"+(file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100)||"file");
+      let uploadFile=file;
+      try{uploadFile=await optimizeChatImage(file)}catch{}
+      if(uploadFile.size>=20*1024*1024){alert("Файл «"+file.name+"» больше лимита 20 МБ.");continue}
+      const chatId=cur,path="chatFiles/"+chatId+"/"+me.uid+"/"+Date.now()+"_"+crypto.randomUUID().slice(0,8)+"_"+(uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100)||"file");
       const progress=createUploadProgress($("msgs"),file.name);$("msgs").scrollTop=$("msgs").scrollHeight;
       attachmentButton.disabled=true;
       try{
-        const {url}=await uploadChatFile(storage,path,file,percent=>progress.update(percent));
+        const {url}=await uploadChatFile(storage,path,uploadFile,percent=>progress.update(percent));
         const batch=writeBatch(db),messageRef=doc(collection(db,"chats",chatId,"messages"));
-        const attachment={name:file.name.slice(0,180),type:file.type||"application/octet-stream",size:file.size,url,path};
-        const summary=(file.type.startsWith("image/")?"Фото: ":"Файл: ")+file.name;
+        const attachment={name:uploadFile.name.slice(0,180),type:uploadFile.type||"application/octet-stream",size:uploadFile.size,url,path};
+        const summary=(uploadFile.type.startsWith("image/")?"Фото: ":"Файл: ")+uploadFile.name;
         const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
         if(replyTarget){message.replyTo={id:replyTarget.id,senderUid:replyTarget.senderUid,displayName:replyTarget.displayName,text:replyTarget.text.slice(0,160)};replyTarget=null;$("reply-preview")?.remove()}
         batch.set(messageRef,message);
@@ -886,7 +903,7 @@ $("gb").onclick=()=>{
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
     if(i===2){
-      c.innerHTML=section("Медиа","Управляй загрузкой фотографий и файлов.")+'<h4>Загрузка</h4>'+toggle("autoDownload","Автоматически загружать вложения","Отключи, чтобы открывать файлы только вручную.")+toggle("compressImages","Оптимизировать изображения перед отправкой")+toggle("autoPlayMedia","Автоматически воспроизводить медиа")+'<div class="settings-info-card"><b>Ограничения файлов</b><span>До 20 МБ на один файл. Фото профиля обрезается до квадратного изображения с круглой маской.</span></div><p class="mut settings-footnote">Фотографии и вложения хранятся в Firebase Storage.</p>';
+      c.innerHTML=section("Медиа","Управляй загрузкой фотографий и файлов.")+'<h4>Загрузка</h4>'+toggle("autoDownload","Загружать превью сразу","Изображения и аудио будут подгружаться заранее.")+toggle("compressImages","Сжимать большие фотографии","Уменьшает размер изображений перед отправкой.")+toggle("autoPlayMedia","Автовоспроизведение аудио и видео")+'<div class="settings-info-card"><b>Ограничения файлов</b><span>До 20 МБ на один файл. Фото профиля обрезается до квадратного изображения с круглой маской.</span></div><p class="mut settings-footnote">Фотографии и вложения хранятся в Firebase Storage.</p>';
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
     if(i===0){
