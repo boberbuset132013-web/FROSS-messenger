@@ -128,7 +128,8 @@ service cloud.firestore {
         allow create: if canReadChat(chatId)
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.username == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.username
-          && request.resource.data.displayName == get(/databases/$(database)/documents/publicUsers/$(request.auth.uid)).data.displayName
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 60
           && request.resource.data.text is string
           && request.resource.data.text.size() <= 4000
           && (request.resource.data.text.size() > 0
@@ -149,6 +150,7 @@ service cloud.firestore {
               && request.resource.data.attachment.size is int
               && request.resource.data.attachment.url is string
               && request.resource.data.attachment.path is string
+              && request.resource.data.attachment.path.matches("chatFiles/" + chatId + "/" + request.auth.uid + "/.*")
               && request.resource.data.attachment.size <= 20 * 1024 * 1024));
         allow update: if canReadChat(chatId) && (
           (resource.data.senderUid == request.auth.uid
