@@ -11,9 +11,6 @@ import {
   query, where, orderBy, limit, limitToLast, startAt, endAt, getDocs,
   onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayRemove, arrayUnion
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
-import {
-  getStorage, ref, uploadString, uploadBytes, getDownloadURL, deleteObject
-} from "https://www.gstatic.com/firebasejs/13.4.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBflnOcg4btfTRLgFWV1HT47j0fcnC15d4",
@@ -26,7 +23,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
@@ -246,12 +242,44 @@ function hue(s) {
   let h=0; for(const c of String(s||"#"))h=(h*31+c.charCodeAt(0))%360;
   return "hsl("+h+" 50% 45%)";
 }
+const privateFileUrlCache = new Map();
+async function privateFileApi(endpoint,payload) {
+  const user=auth.currentUser||currentUser;if(!user)throw new Error("Войди в аккаунт, чтобы открыть файл.");
+  const token=await user.getIdToken(),response=await fetch(endpoint,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  let data={};try{data=await response.json()}catch{};if(!response.ok)throw new Error(data.error||("Ошибка файлового сервера: "+response.status));return data;
+}
+async function getPrivateFileUrl(path) {
+  const user=auth.currentUser||currentUser;if(!user)throw new Error("Войди в аккаунт, чтобы открыть файл.");
+  const key=String(path||"").replace(/^filebase:/,"");if(!key)throw new Error("Путь к файлу отсутствует.");
+  const cacheKey=user.uid+":"+key,cached=privateFileUrlCache.get(cacheKey);if(cached&&cached.expires>Date.now())return cached.url;
+  const data=await privateFileApi("/api/files/url",{path:key});privateFileUrlCache.set(cacheKey,{url:data.url,expires:Date.now()+4*60*1000});return data.url;
+}
+async function resolveStoredFileUrl(value,path="") {const source=String(value||"");if(source.startsWith("filebase:"))return await getPrivateFileUrl(path||source.slice(9));return source}
+function setPrivateMediaSource(element,value,path="") {
+  const source=String(value||"");
+  if(source.startsWith("filebase:")){const marker=source;resolveStoredFileUrl(source,path).then(url=>{if(element.isConnected&&element.dataset.fileSource===marker)element.src=url}).catch(error=>console.warn("FROSS private file preview failed:",error.message));element.dataset.fileSource=marker}
+  else element.src=source;
+}
 function avatar(el,o,on) {
+  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#",source=o?.avatarUrl||o?.avatar||"";
+  const privateSource=typeof source==="string"&&source.startsWith("filebase:");
+  el.classList.toggle("on",!!on);el.dataset.avatarSource=source;
+  el.style.background=source&&!privateSource?"":(o?.profileColor||hue(name));
+  el.style.backgroundImage=source&&!privateSource?'url("'+source.replace(/["\\]/g,"\\function avatar(el,o,on) {
   const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
   el.classList.toggle("on",!!on);
   el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
   el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
   el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
+}")+'")':"none";
+  el.textContent=source&&!privateSource?"":String(name)[0].toUpperCase();
+  if(privateSource)resolveStoredFileUrl(source).then(url=>{if(el.isConnected&&el.dataset.avatarSource===source){el.style.backgroundImage='url("'+url.replace(/["\\]/g,"\\function avatar(el,o,on) {
+  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
+  el.classList.toggle("on",!!on);
+  el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
+  el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
+  el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
+}")+'")';el.textContent="";el.style.background=""}}).catch(error=>console.warn("FROSS avatar load failed:",error.message));
 }
 function pickImg(file,cb,onCancel=()=>{}) {
   if(!file || !file.type?.startsWith("image/")) { onCancel(); return; }
@@ -307,19 +335,19 @@ function pickImg(file,cb,onCancel=()=>{}) {
   reader.readAsDataURL(file);
 }
 async function uploadAvatar(uid,dataUrl) {
-  if(!dataUrl)return "";
-  if(/^https:\/\//i.test(dataUrl))return dataUrl;
+  if(!dataUrl)return "";if(/^https:\/\//i.test(dataUrl))return dataUrl;
   if(!dataUrl.startsWith("data:image/"))throw new Error("Фото не подготовлено. Сначала нажми «Применить фото».");
   try{
-    const response=await fetch(dataUrl),blob=await response.blob();
-    if(!blob.size)throw new Error("Получилось пустое изображение.");
-    const target=ref(storage,"avatars/"+uid+"/avatar_"+crypto.randomUUID()+".jpg");
-    const uploaded=await uploadBytes(target,blob,{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
-    return await getDownloadURL(uploaded.ref);
-  }catch(error){
-    console.error("FROSS avatar upload failed:",error);
-    throw new Error("Не удалось загрузить фото в Firebase Storage: "+authError(error));
-  }
+    const blob=await (await fetch(dataUrl)).blob();if(!blob.size)throw new Error("Получилось пустое изображение.");
+    const user=auth.currentUser||currentUser;if(!user||user.uid!==uid)throw new Error("Не удалось подтвердить аккаунт для загрузки фото.");
+    const token=await user.getIdToken(),result=await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();xhr.open("POST","/api/files/upload?scope=avatar&name=avatar.jpg");
+      xhr.setRequestHeader("Authorization","Bearer "+token);xhr.setRequestHeader("Content-Type",blob.type||"image/jpeg");
+      xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText)}catch{};if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(new Error(data.error||("Ошибка загрузки аватара: "+xhr.status)))};
+      xhr.onerror=()=>reject(new Error("Сетевая ошибка при загрузке аватара."));xhr.send(blob);
+    });
+    if(!result.path)throw new Error("Файловый сервер не вернул путь к аватару.");return "filebase:"+result.path;
+  }catch(error){console.error("FROSS avatar upload failed:",error);throw new Error("Не удалось загрузить фото: "+(error?.message||authError(error)))}
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
@@ -584,7 +612,10 @@ async function hideMessageForMe(message) {
 }
 async function deleteMessageForAll(message) {
   if(!confirm("Удалить это сообщение у всех участников?"))return;
-  try{await deleteDoc(doc(db,"chats",cur,"messages",message.id))}catch(e){alert(authError(e))}
+  try{
+    if(message.attachment?.url?.startsWith("filebase:"))await privateFileApi("/api/files/delete-message",{chatId:cur,messageId:message.id});
+    await deleteDoc(doc(db,"chats",cur,"messages",message.id));
+  }catch(e){alert(e?.message||authError(e))}
 }
 function renderMessageReactions(messageId,host) {
   const reactionRef=collection(db,"chats",cur,"messages",messageId,"reactions");
@@ -647,10 +678,10 @@ function subscribeMessages() {
       }
       if(m.attachment){
         const a=m.attachment;
-        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading=S.autoDownload?"eager":"lazy";b.append(img)}
-        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;audio.src=a.url;audio.className="message-audio";b.append(audio)}
-        if(a.type?.startsWith("video/")){const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.src=a.url;video.className="message-video";b.append(video)}
-        const link=document.createElement("a");link.href=a.url;link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";b.append(link);
+        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.alt=a.name||"Изображение";img.className="message-image";img.loading=S.autoDownload?"eager":"lazy";setPrivateMediaSource(img,a.url,a.path);b.append(img)}
+        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;audio.className="message-audio";setPrivateMediaSource(audio,a.url,a.path);b.append(audio)}
+        if(a.type?.startsWith("video/")){const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video)}
+        const link=document.createElement("a");link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";link.addEventListener("click",async event=>{event.preventDefault();const tab=window.open("about:blank","_blank");try{const href=await resolveStoredFileUrl(a.url,a.path);if(tab)tab.location.href=href}catch(error){tab?.close();alert(error.message)}});b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
@@ -789,11 +820,11 @@ if(attachmentButton&&attachmentInput){
       let uploadFile=file;
       try{uploadFile=await optimizeChatImage(file)}catch{}
       if(uploadFile.size>=20*1024*1024){alert("Файл «"+file.name+"» больше лимита 20 МБ.");continue}
-      const chatId=cur,path="chatFiles/"+chatId+"/"+me.uid+"/"+Date.now()+"_"+crypto.randomUUID().slice(0,8)+"_"+(uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100)||"file");
+      const chatId=cur;
       const progress=createUploadProgress($("msgs"),file.name);$("msgs").scrollTop=$("msgs").scrollHeight;
       attachmentButton.disabled=true;
       try{
-        const {url}=await uploadChatFile(storage,path,uploadFile,percent=>progress.update(percent));
+        const {url,path}=await uploadChatFile(chatId,uploadFile,await currentUser.getIdToken(),percent=>progress.update(percent));
         const batch=writeBatch(db),messageRef=doc(collection(db,"chats",chatId,"messages"));
         const attachment={name:uploadFile.name.slice(0,180),type:uploadFile.type||"application/octet-stream",size:uploadFile.size,url,path};
         const summary=(uploadFile.type.startsWith("image/")?"Фото: ":"Файл: ")+uploadFile.name;
@@ -802,7 +833,7 @@ if(attachmentButton&&attachmentInput){
         batch.set(messageRef,message);
         batch.update(doc(db,"chats",chatId),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await batch.commit();progress.update(100);setTimeout(()=>progress.remove(),900);
-      }catch(error){console.error("FROSS chat attachment upload failed:",{code:error?.code,message:error?.message,path});progress.remove();alert("Не удалось загрузить или отправить «"+file.name+"».\\n"+(error?.code||"Ошибка Firebase")+": "+authError(error)+"\\n\\nЕсли ошибка storage/unauthorized — проверьте опубликованные правила Firebase Storage.")}
+      }catch(error){console.error("FROSS chat attachment upload failed:",{code:error?.code,message:error?.message});progress.remove();alert("Не удалось загрузить или отправить «"+file.name+"».\\n"+(error?.code||"Ошибка Firebase")+": "+authError(error)+"\\n\\nПроверь подключение к интернету и повтори попытку.")}
       finally{attachmentButton.disabled=false}
     }
   };
@@ -1060,6 +1091,7 @@ $("gb").onclick=()=>{
     try{
       const username = P.username.trim().toLowerCase();
       if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
+      const previousAvatarUrl=me.avatarUrl||"";
       const avatarUrl = P.avatarDirty ? await uploadAvatar(me.uid,P.avatarUrl) : (P.avatarUrl||"");
       const publicRef = doc(db,"publicUsers",me.uid);
       const oldUsername = (me.username||"").toLowerCase();
@@ -1089,6 +1121,7 @@ $("gb").onclick=()=>{
       const persisted=savedSettings.data().settings;
       for(const key of Object.keys(o))if(JSON.stringify(persisted[key]??DEF[key])!==JSON.stringify(o[key]))throw new Error("Firebase не сохранил параметр «"+key+"». Проверьте правила Firestore.");
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,contactEmail:P.contactEmail||""});
+      if(previousAvatarUrl.startsWith("filebase:")&&previousAvatarUrl!==avatarUrl)privateFileApi("/api/files/delete-avatar",{path:previousAvatarUrl.slice(9)}).catch(error=>console.warn("Old avatar cleanup failed:",error.message));
       S={...DEF,...o};me.settings={...S};P.avatarDirty=false;
       try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
       applyS(S);fillMe();closeM();head();renderList();
