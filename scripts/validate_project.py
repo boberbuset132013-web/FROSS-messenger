@@ -17,7 +17,7 @@ checks = {
     "text messages use the independent message writer": "await publishChatMessage(cur,message,text);" in js,
     "attachment messages use the independent message writer": "await publishChatMessage(chatId,message,summary);" in js,
     "private avatar images refresh stale saved paths": "async function retryAvatarImage" in js and "loadPrivateAvatar(el,nextSource" in js,
-    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v11"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
+    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v12"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
     "chat previews show the last sender": "senderUid=c.lastSenderUid" in js and "lastSenderUid" in rules and "lastSenderName" in rules,
     "group owner can change group settings": "group-settings-editor" in js and "resource.data.ownerUid == request.auth.uid" in rules and '"memberProfiles"' in rules,
     "profile editor includes a live public preview": 'id="pp-avatar"' in js and "refreshProfilePreview" in js,

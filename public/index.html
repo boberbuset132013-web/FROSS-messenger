@@ -421,6 +421,24 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
   .audio-player-meta{min-width:0}
 }
 
+
+/* Replace the near-black empty chat canvas with a visible plum-space atmosphere */
+.msgs{
+  background-color:color-mix(in srgb,var(--bg) 72%,#2a1240 28%)!important;
+  background-image:
+    radial-gradient(color-mix(in srgb,var(--accent) 14%,transparent) 1px,transparent 1px),
+    radial-gradient(ellipse at 18% 18%,#702eb522,transparent 48%),
+    radial-gradient(ellipse at 82% 76%,#8b35c51a,transparent 46%)!important;
+  background-size:22px 22px,auto,auto!important;
+}
+.msgs[data-w=grad]{
+  background-image:linear-gradient(160deg,color-mix(in srgb,var(--accent) 19%,var(--bg)),color-mix(in srgb,var(--bg) 70%,#2a1240 30%))!important;
+}
+.msgs[data-w=grid]{
+  background-image:linear-gradient(color-mix(in srgb,var(--accent) 13%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,transparent) 1px,transparent 1px),radial-gradient(ellipse at 55% 35%,#752ca71b,transparent 65%)!important;
+  background-size:24px 24px,24px 24px,auto!important;
+}
+
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>
