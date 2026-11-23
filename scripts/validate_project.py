@@ -39,7 +39,7 @@ checks = {
     "general chat is no longer injected into the user's list": 'cur=""' in js and 'const all=[{id:"general"' not in js and "await ensureGeneral()" not in js,
     "old message avatars subscribe to current public profiles": "function watchMessageProfile(uid,box)" in js and 'onSnapshot(doc(db,"publicUsers",uid)' in js and "message-avatar" in js,
     "chat list avatars refresh when public profiles change": "function syncChatProfileObservers()" in js and "syncChatProfileObservers();renderList();head();" in js,
-    "message and chat titles hide the unique username": 'n.textContent=m.displayName||m.username||"Пользователь"' in js and 'sub:"@"+(other.username||"")' not in js,
+    "message and chat titles hide the unique username": 'n.textContent=m.displayName||m.username||"Пользователь"' in js and 'sub:"@"+(other.username||"")' not in js and 'function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent=""' in js,
     "attachments use compact last-message previews": '?"фото":uploadFile.type.startsWith("video/")?"видео"' in js and '?"аудио":"файл"' in js,
     "removed messages refresh the chat preview": "refreshChatPreviewAfterDelete" in js and "messagePreview(newest)" in js,
     "message bubbles do not clip long desktop text": ".mr .msg{display:block;width:max-content" in html and "overflow-wrap:anywhere" in html,

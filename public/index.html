@@ -552,6 +552,8 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
   .mr.me .msg{max-width:calc(100vw - 24px)}
 }
 
+/* The account header shows only the display name; username belongs on the profile page. */
+#mu{display:none!important}
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>

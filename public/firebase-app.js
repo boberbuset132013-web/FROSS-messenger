@@ -999,7 +999,7 @@ async function refreshChatPreviewAfterDelete(chatId,deletedMessage){
   }catch(error){
     const chat=chats.find(item=>item.id===chatId);
     if(chat&&chat.lastSenderUid===deletedMessage?.senderUid&&chat.lastMessage===messagePreview(deletedMessage)){
-      await updateDoc(doc(db,"chats",chatId),{lastMessage:"Вложение удалено",lastMessageAt:deletedMessage?.createdAt||null,updatedAt:serverTimestamp()});
+      await updateDoc(doc(db,"chats",chatId),{lastMessage:deletedMessage?.attachment?"Вложение удалено":"Сообщение удалено",lastMessageAt:deletedMessage?.createdAt||null,updatedAt:serverTimestamp()});
     }else throw error;
   }
 }
@@ -1213,7 +1213,7 @@ async function loadCurrentProfile() {
   for(const [key,value] of Object.entries(priorPalette))if(S[key]===value)S[key]=DEF[key];
   applyS(S);fillMe();
 }
-function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="@"+me.username}
+function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="";$("mu").style.display="none"}
 async function boot(user) {
   if(bootedUid===user.uid)return;
   bootedUid=user.uid;
@@ -1351,7 +1351,7 @@ async function openChatSettings(){
       available.forEach(person=>{
         const row=document.createElement("label");row.className="group-contact";
         const check=document.createElement("input");check.type="checkbox";
-        const name=document.createElement("span");name.textContent=(person.displayName||person.username)+" · @"+(person.username||"user");
+        const name=document.createElement("span");name.textContent=person.displayName||person.username||"Участник";
         check.onchange=()=>{if(check.checked)profiles.set(person.uid,{...person});else profiles.delete(person.uid);renderMembers();renderCandidates()};
         row.append(check,name);host.append(row);
       });
@@ -1435,7 +1435,7 @@ $("nb").onclick=()=>{
     candidates.forEach(person=>{
       const row=document.createElement("label");row.className="group-contact";
       const checkbox=document.createElement("input");checkbox.type="checkbox";
-      const info=document.createElement("span");info.textContent=(person.displayName||person.username)+" · @"+person.username;
+      const info=document.createElement("span");info.textContent=person.displayName||person.username||"Участник";
       checkbox.onchange=()=>{if(checkbox.checked)selected.set(person.uid,person);else selected.delete(person.uid);renderSelected()};
       row.append(checkbox,info);$("pk").append(row);
     });
