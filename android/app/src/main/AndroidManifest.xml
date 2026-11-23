@@ -6,7 +6,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="FROSS"
+        android:label="FROSS"\n        android:icon="@drawable/ic_fross"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
