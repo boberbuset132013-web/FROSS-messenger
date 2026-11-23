@@ -293,9 +293,12 @@ function pickImg(file,cb,onCancel=()=>{}) {
 }
 async function uploadAvatar(uid,dataUrl) {
   if(!dataUrl)return "";
-  if(dataUrl.startsWith("https://"))return dataUrl;
-  const target=ref(storage,"avatars/"+uid+"/avatar.jpg");
-  await uploadString(target,dataUrl,"data_url",{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
+  if(/^https:\/\//i.test(dataUrl))return dataUrl;
+  if(!dataUrl.startsWith("data:image/"))throw new Error("Фото не подготовлено. Выберите изображение ещё раз.");
+  const blob=await (await fetch(dataUrl)).blob();
+  if(!blob.size)throw new Error("Получилось пустое изображение.");
+  const target=ref(storage,"avatars/"+uid+"/avatar_"+Date.now()+".jpg");
+  await uploadBytes(target,blob,{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
   return await getDownloadURL(target);
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
@@ -516,7 +519,7 @@ const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉",
 function openMessageMenu(message,mine,x,y) {
   document.getElementById("message-menu")?.remove();
   const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
-  const actions=[["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
+  const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
   if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
   actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
   if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
@@ -527,8 +530,8 @@ function openMessageMenu(message,mine,x,y) {
 }
 function showReactionPicker(message,menu) {
   menu.replaceChildren();
-  MESSAGE_EMOJIS.forEach(emoji=>{const b=document.createElement("button");b.className="reaction-choice";b.textContent=emoji;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()});menu.remove()}catch(e){alert(authError(e))}};menu.append(b)});
-  const remove=document.createElement("button");remove.textContent="Убрать реакцию";remove.onclick=async()=>{try{await deleteDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));menu.remove()}catch(e){alert(authError(e))}};menu.append(remove);
+  MESSAGE_EMOJIS.forEach(emoji=>{const b=document.createElement("button");b.className="reaction-choice";b.textContent=emoji;b.onclick=async()=>{try{const own=await getDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));if(own.exists()&&own.data().emoji===emoji)await deleteDoc(own.ref);else await setDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()});menu.remove()}catch(e){alert(authError(e))}};menu.append(b)});
+  const remove=document.createElement("button");remove.textContent="Убрать мою реакцию";remove.onclick=async()=>{try{await deleteDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));menu.remove()}catch(e){alert(authError(e))}};menu.append(remove);
 }
 async function editMessage(message) {
   const value=prompt("Изменить сообщение:",message.text||"");if(value===null)return;
@@ -542,12 +545,33 @@ async function deleteMessageForAll(message) {
   if(!confirm("Удалить это сообщение у всех участников?"))return;
   try{await deleteDoc(doc(db,"chats",cur,"messages",message.id))}catch(e){alert(authError(e))}
 }
-async function renderMessageReactions(messageId,host) {
-  try{
-    const snap=await getDocs(collection(db,"chats",cur,"messages",messageId,"reactions"));if(!host.isConnected)return;
-    const groups=new Map();snap.docs.forEach(d=>{const emoji=d.data().emoji;if(emoji)groups.set(emoji,(groups.get(emoji)||0)+1)});
-    if(groups.size){const bar=document.createElement("div");bar.className="reaction-bar";for(const [emoji,count] of groups){const b=document.createElement("button");b.textContent=emoji+" "+count;b.onclick=async()=>{try{await setDoc(doc(db,"chats",cur,"messages",messageId,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()})}catch(e){alert(authError(e))}};bar.append(b)}host.append(bar)}
-  }catch(e){console.warn("Reaction load failed:",e)}
+function renderMessageReactions(messageId,host) {
+  const reactionRef=collection(db,"chats",cur,"messages",messageId,"reactions");
+  const stop=onSnapshot(reactionRef,snap=>{
+    if(!host.isConnected)return;
+    host.querySelector(".reaction-bar")?.remove();
+    const groups=new Map();
+    snap.docs.forEach(d=>{const value=d.data(),emoji=value.emoji;if(emoji){const group=groups.get(emoji)||{count:0,mine:false};group.count++;if(d.id===me.uid)group.mine=true;groups.set(emoji,group)}});
+    if(!groups.size)return;
+    const bar=document.createElement("div");bar.className="reaction-bar";
+    for(const [emoji,group] of groups){
+      const b=document.createElement("button");b.className=group.mine?"mine-reaction":"";
+      b.textContent=emoji+" "+group.count;b.title=group.mine?"Нажми, чтобы убрать свою реакцию":"Нажми, чтобы поставить такую же реакцию";
+      b.onclick=async()=>{try{const ownRef=doc(db,"chats",cur,"messages",messageId,"reactions",me.uid);if(group.mine)await deleteDoc(ownRef);else await setDoc(ownRef,{uid:me.uid,emoji,updatedAt:serverTimestamp()})}catch(e){alert(authError(e))}};
+      bar.append(b);
+    }
+    host.append(bar);
+  },e=>console.warn("Reaction listener:",e));
+  reactionStops.push(stop);
+}
+let replyTarget=null;
+function setReplyTarget(message){
+  replyTarget={id:message.id,senderUid:message.senderUid,displayName:message.displayName||message.username||"Пользователь",text:message.text||message.attachment?.name||"Вложение"};
+  let bar=$("reply-preview");
+  if(!bar){bar=document.createElement("div");bar.id="reply-preview";bar.className="reply-preview";$("msgs").after(bar)}
+  bar.innerHTML='<span><b>Ответ '+esc(replyTarget.displayName)+'</b><small>'+esc(replyTarget.text.slice(0,140))+'</small></span><button type="button" aria-label="Отменить ответ">×</button>';
+  bar.querySelector("button").onclick=()=>{replyTarget=null;bar.remove()};
+  $("inp").focus();
 }
 function subscribeMessages() {
   if(stopMessages)stopMessages();
@@ -563,6 +587,7 @@ function subscribeMessages() {
     snapshot.docs.forEach(s=>{
       const m={id:s.id,...s.data()},mine=m.senderUid===me.uid,r=document.createElement("div");
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
+      r.dataset.messageId=m.id;
       if(S.avatars&&!mine&&previous!==m.senderUid){
         const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
@@ -573,6 +598,12 @@ function subscribeMessages() {
         n.onclick=()=>openUserProfile(m.senderUid);b.append(n);
       }
       if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
+      if(m.replyTo){
+        const quote=document.createElement("button");quote.type="button";quote.className="reply-quote";
+        const qname=document.createElement("b");qname.textContent=m.replyTo.displayName||"Ответ";
+        const qtext=document.createElement("span");qtext.textContent=m.replyTo.text||"Сообщение";
+        quote.append(qname,qtext);quote.onclick=()=>{const target=box.querySelector('[data-message-id="'+m.replyTo.id+'"]');target?.scrollIntoView({behavior:"smooth",block:"center"});target?.classList.add("reply-highlight");setTimeout(()=>target?.classList.remove("reply-highlight"),1200)};b.append(quote);
+      }
       if(m.attachment){
         const a=m.attachment;
         if(a.type?.startsWith("image/")){const img=document.createElement("img");img.src=a.url;img.alt=a.name||"Изображение";img.className="message-image";img.loading="lazy";b.append(img)}
@@ -680,11 +711,14 @@ async function boot(user) {
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
 async function send() {
-  const input=$("inp"),text=input.value.trim();if(!text)return;input.value="";input.style.height="";
+  const input=$("inp"),text=input.value.trim();if(!text&&!replyTarget)return;input.value="";input.style.height="";
+  const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
   try{
     const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
     const messageRef=doc(collection(db,"chats",cur,"messages"));
-    batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,readBy:[me.uid],createdAt:serverTimestamp()});
+    const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,readBy:[me.uid],createdAt:serverTimestamp()};
+    if(reply)message.replyTo={id:reply.id,senderUid:reply.senderUid,displayName:reply.displayName,text:reply.text.slice(0,160)};
+    batch.set(messageRef,message);
     batch.update(chatRef,{lastMessage:text.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
     await batch.commit();
   }catch(e){alert(authError(e));input.value=text}
@@ -705,7 +739,9 @@ if(attachmentButton&&attachmentInput){
         const batch=writeBatch(db),messageRef=doc(collection(db,"chats",chatId,"messages"));
         const attachment={name:file.name.slice(0,180),type:file.type||"application/octet-stream",size:file.size,url,path};
         const summary=(file.type.startsWith("image/")?"Фото: ":"Файл: ")+file.name;
-        batch.set(messageRef,{senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()});
+        const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
+        if(replyTarget){message.replyTo={id:replyTarget.id,senderUid:replyTarget.senderUid,displayName:replyTarget.displayName,text:replyTarget.text.slice(0,160)};replyTarget=null;$("reply-preview")?.remove()}
+        batch.set(messageRef,message);
         batch.update(doc(db,"chats",chatId),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await batch.commit();progress.update(100);setTimeout(()=>progress.remove(),900);
       }catch(error){progress.remove();alert("Не удалось отправить «"+file.name+"»: "+authError(error))}
@@ -1011,13 +1047,9 @@ import("./voice-calls.js").catch(error => console.error("Voice calls failed to l
   };
   const create=document.getElementById("nb");
   if(create)create.onclick=()=>{
-    openM('<div class="create-sheet"><div class="sheet-grab"></div><h3>Создать</h3><p class="mut">Что хочешь создать?</p><button class="create-option" id="make-dm"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c.5-3.5 2.5-5.5 6-5.5s5.5 2 6 5.5M17 8h5m-2.5-2.5v5"/></svg></span><span><b>Личный чат</b><small>Найти человека и написать ему</small></span></button><button class="create-option" id="make-group"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.5-3.5 2.5-5.5 6.5-5.5s6 2 6.5 5.5M15 15c3.5-.2 5.5 1.5 6 4.5"/></svg></span><span><b>Группа</b><small>Общение с несколькими людьми</small></span></button><button class="create-option" id="make-channel"><span class="option-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg></span><span><b>Канал</b><small>Публикации от имени автора</small></span></button><button class="sheet-cancel" id="cancel-create">Отмена</button></div>');
+    openM('<div class="create-sheet"><div class="sheet-grab"></div><h3>Создать чат</h3><p class="mut">Что хочешь создать?</p><button class="create-option" id="make-dm"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c.5-3.5 2.5-5.5 6-5.5s5.5 2 6 5.5M17 8h5m-2.5-2.5v5"/></svg></span><span><b>Личный чат</b><small>Найти человека и написать ему</small></span></button><button class="create-option" id="make-group"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.5-3.5 2.5-5.5 6.5-5.5s6 2 6.5 5.5M15 15c3.5-.2 5.5 1.5 6 4.5"/></svg></span><span><b>Группа</b><small>Общение с несколькими людьми</small></span></button><button class="sheet-cancel" id="cancel-create">Отмена</button></div>');
     document.getElementById("cancel-create").onclick=closeM;
     document.getElementById("make-dm").onclick=()=>{closeM();oldCreate?.call(create);document.getElementById("t1")?.click()};
     document.getElementById("make-group").onclick=()=>{closeM();oldCreate?.call(create);document.getElementById("t2")?.click()};
-    document.getElementById("make-channel").onclick=()=>{
-      openM('<div class="create-sheet"><h3>Канал FROSS</h3><p class="mut">Каналы требуют отдельной системы подписчиков и прав публикации: авторы смогут писать, подписчики — читать. Я не буду создавать канал на старых правах группового чата, чтобы не открыть публикации всем участникам случайно.</p><div class="row"><button id="channel-close" class="pr">Понятно</button></div></div>');
-      document.getElementById("channel-close").onclick=closeM;
-    };
   };
 })();
