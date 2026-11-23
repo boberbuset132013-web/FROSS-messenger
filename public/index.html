@@ -151,6 +151,25 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
 .create-option b,.create-option small{display:block}.create-option b{font-size:15px}.create-option small{color:#aa99bb;font-size:12px;margin-top:3px}
 .sheet-cancel{width:100%;margin-top:8px;background:#ffffff08;border-color:#ffffff12}
 @media(max-width:700px){.sheet-grab{display:block}.create-sheet{padding-top:4px}.md:has(.create-sheet){width:min(560px,100%);align-self:end;margin:0 0 -16px;border-radius:24px 24px 0 0;padding:18px 18px calc(22px + env(safe-area-inset-bottom))}.ov:has(.create-sheet){align-items:end;padding:0}}
+
+/* Avatar editor */
+#avatar-crop-preview{width:240px;height:240px;max-width:72vw;max-height:72vw;margin:16px auto;border-radius:50%;border:3px solid #d6a4ff;box-shadow:0 0 0 7px #a855f722,0 0 34px #9b35ff55;background-repeat:no-repeat;position:relative;overflow:hidden;touch-action:none}
+#avatar-crop-preview:after{content:"";position:absolute;inset:0;border:1px solid #ffffff55;border-radius:50%;pointer-events:none}
+#avatar-zoom-value{float:right;color:var(--accent);font-weight:700}
+#avatar-zoom{accent-color:var(--accent)}
+/* Mascot polish: luminous glass orb, defined eyes, and a visible soft levitation shadow */
+.mascot{filter:drop-shadow(0 0 18px #9b37ff55)}
+.mascot:after{content:"";position:absolute;z-index:0;left:28px;right:28px;bottom:1px;height:9px;border-radius:50%;background:#b04cff99;filter:blur(8px);animation:mascot-shadow 4.6s ease-in-out infinite}
+.mascot-body{z-index:1;background:radial-gradient(ellipse at 34% 23%,#f4d8ff 0 2%,#e3a4ff 3%,#bd54ff 11%,#9b27f2 34%,#7814d4 63%,#3b087b 100%);box-shadow:inset 8px 8px 15px #ffffff2c,inset -13px -16px 22px #230044a8,0 0 0 1px #e4b4ff77,0 0 26px #a020ff99}
+.mascot-body:before{content:"";position:absolute;left:18%;top:12%;width:33%;height:12%;border-radius:50%;background:#f7e7ffb8;filter:blur(3px);transform:rotate(-32deg)}
+.mascot-body:after{content:"";position:absolute;right:17%;top:24%;width:9%;height:4%;border-radius:50%;background:#fff;filter:blur(1px);transform:rotate(42deg)}
+.mascot-eye{z-index:2;top:49%;width:19px;height:23px;background:radial-gradient(circle at 35% 28%,#301344,#080311 70%);box-shadow:0 2px 4px #21003c99;transform:translateY(-50%)}
+.mascot-eye.left{left:24%}.mascot-eye.right{right:24%}
+.mascot-orbit{z-index:2;border-width:2px;border-top-color:#f0c6ff;border-bottom-color:#8e22ff;filter:drop-shadow(0 0 5px #b94aff)}
+.orbit-a{inset:5px 10px;animation:mascot-orbit 8s linear infinite}
+.orbit-b{inset:0 1px;animation:mascot-orbit 11s linear infinite reverse}
+.mascot-spark{z-index:3;width:7px;height:7px;background:#f4d8ff;box-shadow:0 0 12px 5px #a52cff}
+@media(prefers-reduced-motion:reduce){#avatar-crop-preview{scroll-behavior:auto}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
