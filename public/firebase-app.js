@@ -467,11 +467,29 @@ async function searchUsers(term) {
 }
 function startChatList() {
   if(stopChats)stopChats();
-  const q=query(collection(db,"chats"),where("memberUids","array-contains",me.uid),orderBy("updatedAt","desc"),limit(50));
+  // Draw the general chat immediately; the private list is populated from the first
+  // snapshot without requiring the user to open the Chats tab.
+  chats=[];renderList();head();
+  const sortChats=items=>items.sort((a,b)=>{
+    const at=a.updatedAt?.toMillis?.()||a.lastMessageAt?.toMillis?.()||0;
+    const bt=b.updatedAt?.toMillis?.()||b.lastMessageAt?.toMillis?.()||0;
+    return bt-at;
+  });
+  const q=query(collection(db,"chats"),where("memberUids","array-contains",me.uid),limit(100));
   stopChats=onSnapshot(q,snapshot=>{
-    chats=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+    chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
     renderList();head();
-  },e=>console.error("Chat list:",e));
+  },async e=>{
+    console.error("Chat list listener:",e);
+    try {
+      const snapshot=await getDocs(q);
+      chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
+      renderList();head();
+    } catch(fallbackError) {
+      console.error("Chat list fallback:",fallbackError);
+      $("list").innerHTML='<div class="empty" style="padding:20px">Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.</div>';
+    }
+  });
 }
 async function ensureGeneral() {
   const r=doc(db,"chats","general");
@@ -646,7 +664,7 @@ async function loadCurrentProfile() {
   if(!snap.exists())throw new Error("Профиль Firebase не найден.");
   const p=snap.data(),v=priv.exists()?priv.data():{};
   me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{}};
-  S={...DEF,...me.settings};applyS(S);fillMe();
+  let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}\n  S={...DEF,...cached,...me.settings};applyS(S);fillMe();
 }
 function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="@"+me.username}
 async function boot(user) {
@@ -942,13 +960,15 @@ $("gb").onclick=()=>{
       } else {
         await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor},{merge:true});
       }
-      await setDoc(doc(db,"users",me.uid),{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
-      const savedProfile=await getDoc(publicRef);
+      const privateRef=doc(db,"users",me.uid);
+      await setDoc(privateRef,{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
+      const [savedProfile,savedSettings]=await Promise.all([getDoc(publicRef),getDoc(privateRef)]);
       if(!savedProfile.exists())throw new Error("Профиль не сохранился в Firebase. Проверьте правила Firestore.");
-      const savedSettings=await getDoc(doc(db,"users",me.uid));
       if(!savedSettings.exists()||!savedSettings.data().settings)throw new Error("Настройки не сохранились в Firebase.");
+      const persisted=savedSettings.data().settings;
+      for(const key of Object.keys(o))if(JSON.stringify(persisted[key]??DEF[key])!==JSON.stringify(o[key]))throw new Error("Firebase не сохранил параметр «"+key+"». Проверьте правила Firestore.");
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
-      S=o;applyS(S);fillMe();closeM();head();renderList();
+      S={...DEF,...o};me.settings={...S};\n      try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}\n      applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e))}
   };
