@@ -17,7 +17,7 @@ checks = {
     "legacy accounts receive a trusted migration claim": "setCustomUserClaims" in (root / "migration/migrate-d1-to-firebase.mjs").read_text(encoding="utf-8"),
     "Google and password providers have useful setup errors": "auth/unauthorized-domain" in js,
     "chat access requires verified email or admin-migrated legacy claim": "function verified()" in rules and "email_verified == true" in rules and "legacyAccount == true" in rules,
-    "chat file access requires verified email or admin-migrated legacy claim": "request.auth.token.email_verified == true" in storage and "request.auth.token.legacyAccount == true" in storage,
+    "chat file uploads are restricted to the authenticated user's own folder": 'request.auth.uid == userId' in storage and 'match /chatFiles/{chatId}/{userId}/{fileName}' in storage and "request.auth.token.email_verified == true" not in storage,
     "no unsafe diagnostic leakage": 'diagnostic:String(error?.message' not in js,
     "username availability can be checked before registration": "allow get: if true;" in rules,
     "duplicate email is not reported as a taken username": 'auth/email-already-in-use":"Этот email уже зарегистрирован' in js,
