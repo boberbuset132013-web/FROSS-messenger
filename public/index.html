@@ -142,6 +142,15 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
  .head{height:60px}
 }
 @media(prefers-reduced-motion:reduce){.mascot,.mascot *{animation:none!important}}
+
+.create-sheet h3{font-size:23px;margin:8px 0}.create-sheet>p{margin:0 0 18px}
+.sheet-grab{display:none;width:38px;height:4px;border-radius:8px;background:#8b6da7;margin:0 auto 14px}
+.create-option{width:100%;display:flex;align-items:center;gap:14px;text-align:left;padding:14px;margin:8px 0;border-radius:16px;border:1px solid #ffffff13;background:linear-gradient(110deg,#a855f718,#ffffff04)}
+.option-icon{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:#a855f722;border:1px solid #c084fc44;flex:none}
+.option-icon svg{width:24px;height:24px;fill:none;stroke:#d9a9ff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.create-option b,.create-option small{display:block}.create-option b{font-size:15px}.create-option small{color:#aa99bb;font-size:12px;margin-top:3px}
+.sheet-cancel{width:100%;margin-top:8px;background:#ffffff08;border-color:#ffffff12}
+@media(max-width:700px){.sheet-grab{display:block}.create-sheet{padding-top:4px}.md:has(.create-sheet){width:min(560px,100%);align-self:end;margin:0 0 -16px;border-radius:24px 24px 0 0;padding:18px 18px calc(22px + env(safe-area-inset-bottom))}.ov:has(.create-sheet){align-items:end;padding:0}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
