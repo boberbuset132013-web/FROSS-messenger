@@ -1,0 +1,46 @@
+name: Add persistent audio dock and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/add_audio_dock.py"
+      - ".github/workflows/add-audio-dock.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-audio-player:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Add persistent audio player
+        run: python3 scripts/add_audio_dock.py
+
+      - name: Validate the complete application
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run validate
+
+      - name: Commit and publish source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/index.html public/firebase-app.js public/sw.js
+          if git diff --cached --quiet; then
+            echo "Audio dock already present; no changes to publish."
+            exit 0
+          fi
+          git commit -m "Add persistent cross-chat audio player"
+          git push origin HEAD:main
