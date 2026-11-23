@@ -298,7 +298,7 @@ async function startOutgoingCall() {
     peerProfile.uid=calleeUid;
     showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Запрашиваем микрофон…","☎",[
       {label:"Отменить",danger:true,onClick:()=>finishCall("ended")}
-    ]);
+    ],peerProfile);
     const stream = await getMicrophone();
     const callRef = doc(collection(db,"calls"));
     const callId = callRef.id;
@@ -317,7 +317,7 @@ async function startOutgoingCall() {
     });
     showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Вызов… идут гудки",String(peerProfile.displayName||peerProfile.username||"☎")[0],[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
-    ]);
+    ],peerProfile);
     startRingbackTone(false);
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"calleeCandidates");
