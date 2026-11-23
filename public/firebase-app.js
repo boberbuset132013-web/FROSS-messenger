@@ -326,6 +326,7 @@ function wiz(n) {
   $("ac").innerHTML=h;
   const error=t=>$("we").textContent=t;
   $("auth").scrollTop=0;
+  $("auth").scrollTop=0;
   if(n===1){
     $("u").value=W.username;$("e").value=W.email;$("p").value=W.password;$("p2").value=W.password;
     let checkSequence = 0;
