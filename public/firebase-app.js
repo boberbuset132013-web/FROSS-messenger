@@ -344,8 +344,11 @@ function wiz(n) {
     $("u").oninput = checkUsername;
     $("u").onblur = checkUsername;
     $("p").oninput=e=>{
-      const v=e.target.value,score=(v.length>=8)+(v.length>=12)+(/[A-Z]/.test(v)?1:0)+(/\d/.test(v)?1:0)+(/\W/.test(v)?1:0);
-      $("mt").style.width=score*20+"%";$("mt").style.background=score<3?"#ff6b6b":score<4?"#f59e0b":"#3ddc84";
+      const v=e.target.value;
+      const score=(v.length>=8?1:0)+(v.length>=12?1:0)+(/[a-z]/.test(v)?1:0)+(/[A-Z]/.test(v)?1:0)+(/[0-9]/.test(v)?1:0)+(/[^A-Za-z0-9]/.test(v)?1:0);
+      $("mt").style.width=Math.round(score/6*100)+"%";
+      $("mt").style.background=score<3?"#ff6b6b":score<5?"#f59e0b":"#3ddc84";
+      $("mt").title=score<3?"Слабый пароль":score<5?"Средний пароль":"Сильный пароль";
     };
   }
   if(n===2){
@@ -768,7 +771,11 @@ $("gb").onclick=()=>{
         try {
           const phone = $("phoneNumber").value.trim();
           if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в формате +447700900123.");
+          if(phoneVerifier){try{phoneVerifier.clear()}catch{}phoneVerifier=null}
+          $("phoneError").style.color="var(--muted)";
+          $("phoneError").textContent="Подготавливаем проверку номера…";
           phoneVerifier = new RecaptchaVerifier(auth,"phone-recaptcha-container",{size:"normal"});
+          await phoneVerifier.render();
           phoneConfirmation = await linkWithPhoneNumber(currentUser,phone,phoneVerifier);
           $("phoneError").style.color = "#3ddc84";
           $("phoneError").textContent = "SMS отправлено. Введите код из сообщения.";
