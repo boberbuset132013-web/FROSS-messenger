@@ -173,6 +173,8 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
 .orbit-b{inset:0 1px;animation:mascot-orbit 11s linear infinite reverse}
 .mascot-spark{z-index:3;width:7px;height:7px;background:#f4d8ff;box-shadow:0 0 12px 5px #a52cff}
 @media(prefers-reduced-motion:reduce){#avatar-crop-preview{scroll-behavior:auto}}
+#auth .card{max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:700px){#auth .card{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
