@@ -955,11 +955,11 @@ $("gb").onclick=()=>{
           tx.set(newIndex,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
           tx.update(publicRef,{
             username,usernameLower:username,
-            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,lastSeenAt:serverTimestamp()
+            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,lastSeenAt:serverTimestamp()
           });
         });
       } else {
-        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor},{merge:true});
+        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor},{merge:true});
       }
       const privateRef=doc(db,"users",me.uid);
       await setDoc(privateRef,{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
@@ -968,7 +968,7 @@ $("gb").onclick=()=>{
       if(!savedSettings.exists()||!savedSettings.data().settings)throw new Error("Настройки не сохранились в Firebase.");
       const persisted=savedSettings.data().settings;
       for(const key of Object.keys(o))if(JSON.stringify(persisted[key]??DEF[key])!==JSON.stringify(o[key]))throw new Error("Firebase не сохранил параметр «"+key+"». Проверьте правила Firestore.");
-      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:P.profileColor||o.profileColor,contactEmail:P.contactEmail||""});
+      Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,contactEmail:P.contactEmail||""});
       S={...DEF,...o};me.settings={...S};
       try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
       applyS(S);fillMe();closeM();head();renderList();
