@@ -433,7 +433,7 @@ function chatInfo(c) {
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
     if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
-    return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:isOnline(other)?"в сети":"@"+(other.username||"")};
+    return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:"@"+(other.username||"")+(isOnline(other)?" · в сети":"")};
   }
   return{title:c.title||"Группа",avatar:{title:c.title||"G"},sub:(c.memberUids||[]).length+" участн."};
 }
@@ -792,6 +792,8 @@ $("gb").onclick=()=>{
       $("reset-customization").onclick=()=>{
         ["theme","accent","fs","shape","density","font","wall","bgColor","panelColor","textColor","incomingColor","outgoingColor","profileColor"].forEach(key=>o[key]=DEF[key]);
         applyS(o);bindLook(o,"s");
+        $("scustom").value=o.accent;
+        [...$("sac").children].forEach(node=>node.classList.toggle("s",node.dataset.c===o.accent));
       };
     }
     if(i===2){
