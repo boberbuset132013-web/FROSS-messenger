@@ -25,7 +25,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
+const DEF = {theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
@@ -745,7 +745,14 @@ function renderList() {
   for(const c of all){
     const info=chatInfo(c);
     if(term&&!info.title.toLowerCase().includes(term))continue;
-    count++;L.append(item(info.avatar,info.title,c.lastMessage||info.sub,isOnline(info.avatar),c.id===cur,()=>openChat(c.id)));
+    let preview=String(c.lastMessage||"").trim();
+    if(c.id!=="general"&&preview){
+      const senderUid=c.lastSenderUid||"";
+      const senderProfile=(c.memberProfiles||[]).find(person=>person.uid===senderUid);
+      const senderName=senderUid===me.uid?"ВЫ":(c.lastSenderName||senderProfile?.displayName||senderProfile?.username||"");
+      if(senderName)preview=senderName+": "+preview;
+    }
+    count++;L.append(item(info.avatar,info.title,preview||info.sub,isOnline(info.avatar),c.id===cur,()=>openChat(c.id)));
   }
   if(term&&found.length){
     const h=document.createElement("div");h.className="h";h.textContent="Люди";L.append(h);
@@ -895,7 +902,11 @@ function subscribeMessages() {
   const box=$("msgs");box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
   stopMessages=onSnapshot(q,snapshot=>{
-    const stick=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+    const stick=box.scrollHeight-box.scrollTop-box.clientHeight<140;
+    const oldHeight=box.scrollHeight,oldScrollTop=box.scrollTop,boxRect=box.getBoundingClientRect();
+    const visibleAnchor=[...box.querySelectorAll(".mr")].find(node=>node.getBoundingClientRect().bottom>boxRect.top);
+    const anchorId=visibleAnchor?.dataset.messageId||"";
+    const anchorOffset=visibleAnchor?visibleAnchor.getBoundingClientRect().top-boxRect.top:0;
     markMessagesRead(snapshot.docs);
     reactionStops.forEach(stop=>stop());reactionStops=[];
     box.innerHTML="";
@@ -951,7 +962,17 @@ function subscribeMessages() {
       ["touchend","touchmove","touchcancel"].forEach(ev=>r.addEventListener(ev,()=>clearTimeout(pressTimer),{passive:true}));
       renderMessageReactions(m.id,b);previous=m.senderUid;
     });
-    if(stick)box.scrollTop=box.scrollHeight;
+    requestAnimationFrame(()=>{
+      if(!box.isConnected)return;
+      if(stick){box.scrollTop=box.scrollHeight;return}
+      const anchor=anchorId?[...box.querySelectorAll(".mr")].find(node=>node.dataset.messageId===anchorId):null;
+      if(anchor){
+        const nextOffset=anchor.getBoundingClientRect().top-box.getBoundingClientRect().top;
+        box.scrollTop+=nextOffset-anchorOffset;
+      }else{
+        box.scrollTop=oldScrollTop+(box.scrollHeight-oldHeight);
+      }
+    });
   },e=>{box.textContent="Не удалось загрузить сообщения: "+e.message;});
 }
 async function loadChatProfile(uid) {
@@ -1024,7 +1045,10 @@ async function loadCurrentProfile() {
   const p=snap.data(),v=priv.exists()?priv.data():{};
   me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{}};
   let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}
-  S={...DEF,...cached,...me.settings};applyS(S);fillMe();
+  S={...DEF,...cached,...me.settings};
+  const priorPalette={accent:"#9181ff",bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff"};
+  for(const [key,value] of Object.entries(priorPalette))if(S[key]===value)S[key]=DEF[key];
+  applyS(S);fillMe();
 }
 function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="@"+me.username}
 async function boot(user) {
@@ -1117,7 +1141,77 @@ if(attachmentButton&&attachmentInput){
 $("chat-settings").onclick=openChatSettings;
 async function openChatSettings(){
   const chat=cur==="general"?{id:"general",type:"general"}:chats.find(c=>c.id===cur);if(!chat)return;
-  openM('<h3>Настройки чата</h3><p class="mut">'+esc(chat.title||chatInfo(chat).title)+'</p><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  const isGroup=chat.type==="group",isOwner=isGroup&&chat.ownerUid===me.uid;
+  const title=chat.title||chatInfo(chat).title;
+  let editor="";
+  if(isGroup){
+    editor=isOwner
+      ? '<div class="group-settings-editor"><label>Название группы</label><input id="group-title" maxlength="40"><label>Описание</label><textarea id="group-description" rows="3" maxlength="300" placeholder="Кратко расскажи о группе"></textarea><h4>Участники</h4><div id="group-members" class="group-settings-members"></div><h4>Добавить из личных чатов</h4><div id="group-candidates" class="group-settings-members"></div><div class="err" id="group-settings-error"></div><button class="pr" id="save-group-settings" style="width:100%">Сохранить настройки группы</button></div>'
+      : '<p class="mut">Настраивать группу может только её создатель.</p><b>Участники</b><div id="group-members" class="group-settings-members"></div>';
+  }
+  openM('<h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  if(isGroup){
+    const profiles=new Map((chat.memberProfiles||[]).map(person=>[person.uid,{...person}]));
+    const contacts=new Map();
+    for(const memberUid of (chat.memberUids||[])){
+      if(!profiles.has(memberUid)){
+        const known=chats.flatMap(c=>c.memberProfiles||[]).find(person=>person.uid===memberUid);
+        profiles.set(memberUid,known?{...known}:{uid:memberUid,username:"user",displayName:"Участник"});
+      }
+    }
+    if(!profiles.has(me.uid))profiles.set(me.uid,{uid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||""});
+    for(const dm of chats.filter(c=>c.type==="dm")){
+      const person=(dm.memberProfiles||[]).find(member=>member.uid!==me.uid);
+      if(person&&!person.deleted&&!profiles.has(person.uid))contacts.set(person.uid,person);
+    }
+    const renderMembers=()=>{
+      const host=$("group-members");if(!host)return;host.innerHTML="";
+      for(const person of profiles.values()){
+        if(!(chat.memberUids||[]).includes(person.uid)&&!isOwner)continue;
+        const row=document.createElement("div");row.className="group-contact";
+        const name=document.createElement("span");name.textContent=(person.displayName||person.username||"Участник")+(person.uid===chat.ownerUid?" · создатель":"");
+        row.append(name);
+        if(isOwner&&person.uid!==me.uid){
+          const remove=document.createElement("button");remove.type="button";remove.textContent="Убрать";remove.onclick=()=>{profiles.delete(person.uid);renderMembers();renderCandidates()};row.append(remove);
+        }
+        host.append(row);
+      }
+    };
+    const renderCandidates=()=>{
+      const host=$("group-candidates");if(!host)return;host.innerHTML="";
+      const available=[...contacts.values()].filter(person=>!profiles.has(person.uid));
+      if(!available.length){host.textContent="Новых участников из личных чатов нет.";host.className="group-settings-members group-settings-note";return}
+      host.className="group-settings-members";
+      available.forEach(person=>{
+        const row=document.createElement("label");row.className="group-contact";
+        const check=document.createElement("input");check.type="checkbox";
+        const name=document.createElement("span");name.textContent=(person.displayName||person.username)+" · @"+(person.username||"user");
+        check.onchange=()=>{if(check.checked)profiles.set(person.uid,{...person});else profiles.delete(person.uid);renderMembers();renderCandidates()};
+        row.append(check,name);host.append(row);
+      });
+    };
+    renderMembers();if(isOwner)renderCandidates();
+    if(isOwner){
+      $("group-title").value=chat.title||"";
+      $("group-description").value=chat.description||"";
+      $("save-group-settings").onclick=async()=>{
+        const nextTitle=$("group-title").value.trim(),nextDescription=$("group-description").value.trim().slice(0,300);
+        const currentError=$("group-settings-error");
+        const memberUids=[...profiles.keys()];
+        if(!nextTitle||nextTitle.length>40){currentError.textContent="Название должно быть от 1 до 40 символов.";return}
+        if(memberUids.length<2||memberUids.length>50){currentError.textContent="В группе должно быть от 2 до 50 участников.";return}
+        if(!memberUids.includes(me.uid)){currentError.textContent="Создатель должен оставаться участником группы.";return}
+        const memberProfiles=memberUids.map(uid=>{const person=profiles.get(uid)||{};return {uid,username:person.username||"user",displayName:person.displayName||person.username||"Участник",avatarUrl:person.avatarUrl||""}});
+        const button=$("save-group-settings");button.disabled=true;button.textContent="Сохраняем…";
+        try{
+          await updateDoc(doc(db,"chats",cur),{title:nextTitle,description:nextDescription,memberUids,memberProfiles,updatedAt:serverTimestamp()});
+          Object.assign(chat,{title:nextTitle,description:nextDescription,memberUids,memberProfiles});
+          const stored=chats.find(item=>item.id===cur);if(stored)Object.assign(stored,{title:nextTitle,description:nextDescription,memberUids,memberProfiles});
+          closeM();head();renderList();
+        }catch(error){currentError.textContent=authError(error);button.disabled=false;button.textContent="Сохранить настройки группы"}
+      };
+    }
+  }
   $("clear-chat").onclick=async()=>{
     try{
       const snap=await getDocs(collection(db,"chats",cur,"messages"));
@@ -1129,6 +1223,7 @@ async function openChatSettings(){
   };
   $("delete-chat").onclick=async()=>{
     if(cur==="general"){$("chat-settings-error").textContent="Общий чат нельзя удалить из списка.";return}
+    if(isGroup&&isOwner){$("chat-settings-error").textContent="Создатель не может покинуть группу, пока не передаст права владения.";return}
     if(!confirm("Удалить чат из вашего списка? История останется у других участников."))return;
     try{await updateDoc(doc(db,"chats",cur),{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});closeM();cur="general";openChat("general")}
     catch(e){$("chat-settings-error").textContent=authError(e)}
@@ -1164,7 +1259,7 @@ $("nb").onclick=()=>{
     $("t1").classList.toggle("a",n===1);$("t2").classList.toggle("a",n===2);
     $("nc").innerHTML="";
     if(n===1){const b=document.createElement("div");$("nc").append(b);picker(b,u=>startDM(u));return;}
-    const selected=new Map();$("nc").innerHTML='<label>Название группы</label><input id="gt" maxlength="40"><p class="mut">Добавляй участников из уже существующих личных чатов.</p><div id="ch"></div><div id="pk" class="existing-chat-picker"></div><div class="err" id="ge"></div><button class="pr" id="gc" style="width:100%">Создать группу</button>';
+    const selected=new Map();$("nc").innerHTML='<label>Название группы</label><input id="gt" maxlength="40" placeholder="Например, Команда"><label>Описание группы</label><textarea id="gd" rows="2" maxlength="300" placeholder="О чём эта группа"></textarea><p class="mut">Добавляй участников из уже существующих личных чатов.</p><div id="ch"></div><div id="pk" class="existing-chat-picker"></div><div class="err" id="ge"></div><button class="pr" id="gc" style="width:100%">Создать группу</button>';
     const candidates=chats.filter(chat=>chat.type==="dm").map(chat=>(chat.memberProfiles||[]).find(person=>person.uid!==me.uid)).filter(person=>person&&!person.deleted);
     const renderSelected=()=>{$("ch").innerHTML=[...selected.values()].map(person=>'<span class="chip">@'+esc(person.username||"user")+'</span>').join("");};
     if(!candidates.length)$("pk").textContent="Пока нет личных чатов. Сначала начни переписку с человеком.";
@@ -1182,7 +1277,7 @@ $("nb").onclick=()=>{
         const members=[{uid:me.uid,username:me.username,displayName:me.displayName,avatarUrl:me.avatarUrl||""},...selected.values()];
         const unique=[...new Map(members.map(x=>[x.uid,x])).values()];
         const id="group_"+crypto.randomUUID();
-        await setDoc(doc(db,"chats",id),{type:"group",title,ownerUid:me.uid,memberUids:unique.map(x=>x.uid),memberProfiles:unique.map(x=>({uid:x.uid,username:x.username,displayName:x.displayName,avatarUrl:x.avatarUrl||""})),createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""});
+        await setDoc(doc(db,"chats",id),{type:"group",title,description:$("gd").value.trim().slice(0,300),ownerUid:me.uid,memberUids:unique.map(x=>x.uid),memberProfiles:unique.map(x=>({uid:x.uid,username:x.username,displayName:x.displayName,avatarUrl:x.avatarUrl||""})),createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""});
         closeM();openChat(id);
       }catch(e){$("ge").textContent=authError(e)}
     };
@@ -1195,7 +1290,8 @@ $("gb").onclick=()=>{
   const startCategory=window.FROSS_SETTINGS_START===3?3:1;window.FROSS_SETTINGS_START=null;
   const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S};
   const P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarDirty:false};
-  openM('<div class="settings-head"><h3>Настройки FROSS</h3><p>Выбери раздел, который хочешь изменить</p></div><div class="settings-layout"><nav class="settings-categories" aria-label="Разделы настроек"><button type="button" class="settings-category" data-i="0"><span>🛡️</span><b>Безопасность</b><small>Вход и защита аккаунта</small></button><button type="button" class="settings-category" data-i="1"><span>💬</span><b>Чаты</b><small>Переписки и уведомления</small></button><button type="button" class="settings-category" data-i="2"><span>🖼️</span><b>Медиа</b><small>Фото и файлы</small></button><button type="button" class="settings-category" data-i="3"><span>👤</span><b>Профиль</b><small>Фото и личные данные</small></button><button type="button" class="settings-category" data-i="4"><span>🎨</span><b>Кастомизация</b><small>Цвета и внешний вид</small></button></nav><section id="sc" class="settings-content"></section></div><div class="row settings-actions"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  openM('<div class="settings-head"><div><h3>Настройки FROSS</h3><p>Выбери раздел, который хочешь изменить</p></div><button type="button" id="settings-back" class="settings-back">← Чаты</button></div><div class="settings-layout"><nav class="settings-categories" aria-label="Разделы настроек"><button type="button" class="settings-category" data-i="0"><span>🛡️</span><b>Безопасность</b><small>Вход и защита аккаунта</small></button><button type="button" class="settings-category" data-i="1"><span>💬</span><b>Чаты</b><small>Переписки и уведомления</small></button><button type="button" class="settings-category" data-i="2"><span>🖼️</span><b>Медиа</b><small>Фото и файлы</small></button><button type="button" class="settings-category" data-i="3"><span>👤</span><b>Профиль</b><small>Фото и личные данные</small></button><button type="button" class="settings-category" data-i="4"><span>🎨</span><b>Кастомизация</b><small>Цвета и внешний вид</small></button></nav><section id="sc" class="settings-content"></section></div><div class="row settings-actions"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  $("settings-back").onclick=()=>{applyS(S);closeM();document.body.classList.remove("ch");$("nav-chats").classList.add("active");$("nav-people").classList.remove("active")};
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
   const section=(title,description)=>'<div class="settings-section-title"><h4>'+title+'</h4><p>'+description+'</p></div>';
   let settingsRenderVersion=0;
@@ -1204,10 +1300,20 @@ $("gb").onclick=()=>{
     document.querySelectorAll(".settings-category").forEach((b,j)=>b.classList.toggle("active",i===j));
     const c=$("sc");c.classList.remove("settings-content-enter");void c.offsetWidth;c.classList.add("settings-content-enter");
     if(i===3){
-      c.innerHTML=section("Профиль","Настрой, как твой аккаунт выглядит для других.")+'<div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
+      c.innerHTML=section("Профиль","Настрой личные данные и посмотри, как профиль будет выглядеть для других.")+'<div class="profile-public-preview"><div class="profile-public-preview-head"><b>ПУБЛИЧНЫЙ ПРОФИЛЬ</b><span>Предпросмотр</span></div><div class="profile-public-preview-main"><div class="av" id="pp-avatar"></div><div class="profile-public-preview-name"><b id="pp-name"></b><small id="pp-handle"></small></div></div><p id="pp-bio"></p></div><div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
+      const refreshProfilePreview=()=>{
+        $("pp-name").textContent=P.displayName||P.username||"Имя пользователя";
+        $("pp-handle").textContent="@"+(P.username||"username");
+        $("pp-bio").textContent=P.bio||"Здесь будет отображаться информация о себе.";
+        avatar($("pp-avatar"),{displayName:P.displayName||P.username,username:P.username,avatarUrl:P.avatarUrl,profileColor:o.profileColor||P.profileColor});
+      };
+      refreshProfilePreview();
       if(P.avatarDirty){$("photo-state").textContent="Фото уже применено, нажми «Сохранить»."; $("photo-state").classList.add("pending")}
-      $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
+      $("un").oninput=e=>{P.username=e.target.value.trim().toLowerCase();refreshProfilePreview()};
+      $("dn").oninput=e=>{P.displayName=e.target.value;refreshProfilePreview()};
+      $("bio").oninput=e=>{P.bio=e.target.value;refreshProfilePreview()};
+      $("em").oninput=e=>P.contactEmail=e.target.value;
       $("up").onclick=()=>$("fi").click();
       $("fi").onchange=e=>{
         const file=e.target.files?.[0];e.target.value="";if(!file)return;
@@ -1215,13 +1321,13 @@ $("gb").onclick=()=>{
           P.avatarUrl=dataUrl;P.avatarDirty=true;
           avatar($("pav"),{displayName:P.displayName,avatarUrl:dataUrl});
           $("photo-state").textContent="Фото применено. Теперь нажми «Сохранить».";
-          $("photo-state").classList.add("pending");
+          $("photo-state").classList.add("pending");refreshProfilePreview();
         });
       };
       $("rm").onclick=()=>{
         P.avatarUrl="";P.avatarDirty=true;avatar($("pav"),{displayName:P.displayName});
         $("photo-state").textContent="Фото будет удалено после нажатия «Сохранить».";
-        $("photo-state").classList.add("pending");
+        $("photo-state").classList.add("pending");refreshProfilePreview();
       };
     }
     if(i===4){
@@ -1359,7 +1465,7 @@ $("gb").onclick=()=>{
   };
   document.querySelectorAll(".settings-category").forEach(b=>b.onclick=()=>show(Number(b.dataset.i)));
   show(startCategory);
-  $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
+  $("sx").onclick=()=>{S=backup;applyS(S);closeM();document.body.classList.remove("ch");$("nav-chats").classList.add("active");$("nav-people").classList.remove("active")};
   $("ss").onclick=async()=>{
     const saveButton=$("ss"),originalLabel=saveButton.textContent;
     saveButton.disabled=true;saveButton.textContent=P.avatarDirty?"Загружаем фото…":"Сохраняем…";
@@ -1428,11 +1534,11 @@ import("./voice-calls.js").catch(error => console.error("Voice calls failed to l
   const people=document.getElementById("nav-people");
   const chats=document.getElementById("nav-chats");
   if(people)people.onclick=()=>{
-    document.body.classList.remove("ch");
     chats?.classList.remove("active");people.classList.add("active");
     window.FROSS_SETTINGS_START=1;$("gb").click();
   };
   if(chats)chats.onclick=()=>{
+    if($("ov").classList.contains("o")){applyS(S);closeM()}
     if(q){q.value="";q.placeholder="Найти человека или чат";q.dispatchEvent(new Event("input"));}
     chats.classList.add("active");people?.classList.remove("active");
     document.body.classList.remove("ch");
