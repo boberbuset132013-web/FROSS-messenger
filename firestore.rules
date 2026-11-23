@@ -141,8 +141,16 @@ service cloud.firestore {
           && (!("profileColor" in request.resource.data) || request.resource.data.profileColor is string)
           && (!("avatarUrl" in request.resource.data) || request.resource.data.avatarUrl is string)
           && request.resource.data.keys().hasOnly([
-            "senderUid", "username", "displayName", "avatarUrl", "profileColor", "text", "createdAt", "attachment", "readBy"
+            "senderUid", "username", "displayName", "avatarUrl", "profileColor", "text", "createdAt", "attachment", "readBy", "replyTo"
           ])
+          && (!("replyTo" in request.resource.data)
+            || (request.resource.data.replyTo is map
+              && request.resource.data.replyTo.keys().hasOnly(["id", "senderUid", "displayName", "text"])
+              && request.resource.data.replyTo.id is string
+              && request.resource.data.replyTo.senderUid is string
+              && request.resource.data.replyTo.displayName is string
+              && request.resource.data.replyTo.text is string
+              && request.resource.data.replyTo.text.size() <= 160))
           && (!("attachment" in request.resource.data)
             || (request.resource.data.attachment.keys().hasOnly(["name", "type", "size", "url", "path"])
               && request.resource.data.attachment.name is string
