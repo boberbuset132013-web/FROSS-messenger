@@ -1,48 +1,47 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
     function signedIn() {
       return request.auth != null;
     }
-    function isChatMember(chatId) {
-      return signedIn()
-        && (
-          request.auth.token.email_verified == true
-          || request.auth.token.legacyAccount == true
-        )
-        && firestore.exists(/databases/(default)/documents/chats/$(chatId))
-        && (chatId == "general" || request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids);
-    }
 
+    // Profile photos: each signed-in user can manage only their own avatar.
     match /avatars/{userId}/{fileName} {
       allow read: if signedIn();
-      allow write: if signedIn()
+      allow create, update: if signedIn()
         && request.auth.uid == userId
-        && (
-          request.resource == null
-          || (
-            request.resource.size < 5 * 1024 * 1024
-            && request.resource.contentType.matches('image/(jpeg|png|webp|gif)')
-          )
-        );
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+      allow delete: if signedIn()
+        && request.auth.uid == userId;
     }
 
+    // Chat uploads: each user can upload only into their own UID folder.
+    // Firestore rules independently control whether the resulting message
+    // can be created in the selected chat and who can read that chat.
     match /chatFiles/{chatId}/{userId}/{fileName} {
-      allow read: if isChatMember(chatId);
-      // Uploads are scoped to the authenticated user folder. This avoids a fragile
-      // cross-service Firestore lookup during upload; message creation is still
-      // separately restricted by Firestore chat membership rules.
-      allow write: if signedIn()
-        && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
-        && request.auth.uid == userId
+      allow read: if signedIn()
         && (
-          request.resource == null
+          chatId == "general"
           || (
-            request.resource.size < 20 * 1024 * 1024
-            && request.resource.contentType is string
-            && request.resource.contentType.size() <= 120
+            firestore.exists(/databases/(default)/documents/chats/$(chatId))
+            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids
           )
         );
+
+      allow create, update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType is string
+        && request.resource.contentType.size() <= 120;
+
+      allow delete: if signedIn()
+        && request.auth.uid == userId;
     }
   }
 }
