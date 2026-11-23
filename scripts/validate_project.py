@@ -7,6 +7,9 @@ worker = (root / "worker.js").read_text(encoding="utf-8")
 rules = (root / "firestore.rules").read_text(encoding="utf-8")
 storage = (root / "storage.rules").read_text(encoding="utf-8")
 checks = {
+    "global audio dock survives chat switching": 'id="audio-dock"' in html and 'id="global-audio"' in html and "function startGlobalAudio(attachment)" in js,
+    "global audio controls provide pause, speed and seek": all(x in js for x in ["audio-dock-toggle", "audio-dock-speed", "audio-dock-seek", "closeGlobalAudioDock"]),
+    "audio playback is independent from message DOM": "message-audio-engine" not in js,
     "responsive viewport": 'name="viewport"' in html,
     "in-chat photo viewer and download action": "openImageViewer" in js and "media-viewer" in html and "downloadStoredFile" in js,
     "music playback button is available": "createAudioMessagePlayer" in js and "▶ Слушать" in js and "audio-play-button" in html,
@@ -14,7 +17,7 @@ checks = {
     "text messages use the independent message writer": "await publishChatMessage(cur,message,text);" in js,
     "attachment messages use the independent message writer": "await publishChatMessage(chatId,message,summary);" in js,
     "private avatar images refresh stale saved paths": "async function retryAvatarImage" in js and "loadPrivateAvatar(el,nextSource" in js,
-    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v7"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
+    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v8"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
     "private downloads are authenticated server-side": "/api/files/download" in js and "async function downloadFile" in worker and "verifyFirebaseToken" in worker,
     "reduced motion support": "prefers-reduced-motion:reduce" in html,
     "animated interface transitions": "@keyframes fross-enter" in html and "@keyframes fross-pop" in html,

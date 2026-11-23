@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -25,6 +26,18 @@ if not ARCHIVE.exists() and PARTS_DIR.exists():
 if not ARCHIVE.exists():
     print("No uploaded archive found; nothing to merge.")
     raise SystemExit(0)
+
+MANIFEST = ROOT / ".merge" / "archive.sha256"
+if not MANIFEST.exists():
+    raise SystemExit("Archive SHA-256 manifest is missing; refusing to extract an unverified archive.")
+expected_sha = MANIFEST.read_text(encoding="ascii").strip().split()[0].lower()
+actual_sha = hashlib.sha256(ARCHIVE.read_bytes()).hexdigest()
+if actual_sha != expected_sha:
+    raise SystemExit(f"Archive checksum mismatch: expected {expected_sha}, got {actual_sha}")
+with zipfile.ZipFile(ARCHIVE) as check_zip:
+    bad_member = check_zip.testzip()
+    if bad_member:
+        raise SystemExit(f"Archive CRC check failed for {bad_member}")
 
 # Read the last deployed source before overlaying the submitted v6 project.
 current_js = subprocess.check_output(
@@ -196,6 +209,7 @@ if not all(required.values()):
     raise SystemExit("The uploaded source merge did not pass feature checks")
 
 ARCHIVE.unlink()
+MANIFEST.unlink(missing_ok=True)
 if PARTS_DIR.exists():
     for part in PARTS_DIR.glob("part*.txt"):
         part.unlink()
