@@ -35,8 +35,15 @@ jobs:
             exit 0
           fi
           npm install --no-audit --no-fund
-          npx wrangler deploy --config ./wrangler.toml --assets ./public/
+          # Validate the configured account ID. If it is a placeholder/old value,
+          # discover the account associated with this API token without printing the token.
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || ! curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" | jq -e '.success == true' >/dev/null; then
+            CLOUDFLARE_ACCOUNT_ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts?per_page=50" | jq -er '.result[0].id')
+          fi
+          echo "Using Cloudflare account ID discovered/validated from the API token."
+          CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/
       - name: Deploy Firebase rules, indexes and Functions if credentials are configured
+        if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
