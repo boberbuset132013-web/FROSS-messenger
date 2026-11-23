@@ -51,21 +51,3 @@ jobs:
           printf '%s' "$FILEBASE_ACCESS_KEY" | npx wrangler secret put FILEBASE_ACCESS_KEY --config ./wrangler.toml
           printf '%s' "$FILEBASE_SECRET_KEY" | npx wrangler secret put FILEBASE_SECRET_KEY --config ./wrangler.toml
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/
-      - name: Authenticate Firebase service account
-        if: always() && env.HAS_FIREBASE_SECRET == 'true'
-        uses: google-github-actions/auth@v2
-        env:
-          HAS_FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      - name: Deploy Firebase rules, indexes and Functions if credentials are configured
-        if: always()
-        env:
-          HAS_FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
-        run: |
-          if [ "$HAS_FIREBASE_SECRET" != "true" ]; then
-            echo "::notice::Firebase deploy skipped; configure FIREBASE_SERVICE_ACCOUNT as the full service-account JSON."
-            exit 0
-          fi
-          npm install --global firebase-tools
-          firebase deploy --only firestore:rules,firestore:indexes --project fross-ca5d6

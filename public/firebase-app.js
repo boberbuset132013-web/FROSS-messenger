@@ -261,25 +261,23 @@ function setPrivateMediaSource(element,value,path="") {
   else element.src=source;
 }
 function avatar(el,o,on) {
-  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#",source=o?.avatarUrl||o?.avatar||"";
+  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
+  const source=o?.avatarUrl||o?.avatar||"";
   const privateSource=typeof source==="string"&&source.startsWith("filebase:");
-  el.classList.toggle("on",!!on);el.dataset.avatarSource=source;
+  el.classList.toggle("on",!!on);
+  el.dataset.avatarSource=source;
   el.style.background=source&&!privateSource?"":(o?.profileColor||hue(name));
-  el.style.backgroundImage=source&&!privateSource?'url("'+source.replace(/["\\]/g,"\\function avatar(el,o,on) {
-  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
-  el.classList.toggle("on",!!on);
-  el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
-  el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
-  el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
-}")+'")':"none";
+  el.style.backgroundImage=source&&!privateSource?'url("'+source+'")':"none";
   el.textContent=source&&!privateSource?"":String(name)[0].toUpperCase();
-  if(privateSource)resolveStoredFileUrl(source).then(url=>{if(el.isConnected&&el.dataset.avatarSource===source){el.style.backgroundImage='url("'+url.replace(/["\\]/g,"\\function avatar(el,o,on) {
-  const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
-  el.classList.toggle("on",!!on);
-  el.style.background=o?.avatarUrl||o?.avatar ? "":(o?.profileColor||hue(name));
-  el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
-  el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
-}")+'")';el.textContent="";el.style.background=""}}).catch(error=>console.warn("FROSS avatar load failed:",error.message));
+  if(privateSource){
+    resolveStoredFileUrl(source).then(url=>{
+      if(el.isConnected&&el.dataset.avatarSource===source){
+        el.style.backgroundImage='url("'+url+'")';
+        el.textContent="";
+        el.style.background="";
+      }
+    }).catch(error=>console.warn("FROSS avatar load failed:",error.message));
+  }
 }
 function pickImg(file,cb,onCancel=()=>{}) {
   if(!file || !file.type?.startsWith("image/")) { onCancel(); return; }
