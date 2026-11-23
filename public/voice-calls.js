@@ -11,9 +11,23 @@ const app = getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
-const ICE_SERVERS = [
-  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
+const FALLBACK_ICE_SERVERS = [
+  {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
+  {urls:["stun:stun.cloudflare.com:3478"]}
 ];
+let iceServersCache=null;
+async function loadIceServers(){
+  if(iceServersCache)return iceServersCache;
+  try{
+    const user=auth.currentUser;if(!user)return FALLBACK_ICE_SERVERS;
+    const token=await user.getIdToken();
+    const response=await fetch("/api/calls/ice",{headers:{Authorization:"Bearer "+token}});
+    if(!response.ok)throw new Error("ICE config HTTP "+response.status);
+    const result=await response.json();
+    if(Array.isArray(result.iceServers)&&result.iceServers.length)iceServersCache=result.iceServers;
+  }catch(error){console.warn("FROSS TURN config unavailable; using STUN fallback:",error?.message||error)}
+  return iceServersCache||FALLBACK_ICE_SERVERS;
+}
 
 let signedInUser = null;
 let activeCall = null;
@@ -47,7 +61,10 @@ async function changeAudioOutput(deviceId){
   try{await audioElement.setSinkId(deviceId)}catch(e){$("call-status").textContent="Не удалось выбрать устройство вывода: "+e.message}
 }
 function toggleRemoteAudio(){
-  if(!audioElement)return;
+  if(!audioElement){
+    $("call-status").textContent="Аудиопоток ещё не получен. Проверьте соединение и разрешение на звук.";
+    return;
+  }
   audioElement.muted=!audioElement.muted;
   $("call-status").textContent=audioElement.muted?"Звук собеседника выключен.":"Звук собеседника включён.";
   const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="output");
@@ -169,22 +186,38 @@ async function finishCall(status = "ended") {
   stopMedia();
 }
 function attachAudio(peer) {
-  peer.ontrack = event => {
-    if(event.track.kind==="video"){if(remoteScreen){remoteScreen.srcObject=event.streams[0];remoteScreen.style.display="block";remoteScreen.play().catch(()=>{})}return}
-    if (!audioElement) {
-      audioElement = document.createElement("audio");
-      audioElement.autoplay = true;
-      audioElement.playsInline = true;
-      audioElement.setAttribute("aria-label","Голос собеседника");
-      audioElement.style.display = "none";
+  peer.ontrack=event=>{
+    if(event.track.kind==="video"){
+      if(remoteScreen){
+        const stream=event.streams?.[0]||new MediaStream([event.track]);
+        remoteScreen.srcObject=stream;remoteScreen.style.display="block";
+        remoteScreen.play().catch(()=>{$("call-status").textContent="Нажмите на экран, чтобы разрешить воспроизведение."});
+      }
+      return;
+    }
+    const stream=event.streams?.[0]||new MediaStream([event.track]);
+    if(!audioElement){
+      audioElement=document.createElement("audio");
+      audioElement.autoplay=true;audioElement.playsInline=true;audioElement.muted=false;audioElement.volume=1;
+      audioElement.setAttribute("autoplay","");audioElement.setAttribute("playsinline","");
+      audioElement.setAttribute("aria-label","Голос собеседника");audioElement.style.display="none";
       document.body.append(audioElement);
     }
-    audioElement.srcObject = event.streams[0];
+    audioElement.muted=false;audioElement.volume=1;audioElement.srcObject=stream;
     if(outputSelect?.value)changeAudioOutput(outputSelect.value);
     if(remoteScreen)remoteScreen.style.display="none";
-    audioElement.play().catch(() => {
-      $("call-status").textContent = "Разрешите воспроизведение звука в браузере.";
-    });
+    const playRemote=()=>{
+      if(!audioElement||audioElement.srcObject!==stream)return;
+      audioElement.play().then(()=>{
+        if(activeCall&&$("call-status")?.textContent.includes("Ожидаем аудио"))$("call-status").textContent="Аудиосвязь подключена.";
+      }).catch(error=>{
+        console.warn("FROSS remote audio autoplay blocked:",error?.message||error);
+        $("call-status").textContent="Браузер заблокировал звук. Нажмите «Включить звук».";
+      });
+    };
+    event.track.enabled=true;event.track.onunmute=playRemote;
+    event.track.onmute=()=>{if(activeCall)$("call-status").textContent="Аудиопоток временно приостановлен…"};
+    playRemote();
   };
 }
 function watchRemoteCandidates(callId, remoteSet) {
@@ -250,8 +283,8 @@ async function getMicrophone() {
   }
   return navigator.mediaDevices.getUserMedia({audio:true,video:false});
 }
-function createPeer(callId, role, stream) {
-  const peer = new RTCPeerConnection({iceServers:ICE_SERVERS});
+async function createPeer(callId, role, stream) {
+  const peer = new RTCPeerConnection({iceServers:await loadIceServers()});
   const localSet = role === "caller" ? "callerCandidates" : "calleeCandidates";
   peer.onicecandidate = async event => {
     if (!event.candidate || !activeCall || activeCall.id !== callId) return;
@@ -264,6 +297,13 @@ function createPeer(callId, role, stream) {
     } catch (e) {
       console.warn("Could not send ICE candidate:",e);
     }
+  };
+  peer.oniceconnectionstatechange=()=>{
+    if(!activeCall||activeCall.id!==callId)return;
+    if(peer.iceConnectionState==="checking")$("call-status").textContent="Проверяем аудиосоединение…";
+    else if(peer.iceConnectionState==="connected")$("call-status").textContent="Аудиосоединение установлено.";
+    else if(peer.iceConnectionState==="failed")$("call-status").textContent="Не удалось установить аудиосвязь. Для этой сети может потребоваться TURN.";
+    else if(peer.iceConnectionState==="disconnected")$("call-status").textContent="Сеть прервала аудиосвязь. Пробуем восстановить…";
   };
   peer.onconnectionstatechange = () => {
     if (!activeCall || activeCall.id !== callId) return;
@@ -307,7 +347,7 @@ async function startOutgoingCall() {
       chatId,callerUid:profile.uid,calleeUid,participantUids,
       status:"preparing",createdAt:serverTimestamp()
     });
-    const peer = createPeer(callId,"caller",stream);
+    const peer = await createPeer(callId,"caller",stream);
     activeCall = {id:callId,ref:callRef,role:"caller",peer,stream,peerProfile};
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
@@ -357,7 +397,7 @@ async function acceptCall(callId, data, caller) {
     $("call-status").textContent = "Запрашиваем доступ к микрофону…";
     const stream = await getMicrophone();
     const callRef = doc(db,"calls",callId);
-    const peer = createPeer(callId,"callee",stream);
+    const peer = await createPeer(callId,"callee",stream);
     activeCall = {id:callId,ref:callRef,role:"callee",peer,stream,peerProfile:caller};
     await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
     const answer = await peer.createAnswer();

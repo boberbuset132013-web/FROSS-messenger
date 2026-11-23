@@ -32,6 +32,9 @@ jobs:
           FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
           FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
           MAX_BOT_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
+          FROSS_TURN_URLS: ${{ secrets.FROSS_TURN_URLS }}
+          FROSS_TURN_USERNAME: ${{ secrets.FROSS_TURN_USERNAME }}
+          FROSS_TURN_CREDENTIAL: ${{ secrets.FROSS_TURN_CREDENTIAL }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::notice::Cloudflare deploy skipped; configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Cloudflare Git integration may deploy independently."
@@ -54,5 +57,6 @@ jobs:
           SECRETS_FILE="$(mktemp)"
           trap 'rm -f "$SECRETS_FILE"' EXIT
           jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" --arg max "$MAX_BOT_TOKEN" \
-            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $max != "" then {MAX_BOT_TOKEN: $max} else {} end)' > "$SECRETS_FILE"
+            --arg turn_urls "$FROSS_TURN_URLS" --arg turn_user "$FROSS_TURN_USERNAME" --arg turn_credential "$FROSS_TURN_CREDENTIAL" \
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $max != "" then {MAX_BOT_TOKEN: $max} else {} end) + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"

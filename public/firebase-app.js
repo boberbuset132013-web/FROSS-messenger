@@ -27,11 +27,12 @@ const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const DEF = {theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
-let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
+let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
 let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
 let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
+let chatProfileStops=new Map(),messageProfileStops=new Map();
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},renderAvatar:(element,profile)=>avatar(element,profile)};
 
 function authEmail(username) {
@@ -737,11 +738,10 @@ function presenceLabel(profile){
   return "Был(а) "+date.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"})+" в "+date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
 }
 function chatInfo(c) {
-  if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
   if(c.type==="dm"){
     const other=(c.memberProfiles||[]).find(m=>m.uid!==me.uid)||{};
     if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
-    return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:"@"+(other.username||"")+(isOnline(other)?" · в сети":"")};
+    return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:isOnline(other)?"В сети":presenceLabel(other)};
   }
   return{title:c.title||"Группа",avatar:{title:c.title||"G"},sub:(c.memberUids||[]).length+" участн."};
 }
@@ -750,27 +750,64 @@ function item(o,title,sub,online,active,fn) {
   d.innerHTML='<div class="av"></div><div class="t"><b>'+esc(title)+'</b><small>'+esc(sub||"")+'</small></div>';
   avatar(d.firstChild,o,online);d.onclick=fn;return d;
 }
+function clearProfileObservers(map){
+  for(const stop of map.values()){try{stop()}catch{}}
+  map.clear();
+}
+function syncChatProfileObservers(){
+  const wanted=new Set();
+  chats.forEach(chat=>(chat.memberProfiles||[]).forEach(person=>{if(person.uid&&person.uid!==me.uid)wanted.add(person.uid)}));
+  for(const [uid,stop] of chatProfileStops){
+    if(!wanted.has(uid)){try{stop()}catch{}chatProfileStops.delete(uid)}
+  }
+  for(const uid of wanted){
+    if(chatProfileStops.has(uid))continue;
+    const stop=onSnapshot(doc(db,"publicUsers",uid),snapshot=>{
+      if(!snapshot.exists())return;
+      const profile={uid,...snapshot.data()};
+      chats.forEach(chat=>{
+        chat.memberProfiles=(chat.memberProfiles||[]).map(person=>person.uid===uid?{...person,...profile}:person);
+      });
+      renderList();if(cur)head();
+    },error=>console.warn("FROSS chat profile listener:",error?.message||error));
+    chatProfileStops.set(uid,stop);
+  }
+}
+function watchMessageProfile(uid,box){
+  if(!uid||messageProfileStops.has(uid))return;
+  const stop=onSnapshot(doc(db,"publicUsers",uid),snapshot=>{
+    if(!snapshot.exists())return;
+    const profile={uid,...snapshot.data()};
+    box.querySelectorAll(".mr").forEach(row=>{
+      if(row.dataset.senderUid!==uid)return;
+      const avatarElement=row.querySelector(".message-avatar");
+      if(avatarElement)avatar(avatarElement,profile);
+      const senderName=row.querySelector(".sender-profile");
+      if(senderName)senderName.textContent=profile.displayName||profile.username||"Пользователь";
+    });
+  },error=>console.warn("FROSS message profile listener:",error?.message||error));
+  messageProfileStops.set(uid,stop);
+}
 function renderList() {
   const L=$("list"),term=$("q").value.trim().toLowerCase();L.innerHTML="";
-  const all=[{id:"general",type:"general",memberUids:[]},...chats];
   let count=0;
-  for(const c of all){
+  for(const c of chats){
     const info=chatInfo(c);
     if(term&&!info.title.toLowerCase().includes(term))continue;
     let preview=String(c.lastMessage||"").trim();
-    if(c.id!=="general"&&preview){
+    if(preview){
       const senderUid=c.lastSenderUid||"";
       const senderProfile=(c.memberProfiles||[]).find(person=>person.uid===senderUid);
-      const senderName=senderUid===me.uid?"ВЫ":(c.lastSenderName||senderProfile?.displayName||senderProfile?.username||"");
+      const senderName=senderUid===me.uid?"ВЫ":(c.lastSenderName||senderProfile?.displayName||"");
       if(senderName)preview=senderName+": "+preview;
     }
     count++;L.append(item(info.avatar,info.title,preview||info.sub,isOnline(info.avatar),c.id===cur,()=>openChat(c.id)));
   }
   if(term&&found.length){
     const h=document.createElement("div");h.className="h";h.textContent="Люди";L.append(h);
-    found.forEach(u=>L.append(item(u,u.displayName||u.username,"@"+u.username,isOnline(u),false,()=>openUserProfile(u))));
+    found.forEach(user=>L.append(item(user,user.displayName||user.username,presenceLabel(user),isOnline(user),false,()=>openUserProfile(user))));
   }
-  if(!count&&!found.length)L.innerHTML='<div class="empty" style="padding:20px">Ничего не найдено</div>';
+  if(!count&&!found.length)L.innerHTML='<div class="empty" style="padding:20px">'+(term?"Ничего не найдено":"Пока нет личных чатов. Нажмите «Создать», чтобы начать переписку.")+'</div>';
 }
 let stopSearch=null;
 async function findPublicProfiles(term,maxResults=20){
@@ -840,9 +877,7 @@ async function searchUsers(term) {
 }
 function startChatList() {
   if(stopChats)stopChats();
-  // Draw the general chat immediately; the private list is populated from the first
-  // snapshot without requiring the user to open the Chats tab.
-  chats=[];renderList();head();
+  chats=[];clearProfileObservers(chatProfileStops);renderList();head();
   const sortChats=items=>items.sort((a,b)=>{
     const at=a.updatedAt?.toMillis?.()||a.lastMessageAt?.toMillis?.()||0;
     const bt=b.updatedAt?.toMillis?.()||b.lastMessageAt?.toMillis?.()||0;
@@ -851,39 +886,45 @@ function startChatList() {
   const q=query(collection(db,"chats"),where("memberUids","array-contains",me.uid),limit(100));
   stopChats=onSnapshot(q,snapshot=>{
     chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
-    renderList();head();
-  },async e=>{
-    console.error("Chat list listener:",e);
-    try {
+    syncChatProfileObservers();renderList();head();
+  },async error=>{
+    console.error("Chat list listener:",error);
+    try{
       const snapshot=await getDocs(q);
       chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
-      renderList();head();
-    } catch(fallbackError) {
+      syncChatProfileObservers();renderList();head();
+    }catch(fallbackError){
       console.error("Chat list fallback:",fallbackError);
       $("list").innerHTML='<div class="empty" style="padding:20px">Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.</div>';
     }
   });
 }
-async function ensureGeneral() {
-  const r=doc(db,"chats","general");
-  await runTransaction(db,async tx=>{
-    const snap=await tx.get(r);
-    if(!snap.exists())tx.set(r,{
-      type:"general",title:"Общий чат",memberUids:[],memberProfiles:[],
-      createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""
-    });
-  });
-}
 function head() {
-  const c=cur==="general"?{id:"general",type:"general"}:chats.find(x=>x.id===cur);
-  if(!c)return;
-  const i=chatInfo(c);avatar($("hav"),i.avatar,isOnline(i.avatar));$("ht").textContent=i.title;$("hs").textContent=i.sub;
-  if ($("call")) $("call").style.display = c.type==="dm" ? "block" : "none";
+  const chat=chats.find(item=>item.id===cur);
+  const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
+  if(!chat){
+    avatarElement.style.backgroundImage="none";avatarElement.textContent="";avatarElement.style.background="transparent";
+    titleElement.textContent="Выберите чат";subtitleElement.textContent="Личные переписки и группы";
+    avatarElement.onclick=null;titleElement.onclick=null;avatarElement.style.cursor="default";titleElement.style.cursor="default";
+    if($("call"))$("call").style.display="none";
+    return;
+  }
+  const info=chatInfo(chat);avatar(avatarElement,info.avatar,isOnline(info.avatar));
+  titleElement.textContent=info.title;subtitleElement.textContent=info.sub;
+  const other=chat.type==="dm"?(chat.memberProfiles||[]).find(person=>person.uid!==me.uid):null;
+  const openProfile=()=>{if(other?.uid)openUserProfile(other.uid)};
+  avatarElement.onclick=openProfile;titleElement.onclick=openProfile;
+  avatarElement.style.cursor=other?.uid?"pointer":"default";titleElement.style.cursor=other?.uid?"pointer":"default";
+  avatarElement.title=other?.uid?"Открыть профиль":"";
+  if($("call"))$("call").style.display=chat.type==="dm"?"block":"none";
 }
 function openChat(id) {
-  cur=id;
-  document.body.classList.add("ch");renderList();head();subscribeMessages();
-  const chat=chats.find(c=>c.id===id);if(chat?.type==="dm"){const other=(chat.memberProfiles||[]).find(m=>m.uid!==me.uid);if(other?.uid)loadChatProfile(other.uid).then(profile=>{chat.memberProfiles=(chat.memberProfiles||[]).map(m=>m.uid===profile.uid?{...m,...profile}:m);head();renderList()}).catch(()=>{})}
+  const chat=chats.find(item=>item.id===id);if(!chat)return;
+  cur=id;document.body.classList.add("ch");renderList();head();subscribeMessages();
+  if(chat.type==="dm"){
+    const other=(chat.memberProfiles||[]).find(person=>person.uid!==me.uid);
+    if(other?.uid)loadChatProfile(other.uid).then(profile=>{Object.assign(other,profile);renderList();head()}).catch(()=>{});
+  }
 }
 const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
 function openMessageMenu(message,mine,x,y) {
@@ -932,11 +973,42 @@ async function editMessage(message) {
 async function hideMessageForMe(message) {
   try{await updateDoc(doc(db,"chats",cur,"messages",message.id),{hiddenFor:arrayUnion(me.uid)})}catch(e){alert(authError(e))}
 }
+function messagePreview(message){
+  if(!message)return "";
+  if(message.attachment){
+    const type=String(message.attachment.type||"");
+    if(type.startsWith("image/"))return "фото";
+    if(type.startsWith("video/"))return "видео";
+    if(type.startsWith("audio/"))return "аудио";
+    return "файл";
+  }
+  return String(message.text||"").slice(0,120);
+}
+async function refreshChatPreviewAfterDelete(chatId,deletedMessage){
+  const latest=await getDocs(query(collection(db,"chats",chatId,"messages"),orderBy("createdAt","desc"),limit(1)));
+  const newest=latest.docs[0]?.data()||null;
+  const summary=messagePreview(newest),lastSender=newest?.senderUid||"";
+  const senderProfile=(chats.find(chat=>chat.id===chatId)?.memberProfiles||[]).find(person=>person.uid===lastSender);
+  try{
+    await updateDoc(doc(db,"chats",chatId),{
+      lastMessage:summary,lastSenderUid:lastSender,
+      lastSenderName:(newest?.displayName||senderProfile?.displayName||"").slice(0,40),
+      lastMessageAt:newest?.createdAt||deletedMessage?.createdAt||null,
+      updatedAt:newest?.createdAt||deletedMessage?.createdAt||serverTimestamp()
+    });
+  }catch(error){
+    const chat=chats.find(item=>item.id===chatId);
+    if(chat&&chat.lastSenderUid===deletedMessage?.senderUid&&chat.lastMessage===messagePreview(deletedMessage)){
+      await updateDoc(doc(db,"chats",chatId),{lastMessage:"Вложение удалено",lastMessageAt:deletedMessage?.createdAt||null,updatedAt:serverTimestamp()});
+    }else throw error;
+  }
+}
 async function deleteMessageForAll(message) {
   if(!confirm("Удалить это сообщение у всех участников?"))return;
   try{
     if(message.attachment?.url?.startsWith("filebase:"))await privateFileApi("/api/files/delete-message",{chatId:cur,messageId:message.id});
     await deleteDoc(doc(db,"chats",cur,"messages",message.id));
+    try{await refreshChatPreviewAfterDelete(cur,message)}catch(previewError){console.warn("Message deleted but the chat preview could not be refreshed:",previewError)}
   }catch(e){alert(e?.message||authError(e))}
 }
 function renderMessageReactions(messageId,host) {
@@ -969,7 +1041,11 @@ function setReplyTarget(message){
 }
 function subscribeMessages() {
   if(stopMessages)stopMessages();
-  const box=$("msgs");box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
+  clearProfileObservers(messageProfileStops);
+  reactionStops.forEach(stop=>stop());reactionStops=[];
+  const box=$("msgs");
+  if(!cur){box.innerHTML='<div class="empty">Выберите переписку или создайте новый чат.</div>';return}
+  box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
   stopMessages=onSnapshot(q,snapshot=>{
     const stick=box.scrollHeight-box.scrollTop-box.clientHeight<140;
@@ -985,14 +1061,17 @@ function subscribeMessages() {
     snapshot.docs.forEach(s=>{
       const m={id:s.id,...s.data()},mine=m.senderUid===me.uid,r=document.createElement("div");
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
-      r.dataset.messageId=m.id;
+      r.dataset.messageId=m.id;r.dataset.senderUid=m.senderUid||"";
+      if(m.senderUid)watchMessageProfile(m.senderUid,box);
       if(S.avatars&&!mine&&previous!==m.senderUid){
-        const a=document.createElement("div");a.className="av";avatar(a,{uid:m.senderUid,displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
+        const a=document.createElement("button");a.type="button";a.className="av message-avatar";a.setAttribute("aria-label","Открыть профиль "+(m.displayName||"пользователя"));a.title="Открыть профиль";
+        avatar(a,{uid:m.senderUid,displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});
+        a.onclick=()=>openUserProfile(m.senderUid);r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
       const b=document.createElement("div");b.className="msg";
-      if(previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
-        const n=document.createElement("button");n.type="button";n.className="sender-profile";
-        n.textContent=(mine?"Вы":(m.displayName||m.username||"Пользователь"))+" · @"+(m.username||"user");
+      if(previous!==m.senderUid&&chats.find(chat=>chat.id===cur)?.type==="group"){
+        const n=document.createElement("button");n.type="button";n.className="sender-profile";n.dataset.senderUid=m.senderUid||"";
+        n.textContent=m.displayName||m.username||"Пользователь";
         n.onclick=()=>openUserProfile(m.senderUid);b.append(n);
       }
       if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
@@ -1021,7 +1100,7 @@ function subscribeMessages() {
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
-      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur!=="general") {
+      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
         if(recipients.length)appendReadReceipt(t,{read:recipients.every(uid=>(m.readBy||[me.uid]).includes(uid))});
       }
@@ -1078,7 +1157,7 @@ async function openUserProfile(userOrName) {
 }
 async function resolveMention(username) { await openUserProfile(username); }
 async function markMessagesRead(docs) {
-  if(!S.readReceipts||cur==="general")return;
+  if(!S.readReceipts||!cur)return;
   const chat=chats.find(item=>item.id===cur);
   if(!chat||!["dm","group"].includes(chat.type))return;
   const pending=docs.filter(item=>{
@@ -1140,8 +1219,8 @@ async function boot(user) {
   bootedUid=user.uid;
   currentUser=user;
   try{
-    await loadCurrentProfile();$("auth").style.display="none";$("app").style.display="grid";cur="general";
-    await ensureGeneral();startChatList();subscribeMessages();
+    await loadCurrentProfile();$("auth").style.display="none";$("app").style.display="grid";cur="";document.body.classList.remove("ch");
+    startChatList();head();subscribeMessages();
     if(presenceTimer)clearInterval(presenceTimer);
     presenceTimer=setInterval(()=>updateDoc(doc(db,"publicUsers",me.uid),{lastSeenAt:serverTimestamp()}).catch(console.error),60000);
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
@@ -1174,6 +1253,7 @@ async function publishChatMessage(chatId,message,summary) {
   return messageRef;
 }
 async function send() {
+  if(!cur){alert("Сначала выберите личный чат или группу.");return}
   const input=$("inp"),text=input.value.trim();if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
   try{
@@ -1207,12 +1287,13 @@ if(attachmentButton&&attachmentInput){
       try{uploadFile=await optimizeChatImage(file)}catch{}
       if(uploadFile.size>=20*1024*1024){alert("Файл «"+file.name+"» больше лимита 20 МБ.");continue}
       const chatId=cur;
+      if(!chatId){alert("Сначала выберите личный чат или группу.");continue}
       const progress=createUploadProgress($("msgs"),file.name);$("msgs").scrollTop=$("msgs").scrollHeight;
       attachmentButton.disabled=true;
       try{
         const {url,path}=await uploadChatFile(chatId,uploadFile,await currentUser.getIdToken(),percent=>progress.update(percent));
         const attachment={name:uploadFile.name.slice(0,180),type:uploadFile.type||"application/octet-stream",size:uploadFile.size,url,path};
-        const summary=(uploadFile.type.startsWith("image/")?"Фото: ":"Файл: ")+uploadFile.name;
+        const summary=uploadFile.type.startsWith("image/")?"фото":uploadFile.type.startsWith("video/")?"видео":uploadFile.type.startsWith("audio/")?"аудио":"файл";
         const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
         if(replyTarget){message.replyTo={id:replyTarget.id,senderUid:replyTarget.senderUid,displayName:replyTarget.displayName,text:replyTarget.text.slice(0,160)};replyTarget=null;$("reply-preview")?.remove()}
         await publishChatMessage(chatId,message,summary);progress.update(100);setTimeout(()=>progress.remove(),900);
@@ -1224,7 +1305,7 @@ if(attachmentButton&&attachmentInput){
 
 $("chat-settings").onclick=openChatSettings;
 async function openChatSettings(){
-  const chat=cur==="general"?{id:"general",type:"general"}:chats.find(c=>c.id===cur);if(!chat)return;
+  const chat=chats.find(c=>c.id===cur);if(!chat)return;
   const isGroup=chat.type==="group",isOwner=isGroup&&chat.ownerUid===me.uid;
   const title=chat.title||chatInfo(chat).title;
   let editor="";
@@ -1307,10 +1388,9 @@ async function openChatSettings(){
     }catch(e){$("chat-settings-error").textContent=authError(e)}
   };
   $("delete-chat").onclick=async()=>{
-    if(cur==="general"){$("chat-settings-error").textContent="Общий чат нельзя удалить из списка.";return}
     if(isGroup&&isOwner){$("chat-settings-error").textContent="Создатель не может покинуть группу, пока не передаст права владения.";return}
     if(!confirm("Удалить чат из вашего списка? История останется у других участников."))return;
-    try{await updateDoc(doc(db,"chats",cur),{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});closeM();cur="general";openChat("general")}
+    try{await updateDoc(doc(db,"chats",cur),{memberUids:arrayRemove(me.uid),updatedAt:serverTimestamp()});closeM();cur="";document.body.classList.remove("ch");renderList();head();subscribeMessages()}
     catch(e){$("chat-settings-error").textContent=authError(e)}
   };
 }
@@ -1333,7 +1413,7 @@ function picker(box,onPick,selected) {
       if(sequence!==request)return;
       list.innerHTML="";
       users.forEach(user=>{
-        const row=item(user,user.displayName||user.username,"@"+user.username,isOnline(user),selected&&selected.has(user.uid),()=>onPick(user));
+        const row=item(user,user.displayName||user.username,presenceLabel(user),isOnline(user),selected&&selected.has(user.uid),()=>onPick(user));
         list.append(row);
       });
       if(!users.length)list.textContent="Пользователь не найден. Проверь username.";
@@ -1648,13 +1728,13 @@ $("gb").onclick=()=>{
   };
 };
 $("me-profile").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
-async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
   if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
-    if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);
+    if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);if(presenceTimer)clearInterval(presenceTimer);
     showLogin();
   }
 });

@@ -208,7 +208,21 @@ async function verifyMaxPhone(request,env){
     return json({error:"MAX не подтвердил, что этот номер принадлежит профилю MAX."},401);
   return json({ok:true,phone:"+"+normalizedPhone,verifiedBy:"MAX"});
 }
+async function callIceConfiguration(request,env){
+  await verifyFirebaseToken(request);
+  const iceServers=[
+    {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
+    {urls:["stun:stun.cloudflare.com:3478"]}
+  ];
+  const urls=String(env.FROSS_TURN_URLS||"").split(",").map(value=>value.trim()).filter(Boolean);
+  const username=String(env.FROSS_TURN_USERNAME||"").trim();
+  const credential=String(env.FROSS_TURN_CREDENTIAL||"");
+  const turnConfigured=urls.length>0&&!!username&&!!credential;
+  if(turnConfigured)iceServers.push({urls,username,credential});
+  return json({iceServers,turnConfigured});
+}
 async function api(request,env,url){
+  if(request.method==="GET"&&url.pathname==="/api/calls/ice")return await callIceConfiguration(request,env);
   if(request.method==="POST"&&url.pathname==="/api/phone/max/verify")return await verifyMaxPhone(request,env);
   if(request.method==="POST"&&url.pathname==="/api/files/upload")return await upload(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/files/url")return await fileUrl(request,env);

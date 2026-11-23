@@ -536,6 +536,22 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
   .call-starfield,.call-avatar-glow,.call-avatar-wrap:before,.call-avatar-wrap:after{animation:none!important}
 }
 
+
+/* Messages should size to content and wrap only at the bubble boundary */
+.mr{display:flex;align-items:flex-end;gap:8px;width:fit-content;max-width:calc(100% - 18px);min-width:0;flex:0 1 auto}
+.mr.me{align-self:flex-end;margin-left:auto;flex-direction:row-reverse}
+.mr:not(.me){align-self:flex-start;margin-right:auto}
+.mr .msg{display:block;width:max-content;min-width:0;max-width:min(820px,calc(100vw - 108px));box-sizing:border-box;overflow-wrap:anywhere;word-break:normal;white-space:pre-wrap}
+.mr.me .msg{max-width:min(820px,calc(100vw - 34px))}
+.mr .message-avatar{width:30px;height:30px;padding:0;border:0;cursor:pointer}
+.sender-profile{display:block;max-width:100%;font:inherit;font-weight:750;white-space:normal;overflow-wrap:anywhere;text-align:left;cursor:pointer}
+.msg img,.msg video,.msg audio,.msg a{max-width:100%;box-sizing:border-box}
+@media(max-width:700px){
+  .mr{max-width:calc(100% - 8px)}
+  .mr .msg{max-width:calc(100vw - 70px)}
+  .mr.me .msg{max-width:calc(100vw - 24px)}
+}
+
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>
