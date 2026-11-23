@@ -48,8 +48,8 @@ async function completeTotpSignIn(error) {
   return await resolver.resolveSignIn(assertion);
 }
 function showLogin() {
-  $("auth").style.display="grid"; $("app").style.display="none";
-  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
+  $("auth").style.display="grid"; $("app").style.display="none"; $("auth").scrollTop=0;
+  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
   $("rg").onclick=()=>{W={username:"",email:"",password:"",display_name:"",bio:"",avatar:"",settings:{...DEF}};wiz(1)};
   $("gr").onclick=googleLogin;
   $("reset").onclick=async()=>{const email=$("lu").value.trim();if(!email.includes("@")){$("le").textContent="Сначала введите email.";return}try{await sendPasswordResetEmail(auth,email);$("le").textContent="Письмо для сброса пароля отправлено."}catch(e){$("le").textContent=authError(e)}};
@@ -57,7 +57,9 @@ function showLogin() {
     const identifier=$("lu").value.trim();
     if(!identifier)throw Error("Введите email или имя пользователя.");
     const email=identifier.includes("@")?identifier.toLowerCase():authEmail(identifier);
-    const result=await signInWithEmailAndPassword(auth,email,$("lp").value);
+    const password=$("lp").value;
+    if(!password)throw Error("Введите пароль. Большие и маленькие буквы учитываются отдельно.");
+    const result=await signInWithEmailAndPassword(auth,email,password);
     if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
   }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
@@ -243,18 +245,18 @@ function avatar(el,o,on) {
   el.style.backgroundImage=o?.avatarUrl ? 'url("'+o.avatarUrl+'")' : (o?.avatar ? 'url("'+o.avatar+'")' : "none");
   el.textContent=(o?.avatarUrl||o?.avatar)?"":String(name)[0].toUpperCase();
 }
-function pickImg(file,cb) {
-  if(!file || !file.type?.startsWith("image/")) return;
+function pickImg(file,cb,onCancel=()=>{}) {
+  if(!file || !file.type?.startsWith("image/")) { onCancel(); return; }
   const reader=new FileReader();
-  reader.onerror=()=>alert("Не удалось прочитать изображение.");
+  reader.onerror=()=>{alert("Не удалось прочитать изображение.");onCancel()};
   reader.onload=()=>{
     const image=new Image();
-    image.onerror=()=>alert("Не удалось открыть изображение.");
+    image.onerror=()=>{alert("Не удалось открыть изображение.");onCancel()};
     image.onload=()=>{
       let zoom=1,panX=0,panY=0,drag=null;
-      const base=Math.max(240/image.width,240/image.height);
+      const boxSize=()=>preview.clientWidth||240;
       const drawPreview=()=>{
-        const w=image.width*base*zoom,h=image.height*base*zoom;
+        const size=boxSize(),base=Math.max(size/image.width,size/image.height),w=image.width*base*zoom,h=image.height*base*zoom;
         preview.style.backgroundImage='url("'+reader.result+'")';
         preview.style.backgroundSize=w+"px "+h+"px";
         preview.style.backgroundPosition="calc(50% + "+panX+"px) calc(50% + "+panY+"px)";
@@ -269,15 +271,15 @@ function pickImg(file,cb) {
       drawPreview();
       zoomInput.oninput=()=>{zoom=Number(zoomInput.value);drawPreview()};
       preview.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,px:panX,py:panY};preview.setPointerCapture(e.pointerId);preview.style.cursor="grabbing"};
-      preview.onpointermove=e=>{if(!drag)return;panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;const w=image.width*base*zoom,h=image.height*base*zoom;panX=Math.max(-(w-240)/2,Math.min((w-240)/2,panX));panY=Math.max(-(h-240)/2,Math.min((h-240)/2,panY));drawPreview()};
+      preview.onpointermove=e=>{if(!drag)return;panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;const size=boxSize(),base=Math.max(size/image.width,size/image.height),w=image.width*base*zoom,h=image.height*base*zoom;panX=Math.max(-(w-size)/2,Math.min((w-size)/2,panX));panY=Math.max(-(h-size)/2,Math.min((h-size)/2,panY));drawPreview()};
       preview.onpointerup=()=>{drag=null;preview.style.cursor="grab"};
       preview.onpointercancel=()=>{drag=null;preview.style.cursor="grab"};
-      $("avatar-crop-cancel").onclick=closeM;
+      $("avatar-crop-cancel").onclick=()=>{closeM();onCancel()};
       $("avatar-crop-save").onclick=()=>{
         const c=document.createElement("canvas");c.width=c.height=320;
         const scale=Math.max(320/image.width,320/image.height)*zoom;
         const w=image.width*scale,h=image.height*scale;
-        const x=(320-w)/2+panX*(320/240),y=(320-h)/2+panY*(320/240);
+        const size=boxSize(),x=(320-w)/2+panX*(320/size),y=(320-h)/2+panY*(320/size);
         const ctx=c.getContext("2d");
         ctx.save();ctx.beginPath();ctx.arc(160,160,160,0,Math.PI*2);ctx.clip();
         ctx.drawImage(image,0,0,image.width,image.height,x,y,w,h);ctx.restore();
@@ -323,6 +325,7 @@ function wiz(n) {
   h+='<div class="err" id="we"></div><div class="row"><button id="wb">'+(n===1?"Отмена":"Назад")+'</button><button class="pr" id="wn">'+(n===4?"Создать аккаунт":"Далее")+'</button></div>';
   $("ac").innerHTML=h;
   const error=t=>$("we").textContent=t;
+  $("auth").scrollTop=0;
   if(n===1){
     $("u").value=W.username;$("e").value=W.email;$("p").value=W.password;$("p2").value=W.password;
     let checkSequence = 0;
@@ -349,10 +352,14 @@ function wiz(n) {
     $("u").onblur = checkUsername;
     $("p").oninput=e=>{
       const v=e.target.value;
-      const score=(v.length>=8?1:0)+(v.length>=12?1:0)+(/[a-z]/.test(v)?1:0)+(/[A-Z]/.test(v)?1:0)+(/[0-9]/.test(v)?1:0)+(/[^A-Za-z0-9]/.test(v)?1:0);
+      const variety=[/[a-z]/.test(v),/[A-Z]/.test(v),/[0-9]/.test(v),/[^A-Za-z0-9]/.test(v)].filter(Boolean).length;
+      const lengthScore=v.length>=16?3:v.length>=12?2:v.length>=8?1:0;
+      const penalty=/(.)\\1{3,}/.test(v)?1:0,score=Math.max(0,Math.min(6,lengthScore+variety-penalty));
+      const label=v.length<8?"Минимум 8 символов":score<=2?"Слабый пароль":score<=4?"Нормальный пароль":"Сильный пароль";
       $("mt").style.width=Math.round(score/6*100)+"%";
-      $("mt").style.background=score<3?"#ff6b6b":score<5?"#f59e0b":"#3ddc84";
-      $("mt").title=score<3?"Слабый пароль":score<5?"Средний пароль":"Сильный пароль";
+      $("mt").style.background=v.length<8||score<=2?"#ff6b6b":score<=4?"#f59e0b":"#3ddc84";
+      $("mt").title=label;
+      if($("mt-label"))$("mt-label").textContent=label+" · D, d, 1 и _ разрешены";
     };
   }
   if(n===2){
@@ -720,7 +727,7 @@ $("gb").onclick=()=>{
       c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Уникальный username — меняется и должен быть свободен</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">По username вас находят и открывают чат.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
       $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
-      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>{const file=e.target.files?.[0];if(file)P.avatarReady=new Promise(resolve=>pickImg(file,d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d});resolve()}))};
+      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>{const file=e.target.files?.[0];if(file)P.avatarReady=new Promise(resolve=>pickImg(file,d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d});resolve()},resolve))};
       $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
     }
     if(i===1){
@@ -732,12 +739,14 @@ $("gb").onclick=()=>{
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><small class="mut">Если SMS не отправляется: Firebase Console → Authentication → Sign-in method → Phone должен быть включён; домен сайта добавлен в Authorized domains, а отправка SMS разрешена для вашей страны.</small><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" placeholder="Старый пароль"><input id="pn" type="password" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><small class="mut">Если SMS не отправляется: Firebase Console → Authentication → Sign-in method → Phone должен быть включён; домен сайта добавлен в Authorized domains, а отправка SMS разрешена для вашей страны.</small><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
           await reauthenticateWithCredential(currentUser,credential);
-          await updatePassword(currentUser,$("pn").value);
+          const newPassword=$("pn").value;
+          if(newPassword.length<8)throw Error("Новый пароль должен содержать минимум 8 символов.");
+          await updatePassword(currentUser,newPassword);
           $("pe").style.color="#3ddc84";$("pe").textContent="Пароль изменён.";
         }catch(e){$("pe").textContent=authError(e)}
       };
@@ -773,8 +782,8 @@ $("gb").onclick=()=>{
       let phoneConfirmation = null, phoneVerifier = null;
       $("phoneSend").onclick = async () => {
         try {
-          const phone = $("phoneNumber").value.trim();
-          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в формате +447700900123.");
+          const phone = $("phoneNumber").value.trim().replace(/[\s()-]/g,"");
+          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в международном формате: +кодстраны и номер.");
           if(phoneVerifier){try{phoneVerifier.clear()}catch{}phoneVerifier=null}
           $("phoneError").style.color="var(--muted)";
           $("phoneError").textContent="Подготавливаем проверку номера…";
