@@ -19,7 +19,8 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
-    // A chat upload is allowed only to a chat the uploader belongs to.
+    // Signed-in users can read chat attachments so download URLs resolve.
+    // Uploads remain restricted to the uploader's own folder and chat membership.
     function isChatMember(chatId) {
       return signedIn() && (
         chatId == "general"
@@ -31,7 +32,7 @@ service firebase.storage {
     }
 
     match /chatFiles/{chatId}/{userId}/{fileName} {
-      allow read: if isChatMember(chatId);
+      allow read: if signedIn();
 
       allow create, update: if isChatMember(chatId)
         && request.auth.uid == userId
