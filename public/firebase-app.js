@@ -854,8 +854,9 @@ $("gb").onclick=()=>{
       };
     }
     if(i===2){
-      c.innerHTML='<h4>Удобство</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<h4>Медиа</h4>'+toggle("autoDownload","Автоматически загружать вложения")+'<p class="mut">Настройки синхронизируются между устройствами.</p>';c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+      c.innerHTML='<button type="button" id="open-profile-settings" style="width:100%;margin:0 0 14px">Настройки профиля</button><h4>Удобство</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<h4>Медиа</h4>'+toggle("autoDownload","Автоматически загружать вложения")+'<p class="mut">Настройки синхронизируются между устройствами.</p>';c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
+    if(i===2)$("open-profile-settings").onclick=()=>{closeM();window.FROSS_PROFILE_MODE=true;$("gb").click()};
     if(i===3){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
@@ -1037,8 +1038,8 @@ import("./voice-calls.js").catch(error => console.error("Voice calls failed to l
   const chats=document.getElementById("nav-chats");
   if(people)people.onclick=()=>{
     document.body.classList.remove("ch");
-    if(q){q.placeholder="Найти человека по username";q.focus();}
-    people.classList.add("active");chats?.classList.remove("active");
+    chats?.classList.remove("active");people.classList.add("active");
+    window.FROSS_PROFILE_MODE=false;$("gb").click();
   };
   if(chats)chats.onclick=()=>{
     if(q){q.value="";q.placeholder="Найти человека или чат";q.dispatchEvent(new Event("input"));}
