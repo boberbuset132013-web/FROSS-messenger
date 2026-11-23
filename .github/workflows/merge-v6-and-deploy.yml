@@ -1,0 +1,92 @@
+name: Merge uploaded FROSS v6 and deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".merge/parts/**"
+      - ".merge/FROSS-messenger-v6.zip"
+      - "scripts/merge_uploaded_v6.py"
+      - ".github/workflows/merge-v6-and-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  merge-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Merge uploaded v6 with current production fixes
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f .merge/FROSS-messenger-v6.zip ] && [ ! -d .merge/parts ]; then
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+            echo "No pending archive; this is the clean-up trigger run."
+            exit 0
+          fi
+          python3 scripts/merge_uploaded_v6.py
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies and run project validation
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run validate
+
+      - name: Commit the merged source
+        if: steps.merge.outputs.merged == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 1
+          fi
+          git commit -m "Merge uploaded FROSS v6 features with current fixes"
+          git push origin HEAD:main
+
+      - name: Deploy Cloudflare Worker with Filebase secrets
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
+          FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Cloudflare credentials are not configured."
+            exit 1
+          fi
+          if [ -z "$FILEBASE_ACCESS_KEY" ] || [ -z "$FILEBASE_SECRET_KEY" ]; then
+            echo "::error::Configure FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY repository secrets."
+            exit 1
+          fi
+          npm install --no-package-lock --no-audit --no-fund
+          ACCOUNT_RESPONSE=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")
+          if ! echo "$ACCOUNT_RESPONSE" | jq -e '.success == true' >/dev/null; then
+            echo "::error::Cloudflare credentials were rejected. Check token permissions and account ID."
+            echo "$ACCOUNT_RESPONSE" | jq -r '.errors[]?.message // empty' | sed 's/.*/Cloudflare API: &/'
+            exit 1
+          fi
+          umask 077
+          SECRETS_FILE="$(mktemp)"
+          trap 'rm -f "$SECRETS_FILE"' EXIT
+          jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret}' > "$SECRETS_FILE"
+          CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
