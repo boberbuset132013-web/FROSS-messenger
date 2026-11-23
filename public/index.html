@@ -283,6 +283,15 @@ input,textarea,select{transition:border-color .2s,box-shadow .2s,background .2s}
 #nav-people svg{width:22px;height:22px;stroke-width:1.85;filter:drop-shadow(0 0 5px #b65cff33)}
 #nav-people{font-weight:650;letter-spacing:.1px}
 @media(max-width:700px){.brandbar{height:112px;min-height:112px;padding-left:22px}.profile-launch{min-height:76px}}
+
+/* Reaction picker: horizontal emoji rail above the message actions */
+.message-menu{max-width:min(310px,calc(100vw - 16px));max-height:78vh;overflow-y:auto;overscroll-behavior:contain}
+.reaction-picker{padding:7px 7px 9px;margin:0 0 5px;border-bottom:1px solid var(--line);min-width:0}
+.reaction-picker-title{display:block;font-size:11px;font-weight:750;letter-spacing:.5px;color:var(--muted,#a99ab8);padding:0 3px 6px}
+.reaction-picker-scroll{display:flex;align-items:center;gap:5px;max-width:100%;overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:1px 1px 7px;scrollbar-width:thin;overscroll-behavior-x:contain;touch-action:pan-x;-webkit-overflow-scrolling:touch}
+.reaction-picker-scroll .reaction-choice{flex:0 0 38px;width:38px;height:38px;min-width:38px;justify-content:center;align-items:center;border:1px solid var(--line);border-radius:12px;background:var(--p2);padding:3px;font-size:22px;line-height:1}
+.reaction-picker-scroll .reaction-choice:active{transform:scale(.92);background:var(--p2)}
+@media(max-width:420px){.message-menu{max-width:calc(100vw - 16px)}.reaction-picker-scroll .reaction-choice{flex-basis:36px;width:36px;min-width:36px;height:36px}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
