@@ -29,13 +29,18 @@ service firebase.storage {
 
     match /chatFiles/{chatId}/{userId}/{fileName} {
       allow read: if isChatMember(chatId);
-      allow write: if isChatMember(chatId)
+      // Uploads are scoped to the authenticated user folder. This avoids a fragile
+      // cross-service Firestore lookup during upload; message creation is still
+      // separately restricted by Firestore chat membership rules.
+      allow write: if signedIn()
+        && (request.auth.token.email_verified == true || request.auth.token.legacyAccount == true)
         && request.auth.uid == userId
         && (
           request.resource == null
           || (
             request.resource.size < 20 * 1024 * 1024
-            && request.resource.contentType.matches('(image/.*|video/.*|audio/.*|application/.*|text/.*)')
+            && request.resource.contentType is string
+            && request.resource.contentType.size() <= 120
           )
         );
     }
