@@ -35,23 +35,27 @@ jobs:
             exit 0
           fi
           npm install --no-audit --no-fund
-          # Validate the configured account ID. If it is a placeholder/old value,
-          # discover the account associated with this API token without printing the token.
-          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || ! curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" | jq -e '.success == true' >/dev/null; then
-            CLOUDFLARE_ACCOUNT_ID=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts?per_page=50" | jq -er '.result[0].id')
+          # Validate credentials first; never dump secret values into logs.
+          ACCOUNT_RESPONSE=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")
+          if ! echo "$ACCOUNT_RESPONSE" | jq -e '.success == true' >/dev/null; then
+            echo "::error::Cloudflare credentials were rejected. Check CLOUDFLARE_API_TOKEN permissions and the 32-character CLOUDFLARE_ACCOUNT_ID secret."
+            echo "$ACCOUNT_RESPONSE" | jq -r '.errors[]?.message // empty' | sed 's/.*/Cloudflare API: &/'
+            exit 1
           fi
-          echo "Using Cloudflare account ID discovered/validated from the API token."
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/
+      - name: Authenticate Firebase service account
+        if: always() && env.HAS_FIREBASE_SECRET == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Deploy Firebase rules, indexes and Functions if credentials are configured
         if: always()
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          HAS_FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
         run: |
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::notice::Firebase deploy skipped; configure FIREBASE_SERVICE_ACCOUNT."
+          if [ "$HAS_FIREBASE_SECRET" != "true" ]; then
+            echo "::notice::Firebase deploy skipped; configure FIREBASE_SERVICE_ACCOUNT as the full service-account JSON."
             exit 0
           fi
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
           npm install --global firebase-tools
           firebase deploy --only firestore:rules,firestore:indexes,storage,functions --project fross-ca5d6
