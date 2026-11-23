@@ -1,5 +1,5 @@
-const CACHE="fross-shell-v6";
-const SHELL=["/","/index.html","/firebase-app.js","/chat-features.js","/voice-calls.js","/manifest.webmanifest","/fross-icon.webp","/fross-mascot.webp"];
+const CACHE="fross-shell-v7";
+const SHELL=["/","/index.html","/firebase-app.js","/chat-features.js","/voice-calls.js","/space.js","/manifest.webmanifest","/fross-icon.webp","/fross-mascot.webp"];
 self.addEventListener("install",event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  await Promise.all(SHELL.map(async path=>{try{await cache.add(path)}catch(error){console.warn("FROSS cache skipped",path,error)}}));
@@ -19,11 +19,19 @@ self.addEventListener("fetch",event=>{
   }).catch(()=>caches.match("/index.html")));
   return;
  }
+ const appCode=/\.(?:js|css)$/i.test(url.pathname);
+ if(appCode){
+  event.respondWith(fetch(request).then(response=>{
+   if(response.ok)caches.open(CACHE).then(cache=>cache.put(request,response.clone()));
+   return response;
+  }).catch(()=>caches.match(request)));
+  return;
+ }
  event.respondWith(caches.match(request).then(cached=>{
-  const fresh=fetch(request).then(response=>{
+  if(cached)return cached;
+  return fetch(request).then(response=>{
    if(response.ok)caches.open(CACHE).then(cache=>cache.put(request,response.clone()));
    return response;
   });
-  return cached||fresh;
  }));
 });

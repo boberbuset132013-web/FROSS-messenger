@@ -374,6 +374,56 @@ function createAudioMessagePlayer(attachment) {
   return player;
 }
 
+function showAvatarFallback(el,name,color) {
+  if(!el.isConnected)return;
+  el.style.backgroundImage="none";
+  el.style.background=color||hue(name);
+  el.textContent=String(name||"#")[0].toUpperCase();
+}
+async function retryAvatarImage(el,source,name,uid,color,retries,error) {
+  if(retries<=0) {
+    console.warn("FROSS avatar load failed:",error?.message||error||"image unavailable");
+    showAvatarFallback(el,name,color);
+    return;
+  }
+  let nextSource=source;
+  if(uid) {
+    try {
+      const profile=await getDoc(doc(db,"publicUsers",uid));
+      if(profile.exists()) {
+        const current=String(profile.data().avatarUrl||"");
+        if(current)nextSource=current;
+      }
+    } catch(profileError) {
+      console.warn("FROSS avatar refresh failed:",profileError?.message||profileError);
+    }
+  }
+  if(nextSource===source&&source.startsWith("filebase:")) {
+    const user=auth.currentUser||currentUser;
+    if(user)privateFileUrlCache.delete(user.uid+":"+source.slice(9));
+  }
+  if(!el.isConnected||el.dataset.avatarSource!==source)return;
+  el.dataset.avatarSource=nextSource;
+  if(!nextSource) {showAvatarFallback(el,name,color);return;}
+  loadPrivateAvatar(el,nextSource,name,uid,color,retries-1);
+}
+async function loadPrivateAvatar(el,source,name,uid,color,retries=1) {
+  try {
+    const url=await resolveStoredFileUrl(source);
+    if(!el.isConnected||el.dataset.avatarSource!==source)return;
+    const image=new Image();
+    image.onload=()=>{
+      if(!el.isConnected||el.dataset.avatarSource!==source)return;
+      el.style.backgroundImage='url("'+url+'")';
+      el.textContent="";
+      el.style.background="";
+    };
+    image.onerror=()=>retryAvatarImage(el,source,name,uid,color,retries,new Error("Файл аватара не загрузился."));
+    image.src=url;
+  } catch(error) {
+    await retryAvatarImage(el,source,name,uid,color,retries,error);
+  }
+}
 function avatar(el,o,on) {
   const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
   const source=o?.avatarUrl||o?.avatar||"";
@@ -383,14 +433,9 @@ function avatar(el,o,on) {
   el.style.background=source&&!privateSource?"":(o?.profileColor||hue(name));
   el.style.backgroundImage=source&&!privateSource?'url("'+source+'")':"none";
   el.textContent=source&&!privateSource?"":String(name)[0].toUpperCase();
-  if(privateSource){
-    resolveStoredFileUrl(source).then(url=>{
-      if(el.isConnected&&el.dataset.avatarSource===source){
-        el.style.backgroundImage='url("'+url+'")';
-        el.textContent="";
-        el.style.background="";
-      }
-    }).catch(error=>console.warn("FROSS avatar load failed:",error.message));
+  if(privateSource) {
+    const uid=o?.uid||o?.senderUid||(me?.avatarUrl===source?me?.uid:"");
+    loadPrivateAvatar(el,source,name,uid,o?.profileColor||"",1);
   }
 }
 function pickImg(file,cb,onCancel=()=>{}) {
@@ -905,17 +950,40 @@ async function boot(user) {
     presenceTimer=setInterval(()=>updateDoc(doc(db,"publicUsers",me.uid),{lastSeenAt:serverTimestamp()}).catch(console.error),60000);
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
+async function publishChatMessage(chatId,message,summary) {
+  const messageRef=doc(collection(db,"chats",chatId,"messages"));
+  await setDoc(messageRef,message);
+
+  const chatRef=doc(db,"chats",chatId),preview=String(summary||"").slice(0,120);
+  try {
+    await updateDoc(chatRef,{
+      lastMessage:preview,
+      lastSenderUid:me.uid,
+      lastSenderName:(me.displayName||me.username||"").slice(0,40),
+      lastMessageAt:serverTimestamp(),
+      updatedAt:serverTimestamp()
+    });
+  } catch(metadataError) {
+    console.warn("FROSS message saved; retrying chat preview with fields allowed by Firestore rules:",metadataError);
+    try {
+      await updateDoc(chatRef,{
+        lastMessage:preview,
+        lastMessageAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      });
+    } catch(fallbackError) {
+      console.warn("FROSS chat preview could not be refreshed; the message itself is already saved:",fallbackError);
+    }
+  }
+  return messageRef;
+}
 async function send() {
   const input=$("inp"),text=input.value.trim();if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
   try{
-    const chatRef=doc(db,"chats",cur),batch=writeBatch(db);
-    const messageRef=doc(collection(db,"chats",cur,"messages"));
     const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,readBy:[me.uid],createdAt:serverTimestamp()};
     if(reply)message.replyTo={id:reply.id,senderUid:reply.senderUid,displayName:reply.displayName,text:reply.text.slice(0,160)};
-    batch.set(messageRef,message);
-    batch.update(chatRef,{lastMessage:text.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    await batch.commit();
+    await publishChatMessage(cur,message,text);
   }catch(e){alert(authError(e));input.value=text}
 }
 $("send").onclick=send;
@@ -947,14 +1015,11 @@ if(attachmentButton&&attachmentInput){
       attachmentButton.disabled=true;
       try{
         const {url,path}=await uploadChatFile(chatId,uploadFile,await currentUser.getIdToken(),percent=>progress.update(percent));
-        const batch=writeBatch(db),messageRef=doc(collection(db,"chats",chatId,"messages"));
         const attachment={name:uploadFile.name.slice(0,180),type:uploadFile.type||"application/octet-stream",size:uploadFile.size,url,path};
         const summary=(uploadFile.type.startsWith("image/")?"Фото: ":"Файл: ")+uploadFile.name;
         const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
         if(replyTarget){message.replyTo={id:replyTarget.id,senderUid:replyTarget.senderUid,displayName:replyTarget.displayName,text:replyTarget.text.slice(0,160)};replyTarget=null;$("reply-preview")?.remove()}
-        batch.set(messageRef,message);
-        batch.update(doc(db,"chats",chatId),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
-        await batch.commit();progress.update(100);setTimeout(()=>progress.remove(),900);
+        await publishChatMessage(chatId,message,summary);progress.update(100);setTimeout(()=>progress.remove(),900);
       }catch(error){console.error("FROSS chat attachment upload failed:",{code:error?.code,message:error?.message});progress.remove();alert("Не удалось загрузить или отправить «"+file.name+"».\\n"+(error?.code||"Ошибка Firebase")+": "+authError(error)+"\\n\\nПроверь подключение к интернету и повтори попытку.")}
       finally{attachmentButton.disabled=false}
     }
