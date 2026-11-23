@@ -53,7 +53,7 @@ export function createUploadProgress(container, fileName) {
 
 export function appendMentionText(container, value, onMention) {
   const text = String(value || "");
-  const pattern = /(^|[\\s([{])@([a-z0-9_]{3,20})/gi;
+  const pattern = /(^|[\\s(])@([a-z0-9_]{3,20})/gi;
   let cursor = 0, match;
   while ((match = pattern.exec(text))) {
     const start = match.index + match[1].length;
