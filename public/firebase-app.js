@@ -1151,7 +1151,8 @@ async function openChatSettings(){
   }
   openM('<h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
   if(isGroup){
-    const profiles=new Map((chat.memberProfiles||[]).map(person=>[person.uid,{...person}]));
+    const currentMemberIds=new Set(chat.memberUids||[]);
+    const profiles=new Map((chat.memberProfiles||[]).filter(person=>currentMemberIds.has(person.uid)).map(person=>[person.uid,{...person}]));
     const contacts=new Map();
     for(const memberUid of (chat.memberUids||[])){
       if(!profiles.has(memberUid)){
