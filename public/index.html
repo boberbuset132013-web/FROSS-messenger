@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="fross-shell-version" content="7"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title><meta name="theme-color" content="#080611"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/fross-icon.webp" type="image/webp"><link rel="apple-touch-icon" href="/fross-icon.webp">
+<html lang="ru"><head><meta charset="utf-8"><meta name="fross-shell-version" content="8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title><meta name="theme-color" content="#080611"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/fross-icon.webp" type="image/webp"><link rel="apple-touch-icon" href="/fross-icon.webp">
 <style>
 :root{color-scheme:dark;--bg:#0f1015;--panel:#16181f;--p2:#1d2029;--line:#282b37;--text:#f2f3f7;--muted:#9a9fb0;--accent:#9181ff;--bubble:#232632;--br:16px;--fs:15px;--pad:10px;--danger:#ff6b6b}
 :root[data-theme=light]{color-scheme:light;--bg:#eef0f5;--panel:#fff;--p2:#f4f5f9;--line:#e1e4ec;--text:#1b1e27;--muted:#6c7285;--bubble:#e9ecf3}
@@ -324,7 +324,29 @@ input,textarea,select{transition:border-color .2s,box-shadow .2s,background .2s}
  .media-viewer-stage{padding:0}
 }
 @media(prefers-reduced-motion:reduce){.message-image{transition:none}}
+
+/* The global audio dock stays mounted when the active chat changes. */
+.audio-dock{position:fixed;z-index:500;inset:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:12px;row-gap:3px;min-height:72px;padding:8px 14px;background:color-mix(in srgb,var(--panel) 96%,#7650b5 4%);border-bottom:1px solid var(--line);box-shadow:0 8px 26px #0005;backdrop-filter:blur(18px)}
+.audio-dock[hidden]{display:none!important}
+.audio-dock-info{min-width:0;display:flex;flex-direction:column;gap:2px}
+.audio-dock-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.audio-dock-info small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.audio-dock-controls{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px}
+.audio-dock-controls button{min-width:38px;height:34px;padding:0 9px;border:1px solid var(--line);border-radius:10px;background:var(--p2);color:var(--text);font-size:13px;font-weight:800}
+#audio-dock-toggle{background:var(--accent);border-color:var(--accent);color:white}
+.audio-dock-seek{grid-column:1;grid-row:2;width:100%;min-width:0;margin:0;accent-color:var(--accent)}
+.audio-dock-time{grid-column:2;grid-row:2;min-width:88px;text-align:right;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+#global-audio{display:none}
+body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
+@media(max-width:700px){.audio-dock{min-height:76px;padding:calc(7px + env(safe-area-inset-top)) 10px 7px;column-gap:8px}.audio-dock-controls{gap:4px}.audio-dock-controls button{min-width:34px;height:32px;padding:0 7px}.audio-dock-time{min-width:78px;font-size:10px}body.audio-dock-on #app{padding-top:calc(76px + env(safe-area-inset-top))}}
 </style></head><body>
+<div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
+  <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>
+  <div class="audio-dock-controls"><button id="audio-dock-toggle" type="button" aria-label="Продолжить">▶</button><button id="audio-dock-speed" type="button" aria-label="Скорость воспроизведения">1×</button><button id="audio-dock-close" type="button" aria-label="Закрыть плеер">×</button></div>
+  <input id="audio-dock-seek" class="audio-dock-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Перемотка аудио" disabled>
+  <span id="audio-dock-time" class="audio-dock-time">0:00 / 0:00</span>
+  <audio id="global-audio" preload="metadata"></audio>
+</div>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
 <aside class="side"><div class="brandbar"><div class="brandmark">FROSS <small>MESSENGER</small><span class="brand-caption">ТВОЁ ПРОСТРАНСТВО ДЛЯ ОБЩЕНИЯ</span></div><div class="brand-orbit" aria-hidden="true"><i></i><i></i><i></i></div></div><button class="me profile-launch" id="me-profile" type="button" title="Открыть профиль и кастомизацию" aria-label="Открыть профиль и кастомизацию"><div class="av" id="mav"></div><div class="t"><b id="mn"></b><small id="mu"></small></div><span class="profile-chevron" aria-hidden="true">›</span></button><button id="gb" type="button" hidden aria-hidden="true" tabindex="-1"></button>

@@ -28,6 +28,9 @@ const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","
 const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
+let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
+let globalAudioPlayer=null, globalAudioSpeed=1;
+const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
 window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
 
@@ -332,47 +335,132 @@ function mediaTime(seconds) {
   const value=Math.floor(seconds),minutes=Math.floor(value/60),remaining=String(value%60).padStart(2,"0");
   return minutes+":"+remaining;
 }
-function createAudioMessagePlayer(attachment) {
-  const player=document.createElement("div");player.className="message-audio-player";
-  const audio=document.createElement("audio");audio.className="message-audio-engine";audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;
-  setPrivateMediaSource(audio,attachment.url,attachment.path);
-  const top=document.createElement("div");top.className="audio-player-top";
-  const button=document.createElement("button");button.type="button";button.className="audio-play-button";button.textContent="▶ Слушать";
-  const meta=document.createElement("div");meta.className="audio-player-meta";
-  const name=document.createElement("div");name.className="audio-player-name";name.textContent=attachment.name||"Аудиофайл";
-  const hint=document.createElement("div");hint.className="audio-player-hint";hint.textContent="Музыка и аудио";
-  meta.append(name,hint);top.append(button,meta);
-  const seekRow=document.createElement("div");seekRow.className="audio-player-seekrow";
-  const seek=document.createElement("input");seek.type="range";seek.className="audio-player-seek";seek.min="0";seek.max="1000";seek.value="0";seek.step="1";seek.setAttribute("aria-label","Позиция воспроизведения");
-  const time=document.createElement("span");time.className="audio-player-time";time.textContent="0:00 / 0:00";
-  seekRow.append(seek,time);player.append(top,seekRow,audio);
-  const update=()=>{
-    const duration=Number.isFinite(audio.duration)?audio.duration:0;
-    const current=Number.isFinite(audio.currentTime)?audio.currentTime:0;
-    seek.value=duration?String(Math.round(current/duration*1000)):"0";
-    time.textContent=mediaTime(current)+" / "+mediaTime(duration);
-    seek.disabled=!duration;
-  };
-  audio.addEventListener("loadedmetadata",update);
-  audio.addEventListener("durationchange",update);
-  audio.addEventListener("timeupdate",update);
-  audio.addEventListener("play",()=>{button.textContent="Ⅱ Пауза";hint.textContent="Сейчас воспроизводится"});
-  audio.addEventListener("pause",()=>{if(!audio.ended){button.textContent="▶ Слушать";hint.textContent="Музыка и аудио"}});
-  audio.addEventListener("ended",()=>{button.textContent="▶ Слушать";hint.textContent="Воспроизведение завершено";audio.currentTime=0;update()});
-  audio.addEventListener("error",()=>{button.textContent="↻ Повторить";hint.textContent="Не удалось загрузить аудио"});
-  seek.addEventListener("input",()=>{if(Number.isFinite(audio.duration)&&audio.duration>0){audio.currentTime=Number(seek.value)/1000*audio.duration;update()}});
-  button.addEventListener("click",async()=>{
-    if(!audio.paused){audio.pause();return}
-    button.disabled=true;button.textContent="Загрузка…";
-    try{
-      const source=await resolveStoredFileUrl(attachment.url,attachment.path);
-      if(!audio.src||audio.src!==source){audio.src=source;audio.load()}
-      await audio.play();
-    }catch(error){button.textContent="↻ Повторить";hint.textContent=error.message||"Не удалось запустить аудио"}
-    finally{button.disabled=false;if(audio.paused&&button.textContent==="Загрузка…")button.textContent="▶ Слушать"}
+function updateGlobalAudioDock() {
+  const audio=globalAudioPlayer||$('global-audio');
+  if(!audio)return;
+  const duration=Number.isFinite(audio.duration)?audio.duration:0;
+  const current=Number.isFinite(audio.currentTime)?audio.currentTime:0;
+  const seek=$('audio-dock-seek');
+  if(seek){seek.value=duration?String(Math.round(current/duration*1000)):"0";seek.disabled=!duration}
+  const time=$('audio-dock-time');if(time)time.textContent=mediaTime(current)+" / "+mediaTime(duration);
+  const toggle=$('audio-dock-toggle');
+  if(toggle){toggle.textContent=audio.paused?"▶":"Ⅱ";toggle.setAttribute("aria-label",audio.paused?"Продолжить":"Пауза")}
+  const speed=$('audio-dock-speed');if(speed)speed.textContent=String(globalAudioSpeed).replace(/\.0$/,'')+"×";
+  const status=$('audio-dock-status');
+  if(status){
+    if(audio.error)status.textContent="Не удалось загрузить аудио";
+    else if(audio.ended)status.textContent="Воспроизведение завершено";
+    else if(audio.paused)status.textContent=globalAudioTrackKey?"На паузе":"Выберите аудио в сообщении";
+    else status.textContent="Сейчас воспроизводится · можно перейти в другой чат";
+  }
+  document.querySelectorAll('.audio-play-button').forEach(button=>{
+    const active=button.dataset.audioKey===globalAudioTrackKey;
+    button.textContent=active&&!audio.paused?"Ⅱ Пауза":"▶ Слушать";
+    const hint=button.closest('.message-audio-player')?.querySelector('.audio-player-hint');
+    if(hint)hint.textContent=active?(audio.paused?"На паузе · управление сверху":"Сейчас воспроизводится · управление сверху"):"Управление появится в верхнем плеере";
   });
+}
+
+function closeGlobalAudioDock() {
+  const audio=globalAudioPlayer||$('global-audio');
+  globalAudioRequest++;
+  if(audio){audio.pause();audio.removeAttribute('src');audio.load()}
+  globalAudioTrackKey="";globalAudioAttachment=null;globalAudioRetryUsed=false;
+  const dock=$('audio-dock');if(dock)dock.hidden=true;
+  document.body.classList.remove('audio-dock-on');
+  updateGlobalAudioDock();
+}
+
+function initGlobalAudioDock() {
+  globalAudioPlayer=$('global-audio');
+  if(!globalAudioPlayer)return;
+  const audio=globalAudioPlayer;
+  audio.addEventListener('loadedmetadata',updateGlobalAudioDock);
+  audio.addEventListener('durationchange',updateGlobalAudioDock);
+  audio.addEventListener('timeupdate',updateGlobalAudioDock);
+  audio.addEventListener('play',updateGlobalAudioDock);
+  audio.addEventListener('pause',updateGlobalAudioDock);
+  audio.addEventListener('ended',()=>{audio.currentTime=0;updateGlobalAudioDock()});
+  audio.addEventListener('error',async()=>{
+    updateGlobalAudioDock();
+    const attachment=globalAudioAttachment,request=globalAudioRequest;
+    if(globalAudioRetryUsed||!attachment?.url?.startsWith('filebase:'))return;
+    globalAudioRetryUsed=true;
+    try{
+      const user=auth.currentUser||currentUser;
+      const key=String(attachment.path||attachment.url.slice(9));
+      if(user)privateFileUrlCache.delete(user.uid+":"+key);
+      const refreshed=await resolveStoredFileUrl(attachment.url,attachment.path);
+      if(request!==globalAudioRequest)return;
+      audio.src=refreshed;audio.load();await audio.play();
+    }catch(error){
+      const status=$('audio-dock-status');if(status)status.textContent=error?.message||"Не удалось открыть аудиофайл";
+      updateGlobalAudioDock();
+    }
+  });
+  $('audio-dock-toggle').onclick=async()=>{
+    if(!globalAudioTrackKey)return;
+    try{if(audio.paused)await audio.play();else audio.pause()}
+    catch(error){notify(error?.message||"Не удалось запустить аудио")}
+  };
+  $('audio-dock-speed').onclick=()=>{
+    const i=GLOBAL_AUDIO_SPEEDS.indexOf(globalAudioSpeed);
+    globalAudioSpeed=GLOBAL_AUDIO_SPEEDS[(i+1)%GLOBAL_AUDIO_SPEEDS.length];
+    audio.playbackRate=globalAudioSpeed;updateGlobalAudioDock();
+  };
+  $('audio-dock-close').onclick=closeGlobalAudioDock;
+  $('audio-dock-seek').addEventListener('input',event=>{
+    if(Number.isFinite(audio.duration)&&audio.duration>0){audio.currentTime=Number(event.target.value)/1000*audio.duration;updateGlobalAudioDock()}
+  });
+  updateGlobalAudioDock();
+}
+
+async function startGlobalAudio(attachment) {
+  const audio=globalAudioPlayer||$('global-audio');
+  if(!audio)throw new Error("Аудиоплеер пока не готов. Обнови страницу.");
+  const key=String(attachment.path||attachment.url||attachment.name||"audio");
+  const dock=$('audio-dock');if(dock)dock.hidden=false;
+  document.body.classList.add('audio-dock-on');
+  globalAudioAttachment=attachment;
+  const title=$('audio-dock-title');if(title)title.textContent=attachment.name||"Аудиофайл";
+  const status=$('audio-dock-status');if(status)status.textContent="Подключаем аудио…";
+  if(key!==globalAudioTrackKey){
+    globalAudioRequest++;globalAudioTrackKey=key;globalAudioRetryUsed=false;
+    audio.pause();audio.removeAttribute('src');audio.load();audio.playbackRate=globalAudioSpeed;
+  }
+  if(!audio.getAttribute('src')){
+    const request=globalAudioRequest;
+    const source=await resolveStoredFileUrl(attachment.url,attachment.path);
+    if(request!==globalAudioRequest)return;
+    audio.src=source;audio.load();
+  }
+  audio.playbackRate=globalAudioSpeed;
+  await audio.play();
+  updateGlobalAudioDock();
+}
+
+function createAudioMessagePlayer(attachment) {
+  const key=String(attachment.path||attachment.url||attachment.name||"audio");
+  const player=document.createElement('div');player.className='message-audio-player';
+  const top=document.createElement('div');top.className='audio-player-top';
+  const button=document.createElement('button');button.type='button';button.className='audio-play-button';button.dataset.audioKey=key;button.textContent='▶ Слушать';
+  const meta=document.createElement('div');meta.className='audio-player-meta';
+  const name=document.createElement('div');name.className='audio-player-name';name.textContent=attachment.name||'Аудиофайл';
+  const hint=document.createElement('div');hint.className='audio-player-hint';hint.textContent='Управление появится в верхнем плеере';
+  meta.append(name,hint);top.append(button,meta);player.append(top);
+  button.addEventListener('click',async()=>{
+    const audio=globalAudioPlayer||$('global-audio');
+    if(globalAudioTrackKey===key&&audio&&!audio.paused){audio.pause();return}
+    button.disabled=true;
+    try{await startGlobalAudio(attachment)}
+    catch(error){notify(error?.message||'Не удалось открыть аудио')}
+    finally{button.disabled=false;updateGlobalAudioDock()}
+  });
+  if(globalAudioTrackKey===key)updateGlobalAudioDock();
   return player;
 }
+
+initGlobalAudioDock();
 
 function showAvatarFallback(el,name,color) {
   if(!el.isConnected)return;
