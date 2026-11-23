@@ -764,12 +764,70 @@ function renderList() {
   if(!count&&!found.length)L.innerHTML='<div class="empty" style="padding:20px">Ничего не найдено</div>';
 }
 let stopSearch=null;
-async function searchUsers(term) {
-  const q=term.trim().toLowerCase().replace(/^@/,"");if(q.length<2){found=[];renderList();return;}
+async function findPublicProfiles(term,maxResults=20){
+  const normalized=String(term||"").trim().toLowerCase().replace(/^@/,"");
+  if(normalized.length<2)return [];
+  const matches=new Map();
+  const add=docs=>docs.forEach(snapshot=>{
+    if(!snapshot.exists())return;
+    const data=snapshot.data();
+    if(data.deleted===true||snapshot.id===me.uid)return;
+    const name=String(data.usernameLower||data.username||"").toLowerCase();
+    if(name.startsWith(normalized))matches.set(snapshot.id,{uid:snapshot.id,...data});
+  });
+  const safeQuery=async queryRef=>{
+    try{const result=await getDocs(queryRef);add(result.docs)}
+    catch(error){console.warn("FROSS profile search fallback:",error?.code||error?.message||error)}
+  };
+  const profiles=collection(db,"publicUsers");
+  await safeQuery(query(profiles,orderBy("usernameLower"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
+  if(matches.size<maxResults)
+    await safeQuery(query(profiles,orderBy("username"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
+  if(matches.size<maxResults){
+    try{const scan=await getDocs(query(profiles,limit(1000)));add(scan.docs)}
+    catch(error){console.warn("FROSS compatibility profile scan failed:",error?.code||error?.message||error)}
+  }
+  return [...matches.values()].sort((a,b)=>String(a.username||"").localeCompare(String(b.username||""),"en")).slice(0,maxResults);
+}
+async function findPublicProfileByUsername(value){
+  const username=String(value||"").trim().toLowerCase().replace(/^@/,"");
+  if(!/^[a-z0-9_]{3,20}$/.test(username))throw new Error("Введи username из 3–20 символов: латиница, цифры или _.");
   try{
-    const users=await getDocs(query(collection(db,"publicUsers"),orderBy("usernameLower"),startAt(q),endAt(q+"\uf8ff"),limit(20)));
-    found=users.docs.filter(d=>d.id!==me.uid&&!d.data().deleted).map(d=>({uid:d.id,...d.data()}));renderList();
-  }catch(e){console.error(e)}
+    const index=await getDoc(doc(db,"usernameIndex",username));
+    if(index.exists()&&index.data().uid){
+      try{
+        const profile=await loadChatProfile(index.data().uid);
+        if(profile&&!profile.deleted)return profile;
+      }catch(error){console.warn("FROSS username index points to an unavailable profile:",error?.message||error)}
+    }
+  }catch(error){console.warn("FROSS username index lookup failed:",error?.code||error?.message||error)}
+  const exact=new Map();
+  const exactQuery=async field=>{
+    try{
+      const result=await getDocs(query(collection(db,"publicUsers"),where(field,"==",username),limit(5)));
+      result.docs.forEach(snapshot=>{
+        const data=snapshot.data();
+        if(data.deleted!==true)exact.set(snapshot.id,{uid:snapshot.id,...data});
+      });
+    }catch(error){console.warn("FROSS exact username fallback:",error?.code||error?.message||error)}
+  };
+  await exactQuery("usernameLower");
+  if(!exact.size)await exactQuery("username");
+  if(!exact.size){
+    const candidates=await findPublicProfiles(username,1000);
+    candidates.filter(profile=>String(profile.usernameLower||profile.username||"").toLowerCase()===username)
+      .forEach(profile=>exact.set(profile.uid,profile));
+  }
+  const profile=exact.values().next().value;
+  if(!profile)throw new Error("Пользователь с таким username не найден. Проверь написание без пробелов.");
+  return profile;
+}
+
+async function searchUsers(term) {
+  const value=term.trim().toLowerCase().replace(/^@/,"");
+  if(value.length<2){found=[];renderList();return}
+  try{found=await findPublicProfiles(value,20);renderList()}
+  catch(error){console.error("FROSS user search failed:",error);found=[];renderList()}
 }
 function startChatList() {
   if(stopChats)stopChats();
@@ -985,13 +1043,9 @@ async function loadChatProfile(uid) {
 }
 async function openUserProfile(userOrName) {
   try {
-    let profile;
-    if(typeof userOrName==="string") {
-      const username=userOrName.trim().toLowerCase().replace(/^@/,"");
-      const index=await getDoc(doc(db,"usernameIndex",username));
-      if(!index.exists())throw new Error("Пользователь не найден.");
-      profile=await loadChatProfile(index.data().uid);
-    } else profile=userOrName;
+    const profile=typeof userOrName==="string"
+      ?await findPublicProfileByUsername(userOrName)
+      :userOrName;
     if(!profile||profile.deleted)throw new Error("Профиль недоступен.");
     openM('<div class="profile-card"><div class="av big" id="profile-card-avatar"></div><h3 id="profile-card-name"></h3><b class="profile-handle" id="profile-card-handle"></b><p id="profile-card-bio" class="mut"></p><div class="row"><button id="profile-card-close">Закрыть</button><button class="pr" id="profile-card-chat">Написать</button></div></div>');
     avatar($("profile-card-avatar"),profile);
@@ -1020,17 +1074,24 @@ async function markMessagesRead(docs) {
 }
 async function startDM(user) {
   try{
-    const u=typeof user==="string"?await loadChatProfile(user):user;
-    const ids=[me.uid,u.uid].sort(),id="dm_"+ids.join("_"),r=doc(db,"chats",id);
-    await runTransaction(db,async tx=>{
-      const snap=await tx.get(r);
-      if(!snap.exists())tx.set(r,{type:"dm",title:"",ownerUid:me.uid,memberUids:ids,memberProfiles:[
-        {uid:me.uid,username:me.username,displayName:me.displayName,avatarUrl:me.avatarUrl||""},
-        {uid:u.uid,username:u.username,displayName:u.displayName,avatarUrl:u.avatarUrl||""}
-      ],createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""});
-    });
-    $("q").value="";found=[];closeM();openChat(id);
-  }catch(e){alert(authError(e))}
+    const u=typeof user==="string"?await findPublicProfileByUsername(user):user;
+    if(!u?.uid||u.uid===me.uid)throw new Error("Нельзя открыть личный чат с этим аккаунтом.");
+    const existing=chats.find(chat=>chat.type==="dm"
+      &&(chat.memberUids||[]).includes(me.uid)
+      &&(chat.memberUids||[]).includes(u.uid));
+    if(existing){$("q").value="";found=[];closeM();openChat(existing.id);return}
+    // Use a fresh ID: a removed deterministic DM may no longer be readable under member-only rules.
+    const id="dm_"+crypto.randomUUID();
+    const members=[
+      {uid:me.uid,username:me.username,displayName:me.displayName,avatarUrl:me.avatarUrl||""},
+      {uid:u.uid,username:u.username,displayName:u.displayName||u.username,avatarUrl:u.avatarUrl||""}
+    ];
+    const chatData={type:"dm",title:"",ownerUid:me.uid,memberUids:[me.uid,u.uid],
+      memberProfiles:members,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),lastMessage:""};
+    await setDoc(doc(db,"chats",id),chatData);
+    chats=[{id,...chatData},...chats];
+    $("q").value="";found=[];closeM();openChat(id);renderList();head();
+  }catch(error){alert(authError(error))}
 }
 function startGroup() {
   const selected=new Map();
@@ -1241,20 +1302,24 @@ $("q").oninput=()=>{
   searchTimer=setTimeout(()=>searchUsers($("q").value),250);
 };
 function picker(box,onPick,selected) {
-  box.innerHTML='<input placeholder="Имя пользователя"><div class="pl" style="max-height:220px;overflow:auto"></div>';
-  const input=box.firstChild,list=box.lastChild;let timer;
+  box.innerHTML='<input placeholder="Username пользователя"><div class="pl" style="max-height:220px;overflow:auto"></div>';
+  const input=box.firstChild,list=box.lastChild;let timer,request=0;
   const run=async()=>{
-    const text=input.value.trim().toLowerCase();list.innerHTML="";
+    const text=input.value.trim().toLowerCase().replace(/^@/,""),sequence=++request;list.innerHTML="";
     if(text.length<2)return;
+    list.textContent="Ищем пользователя…";
     try{
-      const snap=await getDocs(query(collection(db,"publicUsers"),orderBy("usernameLower"),startAt(text),endAt(text+"\uf8ff"),limit(20)));
-      snap.docs.filter(d=>d.id!==me.uid).forEach(d=>{
-        const u={uid:d.id,...d.data()};
-        const it=item(u,u.displayName||u.username,"@"+u.username,isOnline(u),selected&&selected.has(u.uid),()=>onPick(u));list.append(it);
+      const users=await findPublicProfiles(text,20);
+      if(sequence!==request)return;
+      list.innerHTML="";
+      users.forEach(user=>{
+        const row=item(user,user.displayName||user.username,"@"+user.username,isOnline(user),selected&&selected.has(user.uid),()=>onPick(user));
+        list.append(row);
       });
-    }catch(e){list.textContent=authError(e)}
+      if(!users.length)list.textContent="Пользователь не найден. Проверь username.";
+    }catch(error){if(sequence===request)list.textContent=authError(error)}
   };
-  input.oninput=()=>{clearTimeout(timer);timer=setTimeout(run,250)};
+  input.oninput=()=>{clearTimeout(timer);timer=setTimeout(run,220)};
 }
 $("nb").onclick=()=>{
   openM('<h3 style="margin:0">Новый чат</h3><div class="tabs"><button class="a" id="t1">Личный</button><button id="t2">Группа</button></div><div id="nc"></div><div class="row"><button id="cx">Закрыть</button></div>');

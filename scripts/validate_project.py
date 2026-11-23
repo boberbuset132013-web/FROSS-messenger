@@ -27,6 +27,8 @@ checks = {
     "audio attachment has no black card or link underline": ".message-audio-player{" in html and "background:transparent!important" in html and "text-decoration:none!important" in html,
     "private avatar image is not cleared after loading": 'el.style.backgroundColor="transparent"' in js and 'el.style.background=""' not in js[js.index("async function loadPrivateAvatar"):js.index("function avatar(")],
     "message avatars carry sender identity for private image refresh": 'avatar(a,{uid:m.senderUid' in js,
+    "username search supports legacy profiles without a username index": "findPublicProfileByUsername" in js and "findPublicProfiles" in js and "orderBy(\\"username\\")" in js,
+    "new DMs avoid inaccessible removed conversation IDs": 'const id="dm_"+crypto.randomUUID()' in js and "memberUids: [me.uid,u.uid]" in js or "memberUids:[me.uid,u.uid]" in js,
     "private downloads are authenticated server-side": "/api/files/download" in js and "async function downloadFile" in worker and "verifyFirebaseToken" in worker,
     "reduced motion support": "prefers-reduced-motion:reduce" in html,
     "animated interface transitions": "@keyframes fross-enter" in html and "@keyframes fross-pop" in html,
