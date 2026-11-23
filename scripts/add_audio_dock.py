@@ -152,7 +152,7 @@ initGlobalAudioDock();'''
 if "function updateGlobalAudioDock()" not in js:
     js = replace_function(js, "createAudioMessagePlayer", audio_functions)
 if "let globalAudioTrackKey=" not in js:
-    state_anchor = 'let stopGeneral=null, generalMeta={}, stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];'
+    state_anchor = 'let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];'
     state = '\nlet globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;\nlet globalAudioPlayer=null, globalAudioSpeed=1;\nconst GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];'
     if state_anchor not in js:
         raise SystemExit("Could not find app state declaration for audio dock")
