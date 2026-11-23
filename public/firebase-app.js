@@ -503,8 +503,11 @@ async function loadPrivateAvatar(el,source,name,uid,color,retries=1) {
     image.onload=()=>{
       if(!el.isConnected||el.dataset.avatarSource!==source)return;
       el.style.backgroundImage='url("'+url+'")';
+      el.style.backgroundColor="transparent";
+      el.style.backgroundRepeat="no-repeat";
+      el.style.backgroundSize="cover";
+      el.style.backgroundPosition="center";
       el.textContent="";
-      el.style.background="";
     };
     image.onerror=()=>retryAvatarImage(el,source,name,uid,color,retries,new Error("Файл аватара не загрузился."));
     image.src=url;
@@ -917,7 +920,7 @@ function subscribeMessages() {
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
       r.dataset.messageId=m.id;
       if(S.avatars&&!mine&&previous!==m.senderUid){
-        const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
+        const a=document.createElement("div");a.className="av";avatar(a,{uid:m.senderUid,displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
       const b=document.createElement("div");b.className="msg";
       if(previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){

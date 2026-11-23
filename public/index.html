@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="fross-shell-version" content="8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title><meta name="theme-color" content="#080611"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/fross-icon.webp" type="image/webp"><link rel="apple-touch-icon" href="/fross-icon.webp">
+<html lang="ru"><head><meta charset="utf-8"><meta name="fross-shell-version" content="9"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>FROSS Messenger</title><meta name="theme-color" content="#080611"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/fross-icon.webp" type="image/webp"><link rel="apple-touch-icon" href="/fross-icon.webp">
 <style>
 :root{color-scheme:dark;--bg:#0f1015;--panel:#16181f;--p2:#1d2029;--line:#282b37;--text:#f2f3f7;--muted:#9a9fb0;--accent:#9181ff;--bubble:#232632;--br:16px;--fs:15px;--pad:10px;--danger:#ff6b6b}
 :root[data-theme=light]{color-scheme:light;--bg:#eef0f5;--panel:#fff;--p2:#f4f5f9;--line:#e1e4ec;--text:#1b1e27;--muted:#6c7285;--bubble:#e9ecf3}
@@ -393,6 +393,32 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
   .head .ic{padding-inline:7px}
   .comp{gap:6px}
   .comp button{padding-inline:10px}
+}
+
+
+/* Final message cleanup: no dark audio card, bubble outline or underline artifacts */
+.message-audio-player{
+  display:flex!important;flex-direction:column;gap:7px;width:min(100%,460px);max-width:100%;
+  padding:0!important;margin:7px 0 2px!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;outline:0!important
+}
+.audio-player-top{display:flex;align-items:center;gap:11px;min-width:0;background:transparent!important}
+.audio-play-button{background:linear-gradient(135deg,#c15cff,#8f32e7)!important;color:#fff!important;
+  border:0!important;box-shadow:0 4px 13px #4b0b8b44!important}
+.audio-player-name{color:inherit!important;min-width:0}
+.audio-player-hint{color:color-mix(in srgb,currentColor 76%,transparent)!important}
+.attachment-link{display:block;color:#f0d8ff!important;text-decoration:none!important;
+  border:0!important;box-shadow:none!important;outline:0!important;padding:3px 0;margin:5px 0 1px}
+.attachment-link:hover{text-decoration:none!important;color:#fff!important}
+.msg{border:0!important;box-shadow:none!important;outline:0!important}
+.mr,.mr::before,.mr::after{border:0!important;box-shadow:none!important;outline:0!important}
+.msgs{border:0!important;box-shadow:none!important;outline:0!important}
+.comp{border-top:0!important;box-shadow:none!important}
+@media(max-width:520px){
+  .message-audio-player{width:100%}
+  .audio-player-top{gap:8px}
+  .audio-play-button{min-width:104px;padding:9px 11px}
+  .audio-player-meta{min-width:0}
 }
 
 </style></head><body>
