@@ -561,11 +561,11 @@ function subscribeMessages() {
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
-      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");b.append(t);
-      if(mine&&cur!=="general") {
+      const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur!=="general") {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
-        if(recipients.length)appendReadReceipt(b,{read:recipients.every(uid=>(m.readBy||[me.uid]).includes(uid))});
+        if(recipients.length)appendReadReceipt(t,{read:recipients.every(uid=>(m.readBy||[me.uid]).includes(uid))});
       }
+      b.append(t);
       r.append(b);box.append(r);
       r.addEventListener("contextmenu",e=>{e.preventDefault();openMessageMenu(m,mine,e.clientX,e.clientY)});
       let pressTimer;r.addEventListener("touchstart",e=>{pressTimer=setTimeout(()=>openMessageMenu(m,mine,e.touches[0]?.clientX||30,e.touches[0]?.clientY||80),550)},{passive:true});
