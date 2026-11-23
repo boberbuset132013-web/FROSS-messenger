@@ -543,15 +543,36 @@ function openMessageMenu(message,mine,x,y) {
   if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
   actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
   if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
-  for(const item of actions){const b=document.createElement("button");b.textContent=item[0];b.onclick=item[1];menu.append(b)}
-  document.body.append(menu);menu.style.left=Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8))+"px";menu.style.top=Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8))+"px";
+  for(const item of actions){const b=document.createElement("button");b.type="button";b.textContent=item[0];b.onclick=item[1];menu.append(b)}
+  document.body.append(menu);
+  const left=Math.max(8,Math.min(x,innerWidth-menu.offsetWidth-8));
+  const top=Math.max(8,Math.min(y,innerHeight-menu.offsetHeight-8));
+  menu.style.left=left+"px";menu.style.top=top+"px";
   const close=e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener("pointerdown",close)}};
   setTimeout(()=>document.addEventListener("pointerdown",close),0);
 }
 function showReactionPicker(message,menu) {
-  menu.replaceChildren();
-  MESSAGE_EMOJIS.forEach(emoji=>{const b=document.createElement("button");b.className="reaction-choice";b.textContent=emoji;b.onclick=async()=>{try{const own=await getDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));if(own.exists()&&own.data().emoji===emoji)await deleteDoc(own.ref);else await setDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid),{uid:me.uid,emoji,updatedAt:serverTimestamp()});menu.remove()}catch(e){alert(authError(e))}};menu.append(b)});
-  const remove=document.createElement("button");remove.textContent="Убрать мою реакцию";remove.onclick=async()=>{try{await deleteDoc(doc(db,"chats",cur,"messages",message.id,"reactions",me.uid));menu.remove()}catch(e){alert(authError(e))}};menu.append(remove);
+  menu.querySelector(".reaction-picker")?.remove();
+  const previous=menu.getBoundingClientRect();
+  const picker=document.createElement("div");picker.className="reaction-picker";
+  const title=document.createElement("span");title.className="reaction-picker-title";title.textContent="Реакции";
+  const rail=document.createElement("div");rail.className="reaction-picker-scroll";rail.setAttribute("aria-label","Листайте эмодзи влево и вправо");
+  MESSAGE_EMOJIS.forEach(emoji=>{
+    const b=document.createElement("button");b.type="button";b.className="reaction-choice";b.textContent=emoji;b.setAttribute("aria-label","Поставить реакцию "+emoji);
+    b.onclick=async()=>{
+      try{
+        const ownRef=doc(db,"chats",cur,"messages",message.id,"reactions",me.uid);
+        const own=await getDoc(ownRef);
+        if(own.exists()&&own.data().emoji===emoji)await deleteDoc(ownRef);
+        else await setDoc(ownRef,{uid:me.uid,emoji,updatedAt:serverTimestamp()});
+        menu.remove();
+      }catch(e){console.error("FROSS reaction failed:",e);alert(authError(e))}
+    };
+    rail.append(b);
+  });
+  picker.append(title,rail);menu.prepend(picker);
+  const newHeight=menu.offsetHeight;
+  menu.style.top=Math.max(8,Math.min(previous.bottom-newHeight,innerHeight-newHeight-8))+"px";
 }
 async function editMessage(message) {
   const value=prompt("Изменить сообщение:",message.text||"");if(value===null)return;
@@ -781,7 +802,7 @@ if(attachmentButton&&attachmentInput){
         batch.set(messageRef,message);
         batch.update(doc(db,"chats",chatId),{lastMessage:summary.slice(0,120),lastMessageAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await batch.commit();progress.update(100);setTimeout(()=>progress.remove(),900);
-      }catch(error){progress.remove();alert("Не удалось отправить «"+file.name+"»: "+authError(error))}
+      }catch(error){console.error("FROSS chat attachment upload failed:",{code:error?.code,message:error?.message,path});progress.remove();alert("Не удалось загрузить или отправить «"+file.name+"».\\n"+(error?.code||"Ошибка Firebase")+": "+authError(error)+"\\n\\nЕсли ошибка storage/unauthorized — проверьте опубликованные правила Firebase Storage.")}
       finally{attachmentButton.disabled=false}
     }
   };
