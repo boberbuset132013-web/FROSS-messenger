@@ -80,7 +80,7 @@ label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
 @keyframes fross-shimmer{to{background-position:200% center}}
 @keyframes fross-orbit{to{transform:rotate(360deg)}}
 body{overflow:hidden}
-#auth{position:relative;isolation:isolate;overflow:hidden}
+#auth{position:relative;isolation:isolate;overflow-x:hidden;overflow-y:auto;align-items:start;min-height:100%;-webkit-overflow-scrolling:touch;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom))}.card{margin:auto}
 #auth:before,#auth:after{content:"";position:absolute;z-index:-1;width:340px;height:340px;border-radius:50%;filter:blur(75px);opacity:.18;pointer-events:none;background:var(--accent);animation:fross-orbit 24s linear infinite}
 #auth:before{top:-160px;left:-110px}#auth:after{right:-130px;bottom:-170px;animation-direction:reverse}
 .card{animation:fross-enter .55s cubic-bezier(.2,.8,.2,1) both;backdrop-filter:blur(18px);background:color-mix(in srgb,var(--panel) 92%,transparent)}
