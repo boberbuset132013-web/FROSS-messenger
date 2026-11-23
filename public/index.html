@@ -160,18 +160,14 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
 #avatar-crop-preview:after{content:"";position:absolute;inset:0;border:1px solid #ffffff55;border-radius:50%;pointer-events:none}
 #avatar-zoom-value{float:right;color:var(--accent);font-weight:700}
 #avatar-zoom{accent-color:var(--accent)}
-/* Mascot polish: luminous glass orb, defined eyes, and a visible soft levitation shadow */
-.mascot{filter:drop-shadow(0 0 18px #9b37ff55)}
-.mascot:after{content:"";position:absolute;z-index:0;left:28px;right:28px;bottom:1px;height:9px;border-radius:50%;background:#b04cff99;filter:blur(8px);animation:mascot-shadow 4.6s ease-in-out infinite}
-.mascot-body{z-index:1;background:radial-gradient(ellipse at 34% 23%,#f4d8ff 0 2%,#e3a4ff 3%,#bd54ff 11%,#9b27f2 34%,#7814d4 63%,#3b087b 100%);box-shadow:inset 8px 8px 15px #ffffff2c,inset -13px -16px 22px #230044a8,0 0 0 1px #e4b4ff77,0 0 26px #a020ff99}
-.mascot-body:before{content:"";position:absolute;left:18%;top:12%;width:33%;height:12%;border-radius:50%;background:#f7e7ffb8;filter:blur(3px);transform:rotate(-32deg)}
-.mascot-body:after{content:"";position:absolute;right:17%;top:24%;width:9%;height:4%;border-radius:50%;background:#fff;filter:blur(1px);transform:rotate(42deg)}
-.mascot-eye{z-index:2;top:49%;width:19px;height:23px;background:radial-gradient(circle at 35% 28%,#301344,#080311 70%);box-shadow:0 2px 4px #21003c99;transform:translateY(-50%)}
-.mascot-eye.left{left:24%}.mascot-eye.right{right:24%}
-.mascot-orbit{z-index:2;border-width:2px;border-top-color:#f0c6ff;border-bottom-color:#8e22ff;filter:drop-shadow(0 0 5px #b94aff)}
-.orbit-a{inset:5px 10px;animation:mascot-orbit 8s linear infinite}
-.orbit-b{inset:0 1px;animation:mascot-orbit 11s linear infinite reverse}
-.mascot-spark{z-index:3;width:7px;height:7px;background:#f4d8ff;box-shadow:0 0 12px 5px #a52cff}
+ /* Static mascot finish: preserve the new silhouette, no character motion */
+ .mascot{filter:drop-shadow(0 0 18px #9b37ff55)}
+ .mascot-body{z-index:1}
+ .mascot-eye{z-index:2}
+ .mascot-orbit{z-index:2;border-width:2px;border-top-color:#f0c6ff;border-bottom-color:#8e22ff;filter:drop-shadow(0 0 5px #b94aff)}
+ .orbit-a{inset:8px 11px;transform:rotate(-28deg)}
+ .orbit-b{inset:0 4px;transform:rotate(62deg)}
+ .mascot-spark{z-index:3}
 @media(prefers-reduced-motion:reduce){#avatar-crop-preview{scroll-behavior:auto}}
 #auth .card{max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:700px){#auth .card{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
