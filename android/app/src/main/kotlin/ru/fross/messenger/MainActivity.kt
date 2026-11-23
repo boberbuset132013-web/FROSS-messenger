@@ -40,6 +40,7 @@ class MainActivity : Activity() {
     private var pendingWebPermission: PermissionRequest? = null
     private val handler = Handler(Looper.getMainLooper())
     private var loadTimedOut = false
+    private var loadFailed = false
 
     companion object {
         private const val SITE = "https://fross-messenger.boberbuset132013.workers.dev/"
@@ -82,6 +83,7 @@ class MainActivity : Activity() {
                 super.onPageStarted(view, url, favicon)
                 showLoading("Подключаемся к FROSS…")
                 loadTimedOut = false
+                loadFailed = false
                 handler.removeCallbacks(timeout)
                 handler.postDelayed(timeout, 25000)
             }
@@ -90,8 +92,10 @@ class MainActivity : Activity() {
                 super.onPageFinished(view, url)
                 handler.removeCallbacks(timeout)
                 loadTimedOut = false
-                splash.visibility = View.GONE
-                webView.visibility = View.VISIBLE
+                if (!loadFailed) {
+                    splash.visibility = View.GONE
+                    webView.visibility = View.VISIBLE
+                }
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -265,6 +269,7 @@ class MainActivity : Activity() {
     }
 
     private fun showError(title: String, message: String) {
+        loadFailed = true
         handler.removeCallbacks(timeout)
         splash.visibility = View.VISIBLE
         webView.visibility = View.GONE
@@ -275,6 +280,7 @@ class MainActivity : Activity() {
     }
 
     private fun loadSite() {
+        loadFailed = false
         showLoading("Подключаемся к FROSS…")
         webView.loadUrl(SITE)
     }
