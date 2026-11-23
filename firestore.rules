@@ -76,9 +76,16 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow get, list: if verified() && (
-        chatId == "general" ||
-        request.auth.uid in resource.data.memberUids
+      // A signed-in user may check a deterministic DM document before creating it.
+      // Existing chats remain readable only by their members.
+      allow get: if verified() && (
+        !exists(/databases/$(database)/documents/chats/$(chatId))
+        || chatId == "general"
+        || request.auth.uid in resource.data.memberUids
+      );
+      allow list: if verified() && (
+        chatId == "general"
+        || request.auth.uid in resource.data.memberUids
       );
 
       allow create: if verified() && (
