@@ -1,0 +1,19 @@
+{
+  "name": "FROSS Messenger",
+  "short_name": "FROSS",
+  "description": "Мессенджер FROSS",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080611",
+  "theme_color": "#080611",
+  "icons": [
+    {
+      "src": "/fross-icon.webp",
+      "sizes": "any",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ]
+}
