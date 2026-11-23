@@ -904,23 +904,7 @@ onAuthStateChanged(auth,async user=>{
 import("./voice-calls.js").catch(error => console.error("Voice calls failed to load:", error));
 
 
-/* FROSS mascot: independent orbital layers and deliberately rare 4-phase blink */
-(()=>{
-  const mascot=document.getElementById("fross-mascot");
-  if(!mascot)return;
-  const eyes=[...mascot.querySelectorAll(".mascot-eye")];
-  const frames=[13,7,2,10,20];
-  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-  async function blink(){
-    for(const height of frames){
-      eyes.forEach(eye=>eye.style.height=height+"px");
-      await wait(65);
-    }
-    const pause=8500+Math.random()*8500;
-    setTimeout(blink,pause);
-  }
-  setTimeout(blink,6500+Math.random()*4500);
-})();
+/* Static mascot: deliberately no blinking or movement script. */
 
 /* Bottom navigation and the relocated create action */
 (()=>{
