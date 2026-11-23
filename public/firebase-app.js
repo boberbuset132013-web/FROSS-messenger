@@ -871,6 +871,7 @@ $("gb").onclick=()=>{
     if(i===3){
       c.innerHTML=section("Профиль","Настрой, как твой аккаунт выглядит для других.")+'<div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
+      if(P.avatarDirty){$("photo-state").textContent="Фото уже применено, нажми «Сохранить»."; $("photo-state").classList.add("pending")}
       $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
       $("up").onclick=()=>$("fi").click();
       $("fi").onchange=e=>{
