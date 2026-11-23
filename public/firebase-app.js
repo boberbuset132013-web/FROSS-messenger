@@ -29,7 +29,7 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,reduceMotion:false};
+const DEF = {theme:"dark",accent:"#9181ff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"none",avatars:true,bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="general", chats=[], found=[];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
@@ -234,6 +234,7 @@ function applyS(s) {
   r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
   r.style.setProperty("--bg",s.bgColor||"#0f1015");r.style.setProperty("--panel",s.panelColor||"#16181f");r.style.setProperty("--text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
+  r.classList.toggle("reduce-motion",!!s.reduceMotion);
 }
 function hue(s) {
   let h=0; for(const c of String(s||"#"))h=(h*31+c.charCodeAt(0))%360;
@@ -248,6 +249,7 @@ function avatar(el,o,on) {
 }
 function pickImg(file,cb,onCancel=()=>{}) {
   if(!file || !file.type?.startsWith("image/")) { onCancel(); return; }
+  if(file.size > 15*1024*1024) { alert("Изображение больше 15 МБ."); onCancel(); return; }
   const reader=new FileReader();
   reader.onerror=()=>{alert("Не удалось прочитать изображение.");onCancel()};
   reader.onload=()=>{
@@ -255,6 +257,13 @@ function pickImg(file,cb,onCancel=()=>{}) {
     image.onerror=()=>{alert("Не удалось открыть изображение.");onCancel()};
     image.onload=()=>{
       let zoom=1,panX=0,panY=0,drag=null;
+      const layer=document.createElement("div");
+      layer.className="avatar-crop-layer";
+      layer.innerHTML='<div class="avatar-crop-card"><div class="avatar-crop-heading"><div><b>Настройка фото</b><small>Передвинь изображение и выбери область для аватара</small></div><button type="button" class="avatar-crop-close" aria-label="Закрыть">×</button></div><div class="avatar-crop-preview" role="img" aria-label="Предпросмотр круглого аватара"></div><label class="avatar-crop-scale">Масштаб <span class="avatar-zoom-value">100%</span></label><input class="avatar-zoom" type="range" min="1" max="3" step=".01" value="1"><div class="avatar-crop-actions"><button type="button" class="avatar-crop-cancel">Отмена</button><button type="button" class="pr avatar-crop-apply">Применить фото</button></div></div>';
+      document.body.append(layer);
+      const preview=layer.querySelector(".avatar-crop-preview");
+      const zoomInput=layer.querySelector(".avatar-zoom");
+      const zoomValue=layer.querySelector(".avatar-zoom-value");
       const boxSize=()=>preview.clientWidth||240;
       const drawPreview=()=>{
         const size=boxSize(),base=Math.max(size/image.width,size/image.height),w=image.width*base*zoom,h=image.height*base*zoom;
@@ -263,29 +272,29 @@ function pickImg(file,cb,onCancel=()=>{}) {
         preview.style.backgroundPosition="calc(50% + "+panX+"px) calc(50% + "+panY+"px)";
         zoomValue.textContent=Math.round(zoom*100)+"%";
       };
-      openM('<h3 style="margin:0 0 6px">Настроить фото</h3><p class="mut">Передвигай изображение пальцем и настрой масштаб. В профиль попадёт круглая область.</p><div id="avatar-crop-preview" role="img" aria-label="Предпросмотр круглого аватара"></div><label>Масштаб <span id="avatar-zoom-value">100%</span></label><input id="avatar-zoom" type="range" min="1" max="3" step=".01" value="1"><div class="row"><button id="avatar-crop-cancel">Отмена</button><button class="pr" id="avatar-crop-save">Применить фото</button></div>');
-      const preview=$("avatar-crop-preview"),zoomInput=$("avatar-zoom"),zoomValue=$("avatar-zoom-value");
-      preview.style.backgroundImage='url("'+reader.result+'")';
-      preview.style.backgroundRepeat="no-repeat";
-      preview.style.touchAction="none";
-      preview.style.cursor="grab";
-      drawPreview();
+      preview.style.backgroundRepeat="no-repeat";preview.style.touchAction="none";preview.style.cursor="grab";drawPreview();
       zoomInput.oninput=()=>{zoom=Number(zoomInput.value);drawPreview()};
       preview.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,px:panX,py:panY};preview.setPointerCapture(e.pointerId);preview.style.cursor="grabbing"};
-      preview.onpointermove=e=>{if(!drag)return;panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;const size=boxSize(),base=Math.max(size/image.width,size/image.height),w=image.width*base*zoom,h=image.height*base*zoom;panX=Math.max(-(w-size)/2,Math.min((w-size)/2,panX));panY=Math.max(-(h-size)/2,Math.min((h-size)/2,panY));drawPreview()};
+      preview.onpointermove=e=>{
+        if(!drag)return;
+        panX=drag.px+e.clientX-drag.x;panY=drag.py+e.clientY-drag.y;
+        const size=boxSize(),base=Math.max(size/image.width,size/image.height),w=image.width*base*zoom,h=image.height*base*zoom;
+        panX=Math.max(-(w-size)/2,Math.min((w-size)/2,panX));panY=Math.max(-(h-size)/2,Math.min((h-size)/2,panY));drawPreview();
+      };
       preview.onpointerup=()=>{drag=null;preview.style.cursor="grab"};
       preview.onpointercancel=()=>{drag=null;preview.style.cursor="grab"};
-      $("avatar-crop-cancel").onclick=()=>{closeM();onCancel()};
-      $("avatar-crop-save").onclick=()=>{
+      const cancel=()=>{layer.remove();onCancel()};
+      layer.querySelector(".avatar-crop-close").onclick=cancel;
+      layer.querySelector(".avatar-crop-cancel").onclick=cancel;
+      layer.querySelector(".avatar-crop-apply").onclick=()=>{
         const c=document.createElement("canvas");c.width=c.height=320;
-        const scale=Math.max(320/image.width,320/image.height)*zoom;
-        const w=image.width*scale,h=image.height*scale;
-        const size=boxSize(),x=(320-w)/2+panX*(320/size),y=(320-h)/2+panY*(320/size);
-        const ctx=c.getContext("2d");
+        const scale=Math.max(320/image.width,320/image.height)*zoom,w=image.width*scale,h=image.height*scale,size=boxSize();
+        const x=(320-w)/2+panX*(320/size),y=(320-h)/2+panY*(320/size),ctx=c.getContext("2d");
         ctx.save();ctx.beginPath();ctx.arc(160,160,160,0,Math.PI*2);ctx.clip();
         ctx.drawImage(image,0,0,image.width,image.height,x,y,w,h);ctx.restore();
-        closeM();cb(c.toDataURL("image/jpeg",.88));
+        const result=c.toDataURL("image/jpeg",.9);layer.remove();cb(result);
       };
+      layer.addEventListener("pointerdown",e=>{if(e.target===layer)cancel()});
     };
     image.src=reader.result;
   };
@@ -294,12 +303,17 @@ function pickImg(file,cb,onCancel=()=>{}) {
 async function uploadAvatar(uid,dataUrl) {
   if(!dataUrl)return "";
   if(/^https:\/\//i.test(dataUrl))return dataUrl;
-  if(!dataUrl.startsWith("data:image/"))throw new Error("Фото не подготовлено. Выберите изображение ещё раз.");
-  const blob=await (await fetch(dataUrl)).blob();
-  if(!blob.size)throw new Error("Получилось пустое изображение.");
-  const target=ref(storage,"avatars/"+uid+"/avatar_"+Date.now()+".jpg");
-  await uploadBytes(target,blob,{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
-  return await getDownloadURL(target);
+  if(!dataUrl.startsWith("data:image/"))throw new Error("Фото не подготовлено. Сначала нажми «Применить фото».");
+  try{
+    const response=await fetch(dataUrl),blob=await response.blob();
+    if(!blob.size)throw new Error("Получилось пустое изображение.");
+    const target=ref(storage,"avatars/"+uid+"/avatar_"+crypto.randomUUID()+".jpg");
+    const uploaded=await uploadBytes(target,blob,{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
+    return await getDownloadURL(uploaded.ref);
+  }catch(error){
+    console.error("FROSS avatar upload failed:",error);
+    throw new Error("Не удалось загрузить фото в Firebase Storage: "+authError(error));
+  }
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
@@ -828,23 +842,37 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const profileMode=window.FROSS_PROFILE_MODE===true;window.FROSS_PROFILE_MODE=false;
-  const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S},P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarReady:Promise.resolve()};
-  openM('<h3 style="margin:0">' +(profileMode?"Профиль":"Настройки") + '</h3><div class="tabs"><button data-i="0">Профиль</button><button data-i="1">Кастомизация</button><button data-i="2">Общие</button><button data-i="3">Безопасность</button></div><div id="sc"></div><div class="row"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
-  document.querySelectorAll("#md .tabs button").forEach((b,i)=>b.style.display=(profileMode?(i<2):(i>=2))?"":"none");
+  const startCategory=window.FROSS_SETTINGS_START===3?3:1;window.FROSS_SETTINGS_START=null;
+  const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S};
+  const P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarDirty:false};
+  openM('<div class="settings-head"><h3>Настройки FROSS</h3><p>Выбери раздел, который хочешь изменить</p></div><div class="settings-layout"><nav class="settings-categories" aria-label="Разделы настроек"><button type="button" class="settings-category" data-i="0"><span>🛡️</span><b>Безопасность</b><small>Вход и защита аккаунта</small></button><button type="button" class="settings-category" data-i="1"><span>💬</span><b>Чаты</b><small>Переписки и уведомления</small></button><button type="button" class="settings-category" data-i="2"><span>🖼️</span><b>Медиа</b><small>Фото и файлы</small></button><button type="button" class="settings-category" data-i="3"><span>👤</span><b>Профиль</b><small>Фото и личные данные</small></button><button type="button" class="settings-category" data-i="4"><span>🎨</span><b>Кастомизация</b><small>Цвета и внешний вид</small></button></nav><section id="sc" class="settings-content"></section></div><div class="row settings-actions"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
+  const section=(title,description)=>'<div class="settings-section-title"><h4>'+title+'</h4><p>'+description+'</p></div>';
   const show=async i=>{
-    document.querySelectorAll("#md .tabs button").forEach((b,j)=>b.classList.toggle("a",i===j));
-    const c=$("sc");
-    if(i===0){
-      c.innerHTML='<div style="display:flex;gap:14px;align-items:center"><div class="av big" id="pav"></div><div><button id="up">📷 Сменить фото</button><input type="file" id="fi" accept="image/*" hidden><br><button class="ic" id="rm" style="font-size:13px">Убрать фото</button></div></div><label>Уникальный username — меняется и должен быть свободен</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">По username вас находят и открывают чат.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="2" maxlength="160"></textarea><label>Контактный email</label><input id="em" type="email">';
+    document.querySelectorAll(".settings-category").forEach((b,j)=>b.classList.toggle("active",i===j));
+    const c=$("sc");c.classList.remove("settings-content-enter");void c.offsetWidth;c.classList.add("settings-content-enter");
+    if(i===3){
+      c.innerHTML=section("Профиль","Настрой, как твой аккаунт выглядит для других.")+'<div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Имя профиля</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
       $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
       $("un").oninput=e=>P.username=e.target.value.trim().toLowerCase();$("dn").oninput=e=>P.displayName=e.target.value;$("bio").oninput=e=>P.bio=e.target.value;$("em").oninput=e=>P.contactEmail=e.target.value;
-      $("up").onclick=()=>$("fi").click();$("fi").onchange=e=>{const file=e.target.files?.[0];if(file)P.avatarReady=new Promise(resolve=>pickImg(file,d=>{P.avatarUrl=d;avatar($("pav"),{displayName:P.displayName,avatarUrl:d});resolve()},resolve))};
-      $("rm").onclick=()=>{P.avatarUrl="";avatar($("pav"),{displayName:P.displayName})};
+      $("up").onclick=()=>$("fi").click();
+      $("fi").onchange=e=>{
+        const file=e.target.files?.[0];e.target.value="";if(!file)return;
+        pickImg(file,dataUrl=>{
+          P.avatarUrl=dataUrl;P.avatarDirty=true;
+          avatar($("pav"),{displayName:P.displayName,avatarUrl:dataUrl});
+          $("photo-state").textContent="Фото применено. Теперь нажми «Сохранить».";
+          $("photo-state").classList.add("pending");
+        });
+      };
+      $("rm").onclick=()=>{
+        P.avatarUrl="";P.avatarDirty=true;avatar($("pav"),{displayName:P.displayName});
+        $("photo-state").textContent="Фото будет удалено после нажатия «Сохранить».";
+        $("photo-state").classList.add("pending");
+      };
     }
-    if(i===1){
-      c.innerHTML=look(o,"s")+'<button type="button" id="reset-customization" style="width:100%;margin:10px 0">Сбросить оформление</button><small class="mut">Вернёт цвета, шрифт, размеры и фон к стандартным значениям.</small>';
+    if(i===4){
+      c.innerHTML=section("Кастомизация","Подстрой внешний вид FROSS под себя.")+'<div class="customization-panel">'+look(o,"s")+'</div><button type="button" id="reset-customization" style="width:100%;margin:14px 0">↺ Сбросить оформление</button><small class="mut">Вернёт цвета, шрифт, размеры и фон к стандартным значениям.</small>';
       bindLook(o,"s");
       $("reset-customization").onclick=()=>{
         ["theme","accent","fs","shape","density","font","wall","bgColor","panelColor","textColor","incomingColor","outgoingColor","profileColor"].forEach(key=>o[key]=DEF[key]);
@@ -853,11 +881,15 @@ $("gb").onclick=()=>{
         [...$("sac").children].forEach(node=>node.classList.toggle("s",node.dataset.c===o.accent));
       };
     }
-    if(i===2){
-      c.innerHTML='<button type="button" id="open-profile-settings" style="width:100%;margin:0 0 14px">Настройки профиля</button><h4>Удобство</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<h4>Медиа</h4>'+toggle("autoDownload","Автоматически загружать вложения")+'<p class="mut">Настройки синхронизируются между устройствами.</p>';c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+    if(i===1){
+      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
+      c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
     }
-    if(i===2)$("open-profile-settings").onclick=()=>{closeM();window.FROSS_PROFILE_MODE=true;$("gb").click()};
-    if(i===3){
+    if(i===2){
+      c.innerHTML=section("Медиа","Управляй загрузкой фотографий и файлов.")+'<h4>Загрузка</h4>'+toggle("autoDownload","Автоматически загружать вложения","Отключи, чтобы открывать файлы только вручную.")+toggle("compressImages","Оптимизировать изображения перед отправкой")+toggle("autoPlayMedia","Автоматически воспроизводить медиа")+'<div class="settings-info-card"><b>Ограничения файлов</b><span>До 20 МБ на один файл. Фото профиля обрезается до квадратного изображения с круглой маской.</span></div><p class="mut settings-footnote">Фотографии и вложения хранятся в Firebase Storage.</p>';
+      c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+    }
+    if(i===0){
       const tokenInfo = await currentUser.getIdTokenResult();
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
       c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><small class="mut">Если SMS не отправляется: Firebase Console → Authentication → Sign-in method → Phone должен быть включён; домен сайта добавлен в Authorized domains, а отправка SMS разрешена для вашей страны.</small><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
@@ -971,14 +1003,16 @@ $("gb").onclick=()=>{
       };
     }
   };
-  document.querySelectorAll("#md .tabs button").forEach(b=>b.onclick=()=>show(+b.dataset.i));show(profileMode?0:2);
+  document.querySelectorAll(".settings-category").forEach(b=>b.onclick=()=>show(Number(b.dataset.i)));
+  show(startCategory);
   $("sx").onclick=()=>{S=backup;applyS(S);closeM()};
   $("ss").onclick=async()=>{
+    const saveButton=$("ss"),originalLabel=saveButton.textContent;
+    saveButton.disabled=true;saveButton.textContent=P.avatarDirty?"Загружаем фото…":"Сохраняем…";
     try{
-      await P.avatarReady;
       const username = P.username.trim().toLowerCase();
       if (!/^[a-z0-9_]{3,20}$/.test(username)) throw new Error("Username: 3–20 символов, латиница, цифры и _.");
-      const avatarUrl = await uploadAvatar(me.uid,P.avatarUrl);
+      const avatarUrl = P.avatarDirty ? await uploadAvatar(me.uid,P.avatarUrl) : (P.avatarUrl||"");
       const publicRef = doc(db,"publicUsers",me.uid);
       const oldUsername = (me.username||"").toLowerCase();
       if (username !== oldUsername) {
@@ -1002,18 +1036,19 @@ $("gb").onclick=()=>{
       await setDoc(privateRef,{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
       const [savedProfile,savedSettings]=await Promise.all([getDoc(publicRef),getDoc(privateRef)]);
       if(!savedProfile.exists())throw new Error("Профиль не сохранился в Firebase. Проверьте правила Firestore.");
+      if((savedProfile.data().avatarUrl||"")!==(avatarUrl||""))throw new Error("Firebase не сохранил ссылку на новое фото профиля.");
       if(!savedSettings.exists()||!savedSettings.data().settings)throw new Error("Настройки не сохранились в Firebase.");
       const persisted=savedSettings.data().settings;
       for(const key of Object.keys(o))if(JSON.stringify(persisted[key]??DEF[key])!==JSON.stringify(o[key]))throw new Error("Firebase не сохранил параметр «"+key+"». Проверьте правила Firestore.");
       Object.assign(me,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,contactEmail:P.contactEmail||""});
-      S={...DEF,...o};me.settings={...S};
+      S={...DEF,...o};me.settings={...S};P.avatarDirty=false;
       try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
       applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
-    }catch(e){alert(authError(e))}
+    }catch(e){alert(authError(e));saveButton.disabled=false;saveButton.textContent=originalLabel}
   };
 };
-$("profile-settings").onclick=()=>{window.FROSS_PROFILE_MODE=true;$("gb").click()};
+$("profile-settings").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
 async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
