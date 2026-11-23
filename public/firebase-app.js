@@ -549,8 +549,10 @@ function subscribeMessages() {
         const a=document.createElement("div");a.className="av";avatar(a,{displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});r.append(a);
       }else if(S.avatars&&!mine)r.classList.add("nf");
       const b=document.createElement("div");b.className="msg";
-      if(!mine&&previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
-        const n=document.createElement("button");n.type="button";n.className="sender-profile";n.textContent=(m.displayName||m.username||"Пользователь")+" · @"+(m.username||"user");n.onclick=()=>openUserProfile(m.senderUid);b.append(n);
+      if(previous!==m.senderUid&&(cur==="general"||chats.find(c=>c.id===cur)?.type==="group")){
+        const n=document.createElement("button");n.type="button";n.className="sender-profile";
+        n.textContent=(mine?"Вы":(m.displayName||m.username||"Пользователь"))+" · @"+(m.username||"user");
+        n.onclick=()=>openUserProfile(m.senderUid);b.append(n);
       }
       if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
       if(m.attachment){
