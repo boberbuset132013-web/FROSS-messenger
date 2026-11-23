@@ -846,3 +846,51 @@ onAuthStateChanged(auth,async user=>{
 });
 
 import("./voice-calls.js").catch(error => console.error("Voice calls failed to load:", error));
+
+
+/* FROSS mascot: independent orbital layers and deliberately rare 4-phase blink */
+(()=>{
+  const mascot=document.getElementById("fross-mascot");
+  if(!mascot)return;
+  const eyes=[...mascot.querySelectorAll(".mascot-eye")];
+  const frames=[13,7,2,10,20];
+  const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  async function blink(){
+    for(const height of frames){
+      eyes.forEach(eye=>eye.style.height=height+"px");
+      await wait(65);
+    }
+    const pause=8500+Math.random()*8500;
+    setTimeout(blink,pause);
+  }
+  setTimeout(blink,6500+Math.random()*4500);
+})();
+
+/* Bottom navigation and the relocated create action */
+(()=>{
+  const oldCreate=document.getElementById("nb")?.onclick;
+  const q=document.getElementById("q");
+  const people=document.getElementById("nav-people");
+  const chats=document.getElementById("nav-chats");
+  if(people)people.onclick=()=>{
+    document.body.classList.remove("ch");
+    if(q){q.placeholder="Найти человека по username";q.focus();}
+    people.classList.add("active");chats?.classList.remove("active");
+  };
+  if(chats)chats.onclick=()=>{
+    if(q){q.value="";q.placeholder="Найти человека или чат";q.dispatchEvent(new Event("input"));}
+    chats.classList.add("active");people?.classList.remove("active");
+    document.body.classList.remove("ch");
+  };
+  const create=document.getElementById("nb");
+  if(create)create.onclick=()=>{
+    openM('<div class="create-sheet"><div class="sheet-grab"></div><h3>Создать</h3><p class="mut">Что хочешь создать?</p><button class="create-option" id="make-dm"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c.5-3.5 2.5-5.5 6-5.5s5.5 2 6 5.5M17 8h5m-2.5-2.5v5"/></svg></span><span><b>Личный чат</b><small>Найти человека и написать ему</small></span></button><button class="create-option" id="make-group"><span class="option-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.5-3.5 2.5-5.5 6.5-5.5s6 2 6.5 5.5M15 15c3.5-.2 5.5 1.5 6 4.5"/></svg></span><span><b>Группа</b><small>Общение с несколькими людьми</small></span></button><button class="create-option" id="make-channel"><span class="option-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h6"/></svg></span><span><b>Канал</b><small>Публикации от имени автора</small></span></button><button class="sheet-cancel" id="cancel-create">Отмена</button></div>');
+    document.getElementById("cancel-create").onclick=closeM;
+    document.getElementById("make-dm").onclick=()=>{closeM();oldCreate?.call(create);document.getElementById("t1")?.click()};
+    document.getElementById("make-group").onclick=()=>{closeM();oldCreate?.call(create);document.getElementById("t2")?.click()};
+    document.getElementById("make-channel").onclick=()=>{
+      openM('<div class="create-sheet"><h3>Канал FROSS</h3><p class="mut">Каналы требуют отдельной системы подписчиков и прав публикации: авторы смогут писать, подписчики — читать. Я не буду создавать канал на старых правах группового чата, чтобы не открыть публикации всем участникам случайно.</p><div class="row"><button id="channel-close" class="pr">Понятно</button></div></div>');
+      document.getElementById("channel-close").onclick=closeM;
+    };
+  };
+})();
