@@ -355,7 +355,7 @@ function wiz(n) {
       const v=e.target.value;
       const variety=[/[a-z]/.test(v),/[A-Z]/.test(v),/[0-9]/.test(v),/[^A-Za-z0-9]/.test(v)].filter(Boolean).length;
       const lengthScore=v.length>=16?3:v.length>=12?2:v.length>=8?1:0;
-      const penalty=/(.)\\1{3,}/.test(v)?1:0,score=Math.max(0,Math.min(6,lengthScore+variety-penalty));
+      const penalty=/(.)\1{3,}/.test(v)?1:0,score=Math.max(0,Math.min(6,lengthScore+variety-penalty));
       const label=v.length<8?"Минимум 8 символов":score<=2?"Слабый пароль":score<=4?"Нормальный пароль":"Сильный пароль";
       $("mt").style.width=Math.round(score/6*100)+"%";
       $("mt").style.background=v.length<8||score<=2?"#ff6b6b":score<=4?"#f59e0b":"#3ddc84";
