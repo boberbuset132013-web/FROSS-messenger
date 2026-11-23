@@ -48,6 +48,10 @@ jobs:
             echo "::error::Configure FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY in GitHub repository secrets."
             exit 1
           fi
-          printf '%s' "$FILEBASE_ACCESS_KEY" | npx wrangler secret put FILEBASE_ACCESS_KEY --config ./wrangler.toml
-          printf '%s' "$FILEBASE_SECRET_KEY" | npx wrangler secret put FILEBASE_SECRET_KEY --config ./wrangler.toml
-          CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/
+          # Deploy code and secrets atomically. This avoids a race with Cloudflare Worker versions.
+          umask 077
+          SECRETS_FILE="$(mktemp)"
+          trap 'rm -f "$SECRETS_FILE"' EXIT
+          jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret}' > "$SECRETS_FILE"
+          CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
