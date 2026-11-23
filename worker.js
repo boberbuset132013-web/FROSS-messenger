@@ -115,6 +115,37 @@ async function fileUrl(request,env){
   if(!allowed)return json({error:"Нет доступа к этому файлу."},403);
   return json({url:await presignedGet(env,path,600),expiresIn:600});
 }
+
+async function downloadFile(request,env){
+  const identity=await verifyFirebaseToken(request);
+  const body=await request.json();
+  const path=String(body.path||"");
+  const requestedName=String(body.name||"download").replace(/[\r\n"]/g,"_").slice(0,180)||"download";
+  let allowed=false;
+  if(path.startsWith("avatars/")){
+    const match=path.match(/^avatars\/([A-Za-z0-9_-]{1,128})\//);
+    if(match&&match[1]===identity.uid&&validAvatarPath(path,identity.uid)){
+      const profile=await firestoreGet("publicUsers/"+encodeURIComponent(identity.uid),identity.token);
+      allowed=stringField(profile,"avatarUrl")==="filebase:"+path;
+    }
+  }else if(path.startsWith("chatFiles/")){
+    const match=path.match(/^chatFiles\/([A-Za-z0-9_-]{1,120})\/([A-Za-z0-9_-]{1,128})\/[A-Za-z0-9._-]{1,220}$/);
+    if(match&&validChatPath(path,match[1],match[2]))allowed=await isChatMember(match[1],identity.uid,identity.token);
+  }
+  if(!allowed)return json({error:"Нет доступа к этому файлу."},403);
+  const object=await s3Request(env,"GET",path);
+  const asciiName=requestedName.replace(/[^\x20-\x7E]/g,"_").replace(/[\\"]/g,"_");
+  const headers=new Headers({
+    "Content-Type":object.headers.get("Content-Type")||"application/octet-stream",
+    "Content-Disposition":"attachment; filename=\""+asciiName+"\"; filename*=UTF-8''"+awsEncode(requestedName),
+    "Cache-Control":"private, no-store",
+    "X-Content-Type-Options":"nosniff"
+  });
+  const length=object.headers.get("Content-Length");
+  if(length)headers.set("Content-Length",length);
+  return new Response(object.body,{status:200,headers});
+}
+
 async function deleteMessageFile(request,env){
   const identity=await verifyFirebaseToken(request),body=await request.json(),chatId=String(body.chatId||""),messageId=String(body.messageId||"");
   if(!/^[A-Za-z0-9_-]{1,120}$/.test(chatId)||!/^[A-Za-z0-9_-]{1,160}$/.test(messageId))return json({error:"Неверный идентификатор сообщения."},400);
@@ -139,6 +170,7 @@ async function deleteAvatar(request,env){
 async function api(request,env,url){
   if(request.method==="POST"&&url.pathname==="/api/files/upload")return await upload(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/files/url")return await fileUrl(request,env);
+  if(request.method==="POST"&&url.pathname==="/api/files/download")return await downloadFile(request,env);
   if(request.method==="POST"&&url.pathname==="/api/files/delete-message")return await deleteMessageFile(request,env);
   if(request.method==="POST"&&url.pathname==="/api/files/delete-avatar")return await deleteAvatar(request,env);
   return json({error:"API route not found."},404);

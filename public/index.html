@@ -292,6 +292,38 @@ input,textarea,select{transition:border-color .2s,box-shadow .2s,background .2s}
 .reaction-picker-scroll .reaction-choice{flex:0 0 38px;width:38px;height:38px;min-width:38px;justify-content:center;align-items:center;border:1px solid var(--line);border-radius:12px;background:var(--p2);padding:3px;font-size:22px;line-height:1}
 .reaction-picker-scroll .reaction-choice:active{transform:scale(.92);background:var(--p2)}
 @media(max-width:420px){.message-menu{max-width:calc(100vw - 16px)}.reaction-picker-scroll .reaction-choice{flex-basis:36px;width:36px;min-width:36px;height:36px}}
+
+/* In-chat photo viewer and audio player */
+.message-image{cursor:zoom-in;transition:filter .16s ease,transform .16s ease}
+.message-image:hover{filter:brightness(1.06)}
+.message-audio-player{display:flex;flex-direction:column;gap:9px;width:min(360px,72vw);max-width:100%;padding:11px 12px;margin:6px 0;border:1px solid var(--line);border-radius:15px;background:var(--p2)}
+.audio-player-top{display:flex;align-items:center;gap:11px;min-width:0}
+.audio-play-button{flex:none;min-width:112px;padding:10px 13px;border:0;border-radius:12px;background:var(--accent);color:white;font-size:13px;font-weight:800}
+.audio-play-button:disabled{opacity:.65;cursor:wait}
+.audio-player-meta{min-width:0;flex:1}
+.audio-player-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:750}
+.audio-player-hint{font-size:11px;color:var(--muted);margin-top:2px}
+.audio-player-seekrow{display:flex;align-items:center;gap:9px}
+.audio-player-seek{flex:1;min-width:0;margin:0;padding:0;accent-color:var(--accent)}
+.audio-player-seek:disabled{opacity:.5}
+.audio-player-time{min-width:76px;text-align:right;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.message-audio-engine{display:none}
+.media-viewer{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;gap:8px;padding: max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));background:rgba(5,4,12,.97);backdrop-filter:blur(18px)}
+.media-viewer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;min-height:46px}
+.media-viewer-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:14px;font-weight:700}
+.media-viewer-actions{display:flex;align-items:center;gap:8px}
+.media-viewer-btn{min-height:40px;padding:8px 13px;border:1px solid #ffffff2b;border-radius:12px;background:#ffffff14;color:#fff;font-size:13px;font-weight:750}
+.media-viewer-download{background:var(--accent);border-color:var(--accent)}
+.media-viewer-close{width:42px;padding:0;font-size:25px;line-height:1}
+.media-viewer-stage{display:grid;place-items:center;flex:1;min-height:0;overflow:auto;padding:4px}
+.media-viewer-image{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:8px;box-shadow:0 18px 70px #0008}
+@media(max-width:520px){
+ .message-audio-player{width:min(330px,76vw)}
+ .media-viewer{padding-left:8px;padding-right:8px}
+ .media-viewer-btn{min-height:38px;padding:7px 11px}
+ .media-viewer-stage{padding:0}
+}
+@media(prefers-reduced-motion:reduce){.message-image{transition:none}}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">

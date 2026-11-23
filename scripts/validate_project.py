@@ -3,10 +3,14 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 html = (root / "public/index.html").read_text(encoding="utf-8")
 js = (root / "public/firebase-app.js").read_text(encoding="utf-8")
+worker = (root / "worker.js").read_text(encoding="utf-8")
 rules = (root / "firestore.rules").read_text(encoding="utf-8")
 storage = (root / "storage.rules").read_text(encoding="utf-8")
 checks = {
     "responsive viewport": 'name="viewport"' in html,
+    "in-chat photo viewer and download action": "openImageViewer" in js and "media-viewer" in html and "downloadStoredFile" in js,
+    "music playback button is available": "createAudioMessagePlayer" in js and "▶ Слушать" in js and "audio-play-button" in html,
+    "private downloads are authenticated server-side": "/api/files/download" in js and "async function downloadFile" in worker and "verifyFirebaseToken" in worker,
     "reduced motion support": "prefers-reduced-motion:reduce" in html,
     "animated interface transitions": "@keyframes fross-enter" in html and "@keyframes fross-pop" in html,
     "email verification on registration": "sendEmailVerification(credential.user)" in js,

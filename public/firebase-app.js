@@ -260,6 +260,120 @@ function setPrivateMediaSource(element,value,path="") {
   if(source.startsWith("filebase:")){const marker=source;resolveStoredFileUrl(source,path).then(url=>{if(element.isConnected&&element.dataset.fileSource===marker)element.src=url}).catch(error=>console.warn("FROSS private file preview failed:",error.message));element.dataset.fileSource=marker}
   else element.src=source;
 }
+async function downloadStoredFile(value,path,name) {
+  const source=String(value||"");
+  if(!source)throw new Error("Ссылка на файл отсутствует.");
+  const user=auth.currentUser||currentUser;
+  let blob;
+  if(source.startsWith("filebase:")){
+    if(!user)throw new Error("Войди в аккаунт, чтобы скачать файл.");
+    const token=await user.getIdToken();
+    const response=await fetch("/api/files/download",{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+      body:JSON.stringify({path:path||source.slice(9),name:name||"download"})
+    });
+    if(!response.ok){
+      let data={};try{data=await response.json()}catch{}
+      throw new Error(data.error||("Не удалось скачать файл: "+response.status));
+    }
+    blob=await response.blob();
+  }else{
+    const response=await fetch(source);
+    if(!response.ok)throw new Error("Не удалось скачать файл: "+response.status);
+    blob=await response.blob();
+  }
+  const objectUrl=URL.createObjectURL(blob);
+  const link=document.createElement("a");
+  link.href=objectUrl;
+  link.download=name||"download";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(objectUrl),30000);
+}
+function openImageViewer(value,path,name) {
+  const overlay=document.createElement("div");
+  overlay.className="media-viewer";
+  overlay.setAttribute("role","dialog");
+  overlay.setAttribute("aria-modal","true");
+  overlay.setAttribute("aria-label","Просмотр изображения");
+  const toolbar=document.createElement("div");toolbar.className="media-viewer-toolbar";
+  const title=document.createElement("div");title.className="media-viewer-title";title.textContent=name||"Изображение";
+  const actions=document.createElement("div");actions.className="media-viewer-actions";
+  const download=document.createElement("button");download.type="button";download.className="media-viewer-btn media-viewer-download";download.textContent="↓ Скачать";
+  const closeButton=document.createElement("button");closeButton.type="button";closeButton.className="media-viewer-btn media-viewer-close";closeButton.textContent="×";closeButton.setAttribute("aria-label","Закрыть просмотр");
+  const stage=document.createElement("div");stage.className="media-viewer-stage";
+  const image=document.createElement("img");image.className="media-viewer-image";image.alt=name||"Изображение";image.draggable=false;
+  setPrivateMediaSource(image,value,path);
+  actions.append(download,closeButton);toolbar.append(title,actions);stage.append(image);overlay.append(toolbar,stage);
+  const oldOverflow=document.body.style.overflow;
+  const close=()=>{
+    document.removeEventListener("keydown",onKey);
+    document.body.style.overflow=oldOverflow;
+    overlay.remove();
+  };
+  const onKey=event=>{if(event.key==="Escape")close()};
+  closeButton.addEventListener("click",close);
+  overlay.addEventListener("click",event=>{if(event.target===overlay||event.target===stage)close()});
+  download.addEventListener("click",async()=>{
+    const original=download.textContent;download.disabled=true;download.textContent="Скачиваем…";
+    try{await downloadStoredFile(value,path,name||"image")}
+    catch(error){alert(error.message)}
+    finally{download.disabled=false;download.textContent=original}
+  });
+  document.addEventListener("keydown",onKey);
+  document.body.style.overflow="hidden";
+  document.body.append(overlay);
+  closeButton.focus();
+}
+function mediaTime(seconds) {
+  if(!Number.isFinite(seconds)||seconds<0)return "0:00";
+  const value=Math.floor(seconds),minutes=Math.floor(value/60),remaining=String(value%60).padStart(2,"0");
+  return minutes+":"+remaining;
+}
+function createAudioMessagePlayer(attachment) {
+  const player=document.createElement("div");player.className="message-audio-player";
+  const audio=document.createElement("audio");audio.className="message-audio-engine";audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;
+  setPrivateMediaSource(audio,attachment.url,attachment.path);
+  const top=document.createElement("div");top.className="audio-player-top";
+  const button=document.createElement("button");button.type="button";button.className="audio-play-button";button.textContent="▶ Слушать";
+  const meta=document.createElement("div");meta.className="audio-player-meta";
+  const name=document.createElement("div");name.className="audio-player-name";name.textContent=attachment.name||"Аудиофайл";
+  const hint=document.createElement("div");hint.className="audio-player-hint";hint.textContent="Музыка и аудио";
+  meta.append(name,hint);top.append(button,meta);
+  const seekRow=document.createElement("div");seekRow.className="audio-player-seekrow";
+  const seek=document.createElement("input");seek.type="range";seek.className="audio-player-seek";seek.min="0";seek.max="1000";seek.value="0";seek.step="1";seek.setAttribute("aria-label","Позиция воспроизведения");
+  const time=document.createElement("span");time.className="audio-player-time";time.textContent="0:00 / 0:00";
+  seekRow.append(seek,time);player.append(top,seekRow,audio);
+  const update=()=>{
+    const duration=Number.isFinite(audio.duration)?audio.duration:0;
+    const current=Number.isFinite(audio.currentTime)?audio.currentTime:0;
+    seek.value=duration?String(Math.round(current/duration*1000)):"0";
+    time.textContent=mediaTime(current)+" / "+mediaTime(duration);
+    seek.disabled=!duration;
+  };
+  audio.addEventListener("loadedmetadata",update);
+  audio.addEventListener("durationchange",update);
+  audio.addEventListener("timeupdate",update);
+  audio.addEventListener("play",()=>{button.textContent="Ⅱ Пауза";hint.textContent="Сейчас воспроизводится"});
+  audio.addEventListener("pause",()=>{if(!audio.ended){button.textContent="▶ Слушать";hint.textContent="Музыка и аудио"}});
+  audio.addEventListener("ended",()=>{button.textContent="▶ Слушать";hint.textContent="Воспроизведение завершено";audio.currentTime=0;update()});
+  audio.addEventListener("error",()=>{button.textContent="↻ Повторить";hint.textContent="Не удалось загрузить аудио"});
+  seek.addEventListener("input",()=>{if(Number.isFinite(audio.duration)&&audio.duration>0){audio.currentTime=Number(seek.value)/1000*audio.duration;update()}});
+  button.addEventListener("click",async()=>{
+    if(!audio.paused){audio.pause();return}
+    button.disabled=true;button.textContent="Загрузка…";
+    try{
+      const source=await resolveStoredFileUrl(attachment.url,attachment.path);
+      if(!audio.src||audio.src!==source){audio.src=source;audio.load()}
+      await audio.play();
+    }catch(error){button.textContent="↻ Повторить";hint.textContent=error.message||"Не удалось запустить аудио"}
+    finally{button.disabled=false;if(audio.paused&&button.textContent==="Загрузка…")button.textContent="▶ Слушать"}
+  });
+  return player;
+}
+
 function avatar(el,o,on) {
   const name=o?.displayName||o?.display_name||o?.username||o?.title||"#";
   const source=o?.avatarUrl||o?.avatar||"";
@@ -676,10 +790,20 @@ function subscribeMessages() {
       }
       if(m.attachment){
         const a=m.attachment;
-        if(a.type?.startsWith("image/")){const img=document.createElement("img");img.alt=a.name||"Изображение";img.className="message-image";img.loading=S.autoDownload?"eager":"lazy";setPrivateMediaSource(img,a.url,a.path);b.append(img)}
-        if(a.type?.startsWith("audio/")){const audio=document.createElement("audio");audio.controls=true;audio.preload=S.autoDownload?"auto":"metadata";audio.autoplay=!!S.autoPlayMedia;audio.className="message-audio";setPrivateMediaSource(audio,a.url,a.path);b.append(audio)}
-        if(a.type?.startsWith("video/")){const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video)}
-        const link=document.createElement("a");link.target="_blank";link.rel="noopener";link.textContent="⬇ "+(a.name||"Скачать файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";link.addEventListener("click",async event=>{event.preventDefault();const tab=window.open("about:blank","_blank");try{const href=await resolveStoredFileUrl(a.url,a.path);if(tab)tab.location.href=href}catch(error){tab?.close();alert(error.message)}});b.append(link);
+        if(a.type?.startsWith("image/")){
+          const img=document.createElement("img");img.alt=a.name||"Изображение";img.className="message-image";img.loading=S.autoDownload?"eager":"lazy";img.tabIndex=0;img.setAttribute("role","button");img.title="Нажмите, чтобы открыть фото";
+          setPrivateMediaSource(img,a.url,a.path);
+          const showImage=()=>openImageViewer(a.url,a.path,a.name||"Изображение");
+          img.addEventListener("click",showImage);img.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();showImage()}});
+          b.append(img);
+        }
+        if(a.type?.startsWith("audio/"))b.append(createAudioMessagePlayer(a));
+        if(a.type?.startsWith("video/")){
+          const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video);
+        }
+        const link=document.createElement("a");link.href="#";link.textContent="↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
+        link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
+        b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
