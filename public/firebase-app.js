@@ -32,7 +32,7 @@ let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, gl
 let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
-window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur}};
+window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},renderAvatar:(element,profile)=>avatar(element,profile)};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
@@ -727,6 +727,15 @@ function isOnline(u) {
   const millis=value?.toMillis?value.toMillis():0;
   return millis>0&&Date.now()-millis<60000;
 }
+function presenceLabel(profile){
+  const value=profile?.lastSeenAt,millis=value?.toMillis?value.toMillis():(value instanceof Date?value.getTime():0);
+  if(!millis)return "Не в сети";
+  const age=Math.max(0,Date.now()-millis);
+  if(age<60000)return "В сети";
+  if(age<24*60*60*1000)return "Был(а) недавно";
+  const date=new Date(millis);
+  return "Был(а) "+date.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"})+" в "+date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+}
 function chatInfo(c) {
   if(c.id==="general")return{title:"Общий чат",avatar:{title:"#"},sub:"Для всех"};
   if(c.type==="dm"){
@@ -1043,15 +1052,26 @@ async function loadChatProfile(uid) {
 }
 async function openUserProfile(userOrName) {
   try {
-    const profile=typeof userOrName==="string"
-      ?await findPublicProfileByUsername(userOrName)
-      :userOrName;
+    let profile=userOrName;
+    if(typeof userOrName==="string"){
+      const value=userOrName.trim();
+      if(/^[A-Za-z0-9_-]{20,128}$/.test(value)){
+        try{profile=await loadChatProfile(value)}
+        catch{profile=await findPublicProfileByUsername(value)}
+      }else profile=await findPublicProfileByUsername(value);
+    }
     if(!profile||profile.deleted)throw new Error("Профиль недоступен.");
-    openM('<div class="profile-card"><div class="av big" id="profile-card-avatar"></div><h3 id="profile-card-name"></h3><b class="profile-handle" id="profile-card-handle"></b><p id="profile-card-bio" class="mut"></p><div class="row"><button id="profile-card-close">Закрыть</button><button class="pr" id="profile-card-chat">Написать</button></div></div>');
+    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ПРОФИЛЬ FROSS</span><span class="profile-live" id="profile-card-presence"></span></div><div class="profile-public-card-main"><div class="av big" id="profile-card-avatar"></div><div class="profile-public-card-identity"><h3 id="profile-card-name"></h3><b class="profile-handle" id="profile-card-handle"></b></div></div><div id="profile-card-phone" class="profile-phone-row" hidden><span>Номер телефона</span><b id="profile-card-phone-value"></b></div><p id="profile-card-bio" class="profile-public-bio"></p><div class="profile-public-actions"><button type="button" id="profile-card-close">Закрыть</button><button type="button" class="pr" id="profile-card-chat">Написать</button></div></div>');
     avatar($("profile-card-avatar"),profile);
-    $("profile-card-name").textContent=profile.displayName||profile.username;
-    $("profile-card-handle").textContent="@"+profile.username;
+    $("profile-card-name").textContent=profile.displayName||profile.username||"Пользователь";
+    $("profile-card-handle").textContent="@"+(profile.username||"user");
+    $("profile-card-presence").textContent=presenceLabel(profile);
+    $("profile-card-presence").classList.toggle("online",isOnline(profile));
     $("profile-card-bio").textContent=profile.bio||"Пользователь пока ничего не рассказал о себе.";
+    if(profile.phonePublic){
+      $("profile-card-phone").hidden=false;
+      $("profile-card-phone-value").textContent=profile.phonePublic;
+    }
     $("profile-card-close").onclick=closeM;
     $("profile-card-chat").onclick=()=>startDM(profile);
   } catch(error) { alert(authError(error)); }
@@ -1107,7 +1127,7 @@ async function loadCurrentProfile() {
   const priv=await getDoc(doc(db,"users",currentUser.uid));
   if(!snap.exists())throw new Error("Профиль Firebase не найден.");
   const p=snap.data(),v=priv.exists()?priv.data():{};
-  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{}};
+  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{},phoneNumber:v.phoneNumber||currentUser.phoneNumber||"",phoneVerified:v.phoneVerified===true||!!currentUser.phoneNumber,phoneVisible:v.phoneVisible===true,phonePublic:p.phonePublic||""};
   let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}
   S={...DEF,...cached,...me.settings};
   const priorPalette={accent:"#9181ff",bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff"};
@@ -1421,7 +1441,7 @@ $("gb").onclick=()=>{
       const tokenInfo = await currentUser.getIdTokenResult();
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Привязка телефона</b><small class="mut">Подтверждённый номер можно будет использовать для восстановления и связи.</small></div></div><label>Номер телефона в международном формате</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(currentUser.phoneNumber||"")+'"><div id="phone-recaptcha-container"></div><small class="mut">Если SMS не отправляется: Firebase Console → Authentication → Sign-in method → Phone должен быть включён; домен сайта добавлен в Authorized domains, а отправка SMS разрешена для вашей страны.</small><button id="phoneSend">Отправить SMS-код</button><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button id="phoneConfirm" class="pr">Подтвердить телефон</button><div class="err" id="phoneError"></div><small class="mut">'+(currentUser.phoneNumber?'Телефон привязан: '+esc(currentUser.phoneNumber):'Телефон пока не привязан.')+'</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Подтверди номер через MAX или используй резервный способ по SMS. Номер скрыт от других по умолчанию.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер ещё не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><div class="phone-methods"><button type="button" class="pr" id="maxPhoneVerify">Подтвердить через MAX</button><button type="button" id="phoneSend">Получить SMS</button></div><small class="mut" id="max-phone-help">Для MAX открой FROSS внутри мини-приложения MAX. В обычном браузере используй SMS.</small><div id="phone-recaptcha-container"></div><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm">Подтвердить SMS-код</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+'> Показывать номер телефона в моём публичном профиле</label><small class="mut">Другие пользователи увидят номер только после подтверждения и включения этой настройки.</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -1484,11 +1504,59 @@ $("gb").onclick=()=>{
           if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
           const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
           currentUser = linked.user;
-          await updateDoc(doc(db,"users",me.uid),{phoneNumber:linked.user.phoneNumber||$("phoneNumber").value.trim(),phoneVerified:true,updatedAt:serverTimestamp()});
+          const verifiedPhone=linked.user.phoneNumber||$("phoneNumber").value.trim();
+          const visible=$("phoneVisible").checked;
+          const batch=writeBatch(db);
+          batch.update(doc(db,"users",me.uid),{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,updatedAt:serverTimestamp()});
+          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?verifiedPhone:""});
+          await batch.commit();
+          Object.assign(me,{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,phonePublic:visible?verifiedPhone:""});
           $("phoneError").style.color = "#3ddc84";
           $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
           if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
         } catch(e) { $("phoneError").textContent = authError(e); }
+      };
+      $("phoneVisible").onchange=async()=>{
+        const visible=$("phoneVisible").checked;
+        if(visible&&!me.phoneVerified){$("phoneVisible").checked=false;$("phoneError").textContent="Сначала подтверди номер телефона.";return}
+        try{
+          const batch=writeBatch(db);
+          batch.update(doc(db,"users",me.uid),{phoneVisible:visible,updatedAt:serverTimestamp()});
+          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?(me.phoneNumber||""):""});
+          await batch.commit();
+          me.phoneVisible=visible;me.phonePublic=visible?(me.phoneNumber||""):"";
+          $("phoneError").textContent=visible?"Номер будет виден в публичном профиле.":"Номер скрыт от других пользователей.";
+        }catch(error){$("phoneVisible").checked=!visible;$("phoneError").textContent=authError(error)}
+      };
+      $("maxPhoneVerify").onclick=async()=>{
+        const maxApp=window.WebApp;
+        if(!maxApp?.requestContact||!maxApp?.initData||!maxApp?.initDataUnsafe?.user?.id){
+          $("phoneError").textContent="MAX не обнаружен. Открой FROSS из мини-приложения MAX, затем повтори попытку.";
+          return;
+        }
+        const button=$("maxPhoneVerify");button.disabled=true;button.textContent="Ожидаем подтверждение MAX…";
+        try{
+          const contact=await maxApp.requestContact();
+          if(!contact?.phone||!contact?.authDate||!contact?.hash)throw new Error("MAX не вернул подтверждённый номер. Разреши отправку контакта и попробуй снова.");
+          const token=await currentUser.getIdToken();
+          const response=await fetch("/api/phone/max/verify",{
+            method:"POST",
+            headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+            body:JSON.stringify({phone:contact.phone,authDate:String(contact.authDate),hash:contact.hash,userId:String(maxApp.initDataUnsafe.user.id),initData:maxApp.initData})
+          });
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(result.error||("MAX verification failed (HTTP "+response.status+")."));
+          const verifiedPhone=result.phone||contact.phone,visible=$("phoneVisible").checked;
+          const batch=writeBatch(db);
+          batch.update(doc(db,"users",me.uid),{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,updatedAt:serverTimestamp()});
+          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?verifiedPhone:""});
+          await batch.commit();
+          Object.assign(me,{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,phonePublic:visible?verifiedPhone:""});
+          $("phoneNumber").value=verifiedPhone;
+          $("phoneError").style.color="#3ddc84";
+          $("phoneError").textContent="Номер подтверждён через MAX и сохранён в FROSS.";
+        }catch(error){$("phoneError").style.color="var(--danger)";$("phoneError").textContent=error.message||authError(error)}
+        finally{button.disabled=false;button.textContent="Подтвердить через MAX"}
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {

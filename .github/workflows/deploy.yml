@@ -31,6 +31,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FILEBASE_ACCESS_KEY: ${{ secrets.FILEBASE_ACCESS_KEY }}
           FILEBASE_SECRET_KEY: ${{ secrets.FILEBASE_SECRET_KEY }}
+          MAX_BOT_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::notice::Cloudflare deploy skipped; configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Cloudflare Git integration may deploy independently."
@@ -52,6 +53,6 @@ jobs:
           umask 077
           SECRETS_FILE="$(mktemp)"
           trap 'rm -f "$SECRETS_FILE"' EXIT
-          jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
-            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret}' > "$SECRETS_FILE"
+          jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" --arg max "$MAX_BOT_TOKEN" \
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $max != "" then {MAX_BOT_TOKEN: $max} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"

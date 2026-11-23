@@ -42,7 +42,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified", "phoneVisible"]);
       allow delete: if own(uid);
     }
 
@@ -58,11 +58,11 @@ service cloud.firestore {
         && request.resource.data.usernameLower.matches('[a-z0-9_]{3,20}')
         && getAfter(/databases/$(database)/documents/usernameIndex/$(request.resource.data.usernameLower)).data.uid == uid
         && request.resource.data.keys().hasOnly([
-          "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"
+          "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic"
         ]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt"])
+          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic"])
         && (
           (request.resource.data.username == resource.data.username
             && request.resource.data.usernameLower == resource.data.usernameLower)
