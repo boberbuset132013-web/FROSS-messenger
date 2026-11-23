@@ -19,20 +19,21 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
-    // Chat uploads: each user can upload only into their own UID folder.
-    // Firestore rules independently control whether the resulting message
-    // can be created in the selected chat and who can read that chat.
-    match /chatFiles/{chatId}/{userId}/{fileName} {
-      allow read: if signedIn()
-        && (
-          chatId == "general"
-          || (
-            firestore.exists(/databases/(default)/documents/chats/$(chatId))
-            && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids
-          )
-        );
+    // A chat upload is allowed only to a chat the uploader belongs to.
+    function isChatMember(chatId) {
+      return signedIn() && (
+        chatId == "general"
+        || (
+          firestore.exists(/databases/(default)/documents/chats/$(chatId))
+          && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids
+        )
+      );
+    }
 
-      allow create, update: if signedIn()
+    match /chatFiles/{chatId}/{userId}/{fileName} {
+      allow read: if isChatMember(chatId);
+
+      allow create, update: if isChatMember(chatId)
         && request.auth.uid == userId
         && request.resource != null
         && request.resource.size > 0
