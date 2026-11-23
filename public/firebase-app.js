@@ -220,7 +220,13 @@ function authError(e) {
     "auth/popup-blocked":"Разрешите всплывающие окна для входа через Google.",
     "auth/popup-closed-by-user":"Окно Google было закрыто.",
     "auth/account-exists-with-different-credential":"Для этого email уже существует аккаунт с другим способом входа.",
-    "permission-denied":"Firebase Rules запретили операцию. Проверьте опубликованные правила."
+    "permission-denied":"Firestore Rules запретили операцию. Проверьте опубликованные правила Firestore.",
+    "storage/unauthorized":"Firebase Storage запретил загрузку. Опубликуйте Storage Rules и проверьте, что вход выполнен в нужный аккаунт.",
+    "storage/bucket-not-found":"В Firebase не найден Storage bucket. Проверьте, создано ли хранилище в проекте.",
+    "storage/quota-exceeded":"Превышена квота Firebase Storage.",
+    "storage/retry-limit-exceeded":"Firebase не смог завершить загрузку после нескольких попыток. Проверьте интернет.",
+    "storage/canceled":"Загрузка была отменена.",
+    "storage/unknown":"Firebase Storage вернул неизвестную ошибку. Проверьте консоль и повторите попытку."
   };
   return map[code] || e?.message || "Неизвестная ошибка Firebase.";
 }
