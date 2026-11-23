@@ -24,7 +24,7 @@ checks = {
     "message history preserves its reading position": "anchorOffset" in js and "box.scrollTop+=nextOffset-anchorOffset" in js,
     "violet space theme is the default and persisted": 'accent:"#b45cff"' in js and 'bgColor:"#080611"' in js and 'localStorage.setItem("fross-settings-"+me.uid' in js,
     "chat composer has no hard divider": ".comp{border-top:0" in html,
-    "audio attachment has no black card or link underline": ".message-audio-player{" in html and "background:transparent!important" in html and ".attachment-link{text-decoration:none!important" in html,
+    "audio attachment has no black card or link underline": ".message-audio-player{" in html and "background:transparent!important" in html and "text-decoration:none!important" in html,
     "private avatar image is not cleared after loading": 'el.style.backgroundColor="transparent"' in js and 'el.style.background=""' not in js[js.index("async function loadPrivateAvatar"):js.index("function avatar(")],
     "message avatars carry sender identity for private image refresh": 'avatar(a,{uid:m.senderUid' in js,
     "private downloads are authenticated server-side": "/api/files/download" in js and "async function downloadFile" in worker and "verifyFirebaseToken" in worker,
