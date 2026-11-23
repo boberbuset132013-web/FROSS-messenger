@@ -198,6 +198,18 @@ input,textarea,select{transition:border-color .2s,box-shadow .2s,background .2s}
 #fross-update-banner button{white-space:nowrap;font-size:12px;padding:9px 12px}
 @media(max-width:420px){#fross-update-banner{align-items:flex-start;flex-direction:column}#fross-update-banner button{width:100%}}
 @media(prefers-reduced-motion:reduce){#list .it,.mr,.ov,.ov.o .md,#fross-update-banner{animation:none!important;transition:none!important}}
+
+/* Message sizing, replies and live reaction states */
+.msg{width:fit-content;max-width:min(78%,680px);min-width:72px;overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap}
+.msg img,.msg audio{max-width:100%;height:auto}
+.reaction-bar button.mine-reaction{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.reply-preview{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:#20132f;border-top:1px solid #ffffff16}
+.reply-preview span{display:grid;min-width:0}.reply-preview small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70vw;color:#bba9cc}
+.reply-preview button{border:0;background:transparent;font-size:24px}
+.reply-quote{display:grid;text-align:left;width:100%;padding:7px 9px;margin-bottom:7px;border:0;border-left:3px solid var(--accent);border-radius:7px;background:#0002;color:inherit}
+.reply-quote span{opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reply-highlight .msg{outline:2px solid var(--accent);outline-offset:3px}
+#nav-people{display:none}
 </style></head><body>
 <section id="auth"><div class="card" id="ac"></div></section>
 <div id="app">
