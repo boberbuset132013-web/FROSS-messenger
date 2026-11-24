@@ -1167,6 +1167,17 @@ async function openBotsPanel(){
     const host=$("bot-list");if(!host)return;
     host.textContent="Загружаем…";showError("");
     const data=await call(tab==="catalog"?"/api/bots/directory":"/api/bots/list");
+    if(tab==="mine"&&Array.isArray(data.migratedKeys)&&data.migratedKeys.length){
+      const tokenText=data.migratedKeys.map(item=>item.name+" (@"+item.username+")\n"+item.token).join("\n\n");
+      openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ОБНОВЛЕНИЕ СТАРЫХ БОТОВ</span><span class="profile-live online">Готово</span></div><h3>Боты перенесены в FROSS</h3><p class="mut">Старые тестовые ключи отозваны. Ниже новые ключи API для перенесённых ботов. Скопируй и сохрани их: повторно показать нельзя, но можно выпустить новые.</p><textarea id="bot-migrated-tokens" rows="6" readonly></textarea><button class="pr" id="bot-migrated-copy" style="width:100%">Скопировать новые ключи</button><button id="bot-migrated-done" style="width:100%;margin-top:8px">Готово</button></div>');
+      $("bot-migrated-tokens").value=tokenText;
+      $("bot-migrated-copy").onclick=async()=>{
+        try{await navigator.clipboard.writeText(tokenText);$("bot-migrated-copy").textContent="✓ Скопировано"}
+        catch{$("bot-migrated-tokens").focus();$("bot-migrated-tokens").select();$("bot-migrated-copy").textContent="Выделил — нажми Ctrl+C"}
+      };
+      $("bot-migrated-done").onclick=()=>{closeM();openBotsPanel()};
+      return;
+    }
     host.replaceChildren();
     if(!data.bots.length){
       const empty=document.createElement("div");empty.className="empty";empty.style.padding="18px";
