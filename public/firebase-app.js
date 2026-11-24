@@ -1016,7 +1016,6 @@ function head() {
     return;
   }
   const chat=chats.find(item=>item.id===cur);
-  const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
   if(!chat){
     avatarElement.style.backgroundImage="none";avatarElement.textContent="";avatarElement.style.background="transparent";
     titleElement.textContent="Выберите чат";subtitleElement.textContent="Личные переписки и группы";
