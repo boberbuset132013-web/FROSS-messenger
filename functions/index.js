@@ -505,6 +505,10 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
     }
     const message=update.message;
     if(!message?.chat?.id||String(message.chat.type)!=="private")return res.status(200).send("ok");
+    if(message.managed_bot_created?.bot){
+      await registerManagedBotCreated(message,firestore,token);
+      return res.status(200).send("ok");
+    }
     const chatId=String(message.chat.id),text=String(message.text||"");
     const start=text.match(/^\/start(?:@\w+)?\s+([A-Za-z0-9_-]{20,40})/);
     if(start){
@@ -541,11 +545,11 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
         return res.status(200).send("ok");
       }
       if(text==="/createbot"){
-        await telegramApi(token,"sendMessage",{
-          chat_id:chatId,
-          text:"Чтобы создать своего Telegram-бота, открой @BotFather и отправь /newbot. Telegram создаёт ботов только через BotFather; после этого не отправляй токен в обычные чаты. Секрет нужно сохранить на сервере FROSS отдельно.",
-          reply_markup:{inline_keyboard:[[{text:"Открыть BotFather",url:"https://t.me/BotFather"}]]}
-        });
+        try{await sendManagedBotCreationRequest(token,chatId)}
+        catch(error){
+          console.warn("Managed bot creation unavailable:",error?.message||error);
+          await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Создание управляемых ботов недоступно для этого бота. Повтори позже или проверь функцию can_manage_bots через @BotFather."});
+        }
         return res.status(200).send("ok");
       }
       if(await handleOwnerBotMessage(message,token,firestore))return res.status(200).send("ok");
