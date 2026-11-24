@@ -496,16 +496,14 @@ async function frossAiChat(request,env,url){
   let inbox=await readPhoneRecord(key,env);
   if(!inbox)inbox={version:1,uid:identity.uid,createdAt:Date.now(),readAt:0,messages:[]};
   if(inbox.uid!==identity.uid||!Array.isArray(inbox.messages))throw new Error("История чата FROSS не прошла проверку владельца.");
-  const userMessage={id:crypto.randomUUID(),role:"user",sender:"Ты",kind:"chat",text,createdAt:Date.now()};
-  inbox.messages.push(userMessage);
   let reply;
   try{
     reply=await createFrossAssistantReply(identity,env,url,inbox,text,model);
   }catch(error){
     console.error("FROSS AI request failed:",error?.message||error);
-    inbox.messages.pop();
     return json({error:String(error?.message||"Не удалось получить ответ FROSS.").slice(0,650)},502);
   }
+  inbox.messages.push({id:crypto.randomUUID(),role:"user",sender:"Ты",kind:"chat",text,createdAt:Date.now()});
   inbox.messages.push({id:crypto.randomUUID(),role:"assistant",sender:"FROSS",kind:"chat",model,text:reply.slice(0,4000),createdAt:Date.now()});
   inbox.messages=inbox.messages.slice(-100);
   await savePhoneRecord(key,inbox,env);
