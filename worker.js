@@ -212,7 +212,13 @@ function phoneDigits(value){return String(value||"").replace(/\D/g,"")}
 async function firestorePatch(path,token,fields){
   const mask=Object.keys(fields).map(name=>"updateMask.fieldPaths="+encodeURIComponent(name)).join("&");
   const response=await fetch(firestoreUrl(path)+"?"+mask,{method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({fields})});
-  if(!response.ok)throw new Error("Не удалось сохранить подтверждение в Firestore (HTTP "+response.status+").");
+  if(!response.ok){
+    const detail=await response.text().catch(()=>"");
+    let reason=detail;
+    try{const parsed=JSON.parse(detail);reason=parsed?.error?.message||parsed?.error?.status||detail}catch{}
+    console.error("Firestore phone confirmation PATCH failed:",response.status,detail.slice(0,1200));
+    throw new Error("Не удалось сохранить подтверждение в Firestore (HTTP "+response.status+"): "+String(reason||"неизвестная причина").slice(0,500));
+  }
   return await response.json();
 }
 async function startPhoneVerification(request,env,url){
@@ -332,7 +338,44 @@ async function markSystemInboxRead(request,env){
   return json({ok:true});
 }
 
+async function readBotStore(uid,env){
+  const store=await readPhoneRecord("userBots/"+uid+".json",env);
+  return store&&store.uid===uid&&Array.isArray(store.bots)?store:{version:1,uid,bots:[]};
+}
+async function botApi(request,env,action){
+  const identity=await verifyFirebaseToken(request),store=await readBotStore(identity.uid,env);
+  if(action==="list")return json({ok:true,bots:store.bots.map(({id,name,username,description,model,enabled,createdAt,updatedAt})=>({id,name,username,description,model,enabled,createdAt,updatedAt}))});
+  const body=await request.json().catch(()=>({}));
+  if(action==="create"){
+    const name=String(body.name||"").trim().slice(0,40),username=String(body.username||"").trim().toLowerCase().replace(/^@/,"");
+    if(name.length<2)return json({error:"Название бота должно содержать не менее 2 символов."},400);
+    if(!/^[a-z0-9_]{3,24}$/.test(username))return json({error:"Username бота: 3–24 символа, латиница, цифры и _."},400);
+    if(store.bots.length>=20)return json({error:"Можно создать не более 20 ботов."},409);
+    if(store.bots.some(bot=>bot.username===username))return json({error:"Такой username уже занят среди твоих ботов."},409);
+    const raw="FRS_"+Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("");
+    const bot={id:crypto.randomUUID(),name,username,description:String(body.description||"").trim().slice(0,300),model:"none",enabled:true,tokenHash:await sha256Hex(raw),createdAt:Date.now(),updatedAt:Date.now()};
+    store.bots.push(bot);await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+    return json({ok:true,bot:{id:bot.id,name:bot.name,username:bot.username,description:bot.description,model:bot.model,enabled:bot.enabled,createdAt:bot.createdAt},token:raw,warning:"Скопируй токен сейчас: повторно показать его нельзя."},201);
+  }
+  const id=String(body.id||"");
+  const bot=store.bots.find(item=>item.id===id);
+  if(!bot)return json({error:"Бот не найден."},404);
+  if(action==="update"){
+    if(body.name!==undefined){const name=String(body.name).trim();if(name.length<2||name.length>40)return json({error:"Название: 2–40 символов."},400);bot.name=name}
+    if(body.description!==undefined)bot.description=String(body.description).trim().slice(0,300);
+    if(body.enabled!==undefined)bot.enabled=body.enabled===true;
+    bot.updatedAt=Date.now();
+  }else if(action==="revoke"){
+    bot.tokenHash="";bot.enabled=false;bot.updatedAt=Date.now();
+  }else return json({error:"Неизвестное действие."},400);
+  await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+  return json({ok:true,bot:{id:bot.id,name:bot.name,username:bot.username,description:bot.description,model:bot.model,enabled:bot.enabled,createdAt:bot.createdAt,updatedAt:bot.updatedAt}});
+}
 async function api(request,env,url){
+  if(request.method==="POST"&&url.pathname==="/api/bots/list")return await botApi(request,env,"list");
+  if(request.method==="POST"&&url.pathname==="/api/bots/create")return await botApi(request,env,"create");
+  if(request.method==="POST"&&url.pathname==="/api/bots/update")return await botApi(request,env,"update");
+  if(request.method==="POST"&&url.pathname==="/api/bots/revoke")return await botApi(request,env,"revoke");
   if(request.method==="POST"&&url.pathname==="/api/system/inbox")return await getSystemInbox(request,env);
   if(request.method==="POST"&&url.pathname==="/api/system/read")return await markSystemInboxRead(request,env);
   if(request.method==="POST"&&url.pathname==="/api/phone/start")return await startPhoneVerification(request,env,url);
