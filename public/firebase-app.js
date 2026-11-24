@@ -1108,9 +1108,9 @@ async function openBotsPanel(){
         closeM();
         openM('<h3>Продолжи в Telegram</h3><p class="mut">Ссылка открывает @FROSS_verification_bot. Нажми «Создать Telegram-бота» в Telegram и заверши создание в системном окне. Затем вернись в FROSS.</p><button class="pr" id="bot-open-telegram" style="width:100%">Открыть Telegram</button><button id="bot-created-refresh" style="width:100%;margin-top:8px">Я создал бота — обновить список</button><button id="bot-create-back" style="width:100%;margin-top:8px">Назад к ботам</button>');
         $("bot-open-telegram").onclick=()=>window.open(data.botUrl,"_blank","noopener");
-        $("bot-created-refresh").onclick=async()=>{
-          const button=$("bot-created-refresh");button.disabled=true;button.textContent="Проверяем…";
-          try{await refresh();openBotsPanel()}catch(error){const e=$("bot-error");if(e)e.textContent=error.message;button.disabled=false;button.textContent="Я создал бота — обновить список"}
+        $("bot-created-refresh").onclick=()=>{
+          closeM();
+          openBotsPanel();
         };
         $("bot-create-back").onclick=()=>{closeM();openBotsPanel()};
       }catch(e){error.textContent=e.message||"Не удалось начать создание.";button.disabled=false;button.textContent="Продолжить в Telegram"}
