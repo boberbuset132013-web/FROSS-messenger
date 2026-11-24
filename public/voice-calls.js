@@ -15,9 +15,9 @@ const FALLBACK_ICE_SERVERS = [
   {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
   {urls:["stun:stun.cloudflare.com:3478"]}
 ];
-let iceServersCache=null;
+let iceServersCache=null,iceServersCacheAt=0;
 async function loadIceServers(){
-  if(iceServersCache)return iceServersCache;
+  if(iceServersCache&&Date.now()-iceServersCacheAt<6*60*60*1000)return iceServersCache;
   try{
     const user=auth.currentUser;if(!user)return FALLBACK_ICE_SERVERS;
     const token=await user.getIdToken();
@@ -25,7 +25,7 @@ async function loadIceServers(){
     const response=await fetch(apiOrigin+"/api/calls/ice",{headers:{Authorization:"Bearer "+token}});
     if(!response.ok)throw new Error("ICE config HTTP "+response.status);
     const result=await response.json();
-    if(Array.isArray(result.iceServers)&&result.iceServers.length)iceServersCache=result.iceServers;
+    if(Array.isArray(result.iceServers)&&result.iceServers.length){iceServersCache=result.iceServers;iceServersCacheAt=Date.now();}
   }catch(error){console.warn("FROSS TURN config unavailable; using STUN fallback:",error?.message||error)}
   return iceServersCache||FALLBACK_ICE_SERVERS;
 }
