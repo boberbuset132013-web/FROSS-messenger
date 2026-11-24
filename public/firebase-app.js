@@ -30,7 +30,6 @@ const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d
 let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
 const SYSTEM_CHAT_ID="system:fross";
 let systemInboxMessages=[],systemInboxLoaded=false,systemInboxError="",systemInboxLoading=null,systemInboxTimer=null;
-let selectedFrossModel="openrouter/free",frossModelCatalog=[],frossModelsConfigured=false;
 let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
 let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
@@ -869,84 +868,19 @@ function renderSystemMessages(){
     const empty=document.createElement("div");empty.className="empty";empty.textContent=systemInboxError||"Загрузка чата FROSS…";box.append(empty);return;
   }
   if(!systemInboxMessages.length){
-    const empty=document.createElement("div");empty.className="empty";empty.textContent="Напиши FROSS. Например: «Покажи моих ботов» или «Добавь кнопку Поддержка».";box.append(empty);return;
+    const empty=document.createElement("div");empty.className="empty";empty.textContent="Здесь будут появляться системные уведомления FROSS о безопасности, аккаунте и важных обновлениях."box.append(empty);return;
   }
   for(const message of systemInboxMessages){
     const isUser=message.role==="user";
     const row=document.createElement("div");row.className="mr system-message"+(isUser?" me":"");row.dataset.messageId=message.id||"";
     const bubble=document.createElement("div");bubble.className="msg";
-    const sender=document.createElement("small");sender.className="system-message-sender";sender.textContent=isUser?"Ты":"FROSS · ИИ-помощник";bubble.append(sender);
+    const sender=document.createElement("small");sender.className="system-message-sender";sender.textContent=isUser?"Ты":"FROSS";bubble.append(sender);
     const body=document.createElement("div");body.textContent=message.text||"";bubble.append(body);
-    if(message.model){
-      const model=document.createElement("small");model.className="system-message-model";
-      const selected=frossModelCatalog.find(item=>item.id===message.model);
-      model.textContent="Модель: "+(selected?.name||message.model);bubble.append(model);
-    }
     const time=document.createElement("time");time.textContent=new Date(message.createdAt||Date.now()).toLocaleString("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});bubble.append(time);
     row.append(bubble);box.append(row);
   }
   box.scrollTop=box.scrollHeight;
   markSystemInboxRead();
-}
-async function loadFrossModels(){
-  const response=await fetch(FROSS_API_ORIGIN+"/api/system/models",{
-    method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},body:"{}"
-  });
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(data.error||"Не удалось загрузить список моделей.");
-  frossModelCatalog=Array.isArray(data.models)?data.models:[];
-  frossModelsConfigured=data.configured===true;
-  if(!frossModelCatalog.some(item=>item.id===selectedFrossModel))selectedFrossModel=frossModelCatalog[0]?.id||"openrouter/free";
-  return data;
-}
-async function openFrossModelPicker(){
-  openM('<h3>Модели FROSS</h3><p class="mut">Выбери одну из семи бесплатных моделей. Текст чата и последние сообщения передаются OpenRouter для ответа ИИ. Не отправляй сюда пароли, токены, коды и личные секреты.</p><div id="fross-model-load">Загружаем список…</div><div id="fross-model-error" class="err"></div><button id="fross-model-close" style="width:100%;margin-top:8px">Закрыть</button>');
-  $("fross-model-close").onclick=closeM;
-  try{
-    const data=await loadFrossModels(),host=$("fross-model-load");
-    if(!host)return;
-    host.innerHTML='<label>Модель ИИ</label><select id="fross-model-select" style="width:100%;margin-bottom:10px"></select><small id="fross-model-state" class="mut"></small><button id="fross-model-save" class="pr" style="width:100%;margin-top:12px">Сохранить модель</button>';
-    const select=$("fross-model-select");
-    frossModelCatalog.forEach(model=>{
-      const option=document.createElement("option");option.value=model.id;option.textContent=model.name+" — "+model.provider+" · бесплатно";select.append(option);
-    });
-    select.value=selectedFrossModel;
-    $("fross-model-state").textContent=data.configured
-      ?"Ключ ИИ-провайдера подключён. Бесплатные варианты имеют лимиты запросов и зависят от доступности провайдера."
-      :"Каталог доступен, но ответы ИИ пока не включатся, пока владелец не добавит секрет OPENROUTER_API_KEY в GitHub. Сам ключ в чат не отправлять.";
-    $("fross-model-save").onclick=()=>{
-      selectedFrossModel=select.value;
-      try{localStorage.setItem("fross-model-"+currentUser.uid,selectedFrossModel)}catch{}
-      closeM();head();
-    };
-  }catch(error){const target=$("fross-model-error");if(target)target.textContent=error.message||"Не удалось загрузить модели."}
-}
-async function sendToFross(text){
-  const input=$("inp"),sendButton=$("send");
-  const priorMessages=systemInboxMessages.slice();
-  const loading={id:"fross-local-thinking",role:"assistant",text:"FROSS думает…",createdAt:Date.now()};
-  systemInboxMessages=[...priorMessages,loading];renderSystemMessages();
-  if(input)input.disabled=true;if(sendButton)sendButton.disabled=true;
-  try{
-    const response=await fetch(FROSS_API_ORIGIN+"/api/system/chat",{
-      method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},
-      body:JSON.stringify({text,model:selectedFrossModel})
-    });
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(data.error||("FROSS ответил HTTP "+response.status+"."));
-    systemInboxMessages=Array.isArray(data.messages)?data.messages:priorMessages;
-    systemInboxLoaded=true;systemInboxError="";
-    try{localStorage.setItem("fross-model-"+currentUser.uid,selectedFrossModel)}catch{}
-    renderSystemMessages();
-    if(input){input.value="";input.style.height=""}
-  }catch(error){
-    systemInboxMessages=[...priorMessages,{id:"fross-error-"+Date.now(),role:"assistant",text:error.message||"Не удалось получить ответ FROSS.",createdAt:Date.now()}];
-    renderSystemMessages();
-    if(input)input.value=text;
-  }finally{
-    if(input)input.disabled=false;if(sendButton)sendButton.disabled=false;
-    input?.focus();
-  }
 }
 function renderList() {
   const L=$("list"),term=$("q").value.trim().toLowerCase();L.innerHTML="";
@@ -1071,177 +1005,15 @@ function startChatList() {
     }
   });
 }
-async function openBotsPanel(){
-  openM('<h3>Боты FROSS</h3><p class="mut">Создавай собственных ботов внутри FROSS. У каждого будет профиль, username, кнопки, ответы и свой API-ключ.</p><div class="row" style="margin:0 0 12px"><button id="bot-tab-mine" class="pr">Мои боты</button><button id="bot-tab-catalog">Каталог FROSS</button></div><div id="bot-list">Загрузка…</div><button class="pr" id="bot-new" style="width:100%;margin-top:10px">＋ Создать бота FROSS</button><div class="err" id="bot-error"></div><button id="bot-close" style="width:100%;margin-top:8px">Закрыть</button>');
-  $("bot-close").onclick=closeM;
-  const call=async(path,data={})=>{
-    const response=await fetch(FROSS_API_ORIGIN+path,{method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},body:JSON.stringify(data)});
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(result.error||("Ошибка API: HTTP "+response.status));
-    return result;
-  };
-  const showError=message=>{const box=$("bot-error");if(box)box.textContent=message||""};
-  const revealToken=(token,created=false)=>{
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>'+ (created?"БОТ СОЗДАН":"НОВЫЙ API-КЛЮЧ") +'</span><span class="profile-live online">FROSS API</span></div><h3 style="margin:0 0 8px">'+(created?"Твой бот уже в FROSS":"Ключ обновлён")+'</h3><p class="mut">Ключ показывается один раз. Скопируй его и храни как пароль. Никому не отправляй.</p><textarea id="bot-token-value" rows="4" readonly style="font-size:12px;overflow-wrap:anywhere"></textarea><button class="pr" id="bot-token-copy" style="width:100%">⧉ Скопировать API-ключ</button><button id="bot-token-done" style="width:100%;margin-top:8px">Готово</button></div>');
-    $("bot-token-value").value=token;
-    $("bot-token-copy").onclick=async()=>{
-      try{
-        await navigator.clipboard.writeText(token);
-        $("bot-token-copy").textContent="✓ Скопировано";
-      }catch{
-        $("bot-token-value").focus();$("bot-token-value").select();
-        $("bot-token-copy").textContent="Выделил ключ — нажми Ctrl+C";
-      }
-    };
-    $("bot-token-done").onclick=()=>{closeM();openBotsPanel()};
-  };
-  const editBot=bot=>{
-    const buttonRows=(bot.buttons||[]).map(item=>[item.label||"",item.response||"",item.url||""].join(" | ")).join("\n");
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>РЕДАКТОР БОТА FROSS</span><span class="profile-live online">Профиль</span></div><label>Имя бота</label><input id="bot-edit-name" maxlength="40"><label>Username</label><input id="bot-edit-username" maxlength="24"><small class="mut">3–24 символа: латиница, цифры и _. В профиле будет @username.</small><label>Описание</label><textarea id="bot-edit-description" rows="3" maxlength="300"></textarea><label>Приветствие</label><textarea id="bot-edit-welcome" rows="3" maxlength="1000"></textarea><label>Ответ по умолчанию</label><textarea id="bot-edit-fallback" rows="3" maxlength="1000"></textarea><label style="display:flex;align-items:center;gap:9px"><input id="bot-edit-enabled" type="checkbox" style="width:auto;margin:0"> Показывать бота в каталоге FROSS</label><label>Кнопки (одна на строку: Название | Ответ | Ссылка)</label><textarea id="bot-edit-buttons" rows="7" placeholder="Каталог | Посмотри наш каталог | https://example.com&#10;Поддержка | Напиши, чем помочь"></textarea><small class="mut">До 12 кнопок. Ссылка необязательна. Можно поручить FROSS изменить эти настройки прямо в его чате.</small><div class="err" id="bot-edit-error"></div><div class="row"><button id="bot-edit-cancel">Отмена</button><button class="pr" id="bot-edit-save">Сохранить</button></div></div>');
-    $("bot-edit-name").value=bot.name||"";
-    $("bot-edit-username").value=bot.username||"";
-    $("bot-edit-description").value=bot.description||"";
-    $("bot-edit-welcome").value=bot.welcomeMessage||"";
-    $("bot-edit-fallback").value=bot.fallbackMessage||"";
-    $("bot-edit-enabled").checked=bot.enabled!==false;
-    $("bot-edit-buttons").value=buttonRows;
-    $("bot-edit-cancel").onclick=()=>{closeM();openBotsPanel()};
-    $("bot-edit-save").onclick=async()=>{
-      const button=$("bot-edit-save"),error=$("bot-edit-error");
-      const rows=$("bot-edit-buttons").value.split(/\r?\n/).filter(line=>line.trim()).map(line=>{
-        const parts=line.split("|").map(part=>part.trim());
-        return {label:parts[0]||"",response:parts[1]||"",url:parts[2]||""};
-      });
-      if(rows.length>12){error.textContent="Можно добавить не больше 12 кнопок.";return}
-      if(rows.some(row=>!row.label||(!row.response&&!row.url))){error.textContent="Для каждой кнопки укажи название и ответ или ссылку.";return}
-      button.disabled=true;button.textContent="Сохраняем…";
-      try{
-        await call("/api/bots/update",{
-          id:bot.id,name:$("bot-edit-name").value.trim(),username:$("bot-edit-username").value.trim(),
-          description:$("bot-edit-description").value.trim(),welcomeMessage:$("bot-edit-welcome").value.trim(),
-          fallbackMessage:$("bot-edit-fallback").value.trim(),enabled:$("bot-edit-enabled").checked,buttons:rows
-        });
-        closeM();openBotsPanel();
-      }catch(errorValue){error.textContent=errorValue.message||"Не удалось сохранить бота."}
-      finally{button.disabled=false;button.textContent="Сохранить"}
-    };
-  };
-  const openBotChat=async bot=>{
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>БОТ FROSS</span><span class="profile-live online">В сети</span></div><div class="profile-public-card-main"><div class="av big" id="bot-chat-avatar"></div><div class="profile-public-card-identity"><h3 id="bot-chat-name"></h3><b class="profile-handle" id="bot-chat-handle"></b></div></div><p id="bot-chat-description" class="profile-public-bio"></p><div id="bot-chat-messages" style="max-height:34vh;overflow:auto;margin-top:12px;display:flex;flex-direction:column;gap:7px"></div><div id="bot-chat-buttons" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div><div class="row"><input id="bot-chat-input" maxlength="1000" placeholder="Сообщение боту…"><button class="pr" id="bot-chat-send">➤</button></div><button id="bot-chat-back" style="width:100%;margin-top:8px">Назад</button></div>');
-    const displayBot={displayName:bot.name,username:bot.username,avatarUrl:bot.avatarUrl||"",profileColor:"#a855f7"};
-    avatar($("bot-chat-avatar"),displayBot);
-    $("bot-chat-name").textContent=bot.name||"Бот FROSS";
-    $("bot-chat-handle").textContent="@"+(bot.username||"bot");
-    $("bot-chat-description").textContent=bot.description||"Описание не добавлено.";
-    const render=data=>{
-      const messages=$("bot-chat-messages"),buttons=$("bot-chat-buttons");
-      if(!messages||!buttons)return;
-      messages.replaceChildren();buttons.replaceChildren();
-      (data.messages||[]).forEach(message=>{
-        const bubble=document.createElement("div");bubble.className="msg";bubble.style.cssText="max-width:88%;align-self:"+(message.role==="user"?"flex-end":"flex-start");
-        bubble.textContent=message.text||"";
-        if(message.url){
-          const link=document.createElement("a");link.href=message.url;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Открыть ссылку";link.style.display="block";link.style.marginTop="7px";link.style.color="#dcb6ff";bubble.append(link);
-        }
-        messages.append(bubble);
-      });
-      (data.bot?.buttons||bot.buttons||[]).forEach(item=>{
-        const button=document.createElement("button");button.textContent=item.label;button.onclick=()=>sendBotMessage(item.label);buttons.append(button);
-      });
-      messages.scrollTop=messages.scrollHeight;
-    };
-    const load=async()=>{const data=await call("/api/bots/chat",{botId:bot.id,text:""});render(data)};
-    const sendBotMessage=async text=>{
-      const input=$("bot-chat-input"),button=$("bot-chat-send");
-      const value=String(text??input?.value??"").trim();if(!value)return;
-      if(input)input.disabled=true;if(button)button.disabled=true;
-      try{const data=await call("/api/bots/chat",{botId:bot.id,text:value});render(data);if(input)input.value=""}
-      catch(error){showError(error.message||"Бот не ответил.")}
-      finally{if(input)input.disabled=false;if(button)button.disabled=false;input?.focus()}
-    };
-    $("bot-chat-send").onclick=()=>sendBotMessage();
-    $("bot-chat-input").onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();sendBotMessage()}};
-    $("bot-chat-back").onclick=()=>{closeM();openBotsPanel()};
-    try{await load()}catch(error){showError(error.message||"Не удалось открыть бота.")}
-  };
-  const renderBots=async tab=>{
-    const host=$("bot-list");if(!host)return;
-    host.textContent="Загружаем…";showError("");
-    const data=await call(tab==="catalog"?"/api/bots/directory":"/api/bots/list");
-    if(tab==="mine"&&Array.isArray(data.migratedKeys)&&data.migratedKeys.length){
-      const tokenText=data.migratedKeys.map(item=>item.name+" (@"+item.username+")\n"+item.token).join("\n\n");
-      openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ОБНОВЛЕНИЕ СТАРЫХ БОТОВ</span><span class="profile-live online">Готово</span></div><h3>Боты перенесены в FROSS</h3><p class="mut">Старые тестовые ключи отозваны. Ниже новые ключи API для перенесённых ботов. Скопируй и сохрани их: повторно показать нельзя, но можно выпустить новые.</p><textarea id="bot-migrated-tokens" rows="6" readonly></textarea><button class="pr" id="bot-migrated-copy" style="width:100%">Скопировать новые ключи</button><button id="bot-migrated-done" style="width:100%;margin-top:8px">Готово</button></div>');
-      $("bot-migrated-tokens").value=tokenText;
-      $("bot-migrated-copy").onclick=async()=>{
-        try{await navigator.clipboard.writeText(tokenText);$("bot-migrated-copy").textContent="✓ Скопировано"}
-        catch{$("bot-migrated-tokens").focus();$("bot-migrated-tokens").select();$("bot-migrated-copy").textContent="Выделил — нажми Ctrl+C"}
-      };
-      $("bot-migrated-done").onclick=()=>{closeM();openBotsPanel()};
-      return;
-    }
-    host.replaceChildren();
-    if(!data.bots.length){
-      const empty=document.createElement("div");empty.className="empty";empty.style.padding="18px";
-      empty.textContent=tab==="catalog"?"В каталоге пока нет публичных ботов.":"У тебя пока нет ботов FROSS. Создай первого — он появится в приложении.";
-      host.append(empty);return;
-    }
-    data.bots.forEach(bot=>{
-      const row=document.createElement("div");row.className="group-contact";row.style.display="block";
-      const title=document.createElement("b");title.textContent=(bot.name||"Бот FROSS")+" · @"+(bot.username||"bot");
-      const desc=document.createElement("small");desc.style.cssText="display:block;color:var(--muted);margin:5px 0 9px";desc.textContent=bot.description||"Без описания";
-      const actions=document.createElement("div");actions.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
-      const make=(label,fn,primary=false)=>{const button=document.createElement("button");button.textContent=label;if(primary)button.className="pr";button.onclick=fn;return button};
-      if(tab==="catalog"){
-        actions.append(make("Открыть бота",()=>openBotChat(bot),true));
-      }else{
-        actions.append(
-          make("Профиль / предпросмотр",()=>openBotChat(bot)),
-          make("Редактировать",()=>editBot(bot)),
-          make("Создать новый ключ",async()=>{
-            if(!confirm("Создать новый ключ API? Старый ключ немедленно перестанет работать."))return;
-            try{const result=await call("/api/bots/rotate",{id:bot.id});revealToken(result.token,false)}
-            catch(error){showError(error.message||"Не удалось заменить ключ.")}
-          })
-        );
-        actions.append(make("Удалить",async()=>{
-          if(!confirm("Удалить бота FROSS из каталога и отозвать его API-ключ?"))return;
-          try{await call("/api/bots/delete",{id:bot.id});await renderBots("mine")}
-          catch(error){showError(error.message||"Не удалось удалить бота.")}
-        }));
-      }
-      row.append(title,desc,actions);host.append(row);
-    });
-  };
-  $("bot-tab-mine").onclick=async()=>{ $("bot-tab-mine").className="pr";$("bot-tab-catalog").className="";$("bot-new").style.display="";try{await renderBots("mine")}catch(error){showError(error.message)}};
-  $("bot-tab-catalog").onclick=async()=>{ $("bot-tab-catalog").className="pr";$("bot-tab-mine").className="";$("bot-new").style.display="none";try{await renderBots("catalog")}catch(error){showError(error.message)}};
-  $("bot-new").onclick=()=>{
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>НОВЫЙ БОТ FROSS</span><span class="profile-live online">Создание</span></div><label>Имя бота</label><input id="bot-create-name" maxlength="40" placeholder="Например, Помощник"><label>Уникальный username</label><input id="bot-create-username" maxlength="24" placeholder="my_helper"><small class="mut">3–24 символа: латиница, цифры и _. Бот будет доступен в FROSS по @username.</small><label>Описание</label><textarea id="bot-create-description" rows="3" maxlength="300" placeholder="Что умеет этот бот?"></textarea><div class="err" id="bot-create-error"></div><div class="row"><button id="bot-create-cancel">Отмена</button><button class="pr" id="bot-create-start">Создать</button></div></div>');
-    $("bot-create-cancel").onclick=()=>{closeM();openBotsPanel()};
-    $("bot-create-start").onclick=async()=>{
-      const button=$("bot-create-start"),error=$("bot-create-error");
-      const name=$("bot-create-name").value.trim(),username=$("bot-create-username").value.trim(),description=$("bot-create-description").value.trim();
-      if(name.length<2){error.textContent="Введи название от 2 символов.";return}
-      if(!/^[a-z0-9_]{3,24}$/i.test(username)){error.textContent="Username должен быть 3–24 символа: латиница, цифры и _.";return}
-      button.disabled=true;button.textContent="Создаём…";
-      try{const result=await call("/api/bots/create",{name,username,description});revealToken(result.token,true)}
-      catch(errorValue){error.textContent=errorValue.message||"Не удалось создать бота."}
-      finally{button.disabled=false;button.textContent="Создать"}
-    };
-  };
-  try{await renderBots("mine")}catch(error){showError(error.message||"Не удалось загрузить список ботов.")}
-}
 function head() {
   const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
   if(cur===SYSTEM_CHAT_ID){
     avatar(avatarElement,{displayName:"FROSS",profileColor:"#a855f7"});
     titleElement.innerHTML='FROSS <span class="verified-mark" title="Официальный системный бот">✓</span>';
-    subtitleElement.textContent="ИИ-помощник · управление твоими Telegram-ботами";
+    subtitleElement.textContent="Системные уведомления";
     avatarElement.onclick=null;titleElement.onclick=null;avatarElement.style.cursor="default";titleElement.style.cursor="default";
     if($("call"))$("call").style.display="none";
-    $("bots-open-button")?.remove();$("fross-model-button")?.remove();
-    const botButton=document.createElement("button");botButton.id="bots-open-button";botButton.type="button";botButton.className="ic";botButton.textContent="🤖";botButton.title="Мои Telegram-боты";botButton.onclick=openBotsPanel;
-    const modelButton=document.createElement("button");modelButton.id="fross-model-button";modelButton.type="button";modelButton.className="ic";modelButton.textContent="🧠";modelButton.title="Выбрать модель ИИ";modelButton.onclick=openFrossModelPicker;
-    $("chat-settings").before(botButton);$("chat-settings").before(modelButton);$("chat-settings").style.display="none";
+    $("bots-open-button")?.remove();$("fross-model-button")?.remove();$("chat-settings").style.display="none";
     return;
   }
   $("bots-open-button")?.remove();$("fross-model-button")?.remove();$("chat-settings").style.display="";
@@ -1265,8 +1037,8 @@ function head() {
 function openChat(id) {
   if(id===SYSTEM_CHAT_ID){
     cur=SYSTEM_CHAT_ID;document.body.classList.add("ch");renderList();head();
-    const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
-    if($("inp")){$("inp").placeholder="Напиши FROSS: например, «покажи моих ботов» или «добавь кнопку Поддержка»";$("inp").maxLength=2000;}
+    const composer=document.querySelector(".comp");if(composer)composer.style.display="none";
+    if($("inp")){$("inp").placeholder="Системные уведомления";$("inp").maxLength=4000;}
     if($("attach"))$("attach").style.display="none";
     subscribeMessages();loadSystemInbox();return;
   }
@@ -1710,7 +1482,7 @@ async function publishChatMessage(chatId,message,summary) {
 }
 async function send() {
   const input=$("inp"),text=input.value.trim();
-  if(cur===SYSTEM_CHAT_ID){if(text)await sendToFross(text);return}
+  if(cur===SYSTEM_CHAT_ID)return;
   if(!cur){alert("Сначала выберите личный чат или группу.");return}
   if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
@@ -2187,7 +1959,6 @@ $("gb").onclick=()=>{
       if(previousAvatarUrl.startsWith("filebase:")&&previousAvatarUrl!==avatarUrl)privateFileApi("/api/files/delete-avatar",{path:previousAvatarUrl.slice(9)}).catch(error=>console.warn("Old avatar cleanup failed:",error.message));
       S={...DEF,...o};me.settings={...S};P.avatarDirty=false;
       try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
-      selectedFrossModel=localStorage.getItem("fross-model-"+currentUser.uid)||"openrouter/free";
    applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e));saveButton.disabled=false;saveButton.textContent=originalLabel}
