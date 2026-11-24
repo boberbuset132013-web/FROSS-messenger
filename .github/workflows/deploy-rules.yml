@@ -6,7 +6,6 @@ on:
     paths:
       - "firestore.rules"
       - "firestore.indexes.json"
-      - "storage.rules"
       - "firebase.json"
       - ".github/workflows/deploy-rules.yml"
   workflow_dispatch:
@@ -37,4 +36,4 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDENTIALS_FILE"
           export GOOGLE_APPLICATION_CREDENTIALS="$CREDENTIALS_FILE"
           npm install --global firebase-tools
-          firebase deploy --only firestore:rules,firestore:indexes,storage --project fross-ca5d6 --non-interactive --force
+          firebase deploy --only firestore:rules,firestore:indexes --project fross-ca5d6 --non-interactive --force
