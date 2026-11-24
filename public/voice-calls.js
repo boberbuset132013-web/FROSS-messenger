@@ -21,7 +21,8 @@ async function loadIceServers(){
   try{
     const user=auth.currentUser;if(!user)return FALLBACK_ICE_SERVERS;
     const token=await user.getIdToken();
-    const response=await fetch("/api/calls/ice",{headers:{Authorization:"Bearer "+token}});
+    const apiOrigin=window.FROSS?.apiOrigin||"";
+    const response=await fetch(apiOrigin+"/api/calls/ice",{headers:{Authorization:"Bearer "+token}});
     if(!response.ok)throw new Error("ICE config HTTP "+response.status);
     const result=await response.json();
     if(Array.isArray(result.iceServers)&&result.iceServers.length)iceServersCache=result.iceServers;
