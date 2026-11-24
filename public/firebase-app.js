@@ -4,7 +4,7 @@ import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
   EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
-  sendEmailVerification, sendPasswordResetEmail, linkWithPhoneNumber, RecaptchaVerifier
+  sendEmailVerification, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
