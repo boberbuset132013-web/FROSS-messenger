@@ -256,7 +256,7 @@ async function startPhoneVerification(request,env,url){
   const bot=await telegramCall(token,"getMe",{});
   if(!bot?.username)throw new Error("У Telegram-бота не найден username.");
   const webhookUrl=new URL("/api/telegram/webhook",url.origin).toString();
-  await telegramCall(token,"setWebhook",{url:webhookUrl,secret_token:secret,allowed_updates:["message","managed_bot"],drop_pending_updates:false});
+  await telegramCall(token,"setWebhook",{url:webhookUrl,secret_token:secret,allowed_updates:["message"],drop_pending_updates:false});
   await savePhoneRecord("phoneChallenges/"+challengeId+".json",{
     uid:identity.uid,phone,code,codeHash:"",status:"waiting_start",createdAt:Date.now(),expiresAt:Date.now()+10*60*1000
   },env);
@@ -305,16 +305,8 @@ async function telegramPhoneWebhook(request,env,url){
   const {token,secret}=phoneBotConfig(env);
   if(!constantTimeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token"),secret))return new Response("",{status:401});
   const update=await request.json().catch(()=>({}));
-  // Managed bot creation is delivered as its own Update type, not as a Message field.
-  if(update.managed_bot?.bot){
-    await registerManagedBotCreated(update.managed_bot,env,url);
-    return new Response("ok");
-  }
+  // Telegram is used only for confirming the user's phone number in FROSS.
   const message=update.message;
-  if(message?.managed_bot_created?.bot){
-    await registerManagedBotCreated({bot:message.managed_bot_created.bot,user:message.from},env,url);
-    return new Response("ok");
-  }
   if(!message?.chat?.id||String(message.chat.type)!=="private")return new Response("ok");
   const chatId=String(message.chat.id),from=message.from||{},telegramUserId=String(from.id||""),text=String(message.text||"");
   const createMatch=text.match(/^\/start(?:@\w+)?\s+botcreate_([a-f0-9]{32})$/i);
@@ -367,34 +359,7 @@ async function telegramPhoneWebhook(request,env,url){
   if(text==="/start"||text==="/help")await telegramCall(token,"sendMessage",{chat_id:chatId,text:"Я — официальный бот FROSS. Подтверди номер в настройках приложения или открой раздел «Мои боты», чтобы создать своего Telegram-бота."});
   return new Response("ok");
 }
-async function managedBotToken(botId,env){
-  if(!/^\d{5,22}$/.test(String(botId)))throw new Error("Некорректный ID Telegram-бота.");
-  const result=await telegramCall(env.TELEGRAM_BOT_TOKEN,"getManagedBotToken",{user_id:Number(botId)});
-  const value=typeof result==="string"?result:String(result?.token||"");
-  if(!value)throw new Error("Telegram не вернул токен управляемого бота.");
-  return value;
-}
-async function registerManagedBotCreated(managed,env,url){
-  const created=managed?.bot,owner=managed?.user,telegramUserId=String(owner?.id||"");
-  const linked=await readPhoneRecord("telegramOwners/"+telegramUserId+".json",env);
-  const session=await readPhoneRecord("botCreateSessions/"+telegramUserId+".json",env);
-  if(!created?.id||!linked?.uid||!session||session.uid!==linked.uid||session.expiresAt<=Date.now()){
-    console.warn("FROSS received managed_bot update without a matching active create session.");
-    return;
-  }
-  const botId=String(created.id),token=await managedBotToken(botId,env);
-  const webhookSecret=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("");
-  const bot={id:botId,botId,name:String(created.first_name||session.name||"Мой бот").slice(0,64),username:String(created.username||""),description:"",shortDescription:"",welcomeMessage:"Привет! Я бот, созданный через FROSS.",fallbackMessage:"Я пока не знаю, что ответить. Используй кнопки ниже.",buttons:[],commands:[],enabled:true,webhookSecret,model:"none",createdAt:Date.now(),updatedAt:Date.now()};
-  const webhook=new URL("/api/telegram/managed-webhook?botId="+encodeURIComponent(botId),url.origin).toString();
-  await telegramCall(token,"setWebhook",{url:webhook,secret_token:webhookSecret,allowed_updates:["message","callback_query"]});
-  await savePhoneRecord("managedBots/"+botId+".json",{uid:linked.uid,...bot},env);
-  const store=await readBotStore(linked.uid,env);
-  store.bots=store.bots.filter(item=>String(item.botId||item.id)!==botId);
-  store.bots.push(bot);await savePhoneRecord("userBots/"+linked.uid+".json",store,env);
-  await deletePhoneRecord("botCreateSessions/"+telegramUserId+".json",env);
-  await deletePhoneRecord("botCreateRequests/"+session.requestId+".json",env);
-  await telegramCall(env.TELEGRAM_BOT_TOKEN,"sendMessage",{chat_id:telegramUserId,text:"✅ Бот создан и подключён: "+(bot.username?"@"+bot.username:bot.name)+". Открой FROSS → Мои боты: теперь можно менять профиль, кнопки, приветствие и получать действующий токен."});
-}
+
 async function getSystemInbox(request,env){
   const identity=await verifyFirebaseToken(request),key="systemInbox/"+identity.uid+".json";
   let inbox=await readPhoneRecord(key,env);
