@@ -27,8 +27,6 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-          MAX_BOT_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
-          MAX_WEBHOOK_SECRET: ${{ secrets.MAX_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
@@ -43,17 +41,13 @@ jobs:
           npm install --global firebase-tools
           # Deploy the group-owner function separately from Firestore Rules so a Rules IAM error does not block it.
           firebase deploy --only functions:deleteGroupForEveryone --project fross-ca5d6 --non-interactive --force
-          firebase deploy --only firestore:rules --project fross-ca5d6 --non-interactive --force
-          missing=()
-          for name in TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET MAX_BOT_TOKEN MAX_WEBHOOK_SECRET; do
-            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::warning::Phone bot functions are not deployed yet. Add these GitHub Actions secrets to activate MAX and Telegram verification: ${missing[*]}"
+          firebase deploy --only firestore:rules,firestore:indexes --project fross-ca5d6 --non-interactive --force
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::warning::Rules are deployed, but Telegram bot functions are skipped until TELEGRAM_BOT_TOKEN is added."
             exit 0
           fi
+          WEBHOOK_SECRET="$TELEGRAM_WEBHOOK_SECRET"
+          if [ -z "$WEBHOOK_SECRET" ]; then WEBHOOK_SECRET="$(openssl rand -hex 32)"; fi
           printf '%s' "$TELEGRAM_BOT_TOKEN" | firebase functions:secrets:set TELEGRAM_BOT_TOKEN --data-file - --project fross-ca5d6 --force
-          printf '%s' "$TELEGRAM_WEBHOOK_SECRET" | firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
-          printf '%s' "$MAX_BOT_TOKEN" | firebase functions:secrets:set MAX_BOT_TOKEN --data-file - --project fross-ca5d6 --force
-          printf '%s' "$MAX_WEBHOOK_SECRET" | firebase functions:secrets:set MAX_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
+          printf '%s' "$WEBHOOK_SECRET" | firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
           firebase deploy --only functions --project fross-ca5d6 --non-interactive --force

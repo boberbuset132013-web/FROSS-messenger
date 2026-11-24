@@ -167,47 +167,6 @@ async function deleteAvatar(request,env){
   if(stringField(profile,"avatarUrl")==="filebase:"+path)return json({error:"Сначала сохрани новый аватар или удали текущий из профиля."},409);
   await s3Request(env,"DELETE",path);return json({ok:true});
 }
-function safeEqualText(left,right){
-  const a=encoder.encode(String(left||"")),b=encoder.encode(String(right||""));
-  if(a.length!==b.length)return false;
-  let diff=0;for(let i=0;i<a.length;i++)diff|=a[i]^b[i];
-  return diff===0;
-}
-async function verifyMaxPhone(request,env){
-  const identity=await verifyFirebaseToken(request);
-  if(!env.MAX_BOT_TOKEN)return json({error:"Подтверждение MAX пока не настроено. Добавь MAX_BOT_TOKEN в секреты GitHub и повтори деплой."},503);
-  const raw=await request.text();
-  if(raw.length>12000)return json({error:"Слишком большой запрос MAX."},413);
-  let body;try{body=JSON.parse(raw)}catch{return json({error:"Некорректный запрос MAX."},400)}
-  const phone=String(body.phone||"").trim(),authDate=String(body.authDate||""),phoneHash=String(body.hash||"");
-  const userId=String(body.userId||""),initData=String(body.initData||"");
-  if(!/^\+?[1-9]\d{7,14}$/.test(phone)||!/^\d{9,12}$/.test(authDate)||!/^[a-f0-9]{64}$/i.test(phoneHash)||!userId||!initData)
-    return json({error:"MAX вернул неполные данные для подтверждения телефона."},400);
-  const now=Math.floor(Date.now()/1000),contactTime=Number(authDate);
-  if(!Number.isFinite(contactTime)||contactTime>now+60||now-contactTime>600)
-    return json({error:"Подтверждение номера MAX устарело. Запроси номер ещё раз."},401);
-  const params=new URLSearchParams(initData),keys=new Set();
-  for(const key of params.keys()){if(keys.has(key))return json({error:"Данные запуска MAX содержат повторяющиеся параметры."},401);keys.add(key)}
-  const hashes=params.getAll("hash"),authDates=params.getAll("auth_date"),users=params.getAll("user");
-  if(hashes.length!==1||authDates.length!==1||users.length!==1)return json({error:"Не удалось проверить запуск мини-приложения MAX."},401);
-  let maxUser;try{maxUser=JSON.parse(users[0])}catch{return json({error:"MAX передал некорректный профиль пользователя."},401)}
-  if(String(maxUser?.id||"")!==userId)return json({error:"Номер MAX принадлежит другому профилю MAX."},403);
-  const launchTime=Number(authDates[0]);
-  if(!Number.isFinite(launchTime)||launchTime>now+60||now-launchTime>3600)
-    return json({error:"Сессия MAX устарела. Закрой и заново открой мини-приложение."},401);
-  const launchHash=hashes[0];params.delete("hash");
-  const pairs=[...params.entries()].map(([key,value])=>key+"="+value).sort();
-  const derivedKey=await hmac(encoder.encode("WebAppData"),env.MAX_BOT_TOKEN);
-  const expectedLaunchHash=hex(await hmac(derivedKey,pairs.join("\n")));
-  if(!safeEqualText(expectedLaunchHash.toLowerCase(),launchHash.toLowerCase()))
-    return json({error:"Подпись запуска MAX не прошла проверку."},401);
-  const normalizedPhone=phone.startsWith("+")?phone.slice(1):phone;
-  const phonePayload=["authDate="+authDate,"phone="+normalizedPhone,"userId="+userId].join("\n");
-  const expectedPhoneHash=hex(await hmac(encoder.encode(env.MAX_BOT_TOKEN),phonePayload));
-  if(!safeEqualText(expectedPhoneHash.toLowerCase(),phoneHash.toLowerCase()))
-    return json({error:"MAX не подтвердил, что этот номер принадлежит профилю MAX."},401);
-  return json({ok:true,phone:"+"+normalizedPhone,verifiedBy:"MAX"});
-}
 async function callIceConfiguration(request,env){
   await verifyFirebaseToken(request);
   const iceServers=[
@@ -223,7 +182,6 @@ async function callIceConfiguration(request,env){
 }
 async function api(request,env,url){
   if(request.method==="GET"&&url.pathname==="/api/calls/ice")return await callIceConfiguration(request,env);
-  if(request.method==="POST"&&url.pathname==="/api/phone/max/verify")return await verifyMaxPhone(request,env);
   if(request.method==="POST"&&url.pathname==="/api/files/upload")return await upload(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/files/url")return await fileUrl(request,env);
   if(request.method==="POST"&&url.pathname==="/api/files/download")return await downloadFile(request,env);

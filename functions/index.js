@@ -461,7 +461,7 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
     const message=update.message;
     if(!message?.chat?.id||String(message.chat.type)!=="private")return res.status(200).send("ok");
     const chatId=String(message.chat.id),text=String(message.text||"");
-    const start=text.match(/^\\/start(?:@\\w+)?\\s+([A-Za-z0-9_-]{20,40})/);
+    const start=text.match(/^\/start(?:@\w+)?\s+([A-Za-z0-9_-]{20,40})/);
     if(start){
       const active=await activateChallenge(start[1],chatId,message.from);
       if(!active)await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Ссылка FROSS истекла. Вернись в настройки и запроси новый код."});
@@ -475,8 +475,8 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
       const session=sessionSnap.data(),challengeRef=firestore.doc("phoneChallenges/"+session.challengeId),challengeSnap=await challengeRef.get();
       if(!challengeSnap.exists)return res.status(200).send("ok");
       const challenge=challengeSnap.data(),contact=message.contact;
-      const actualPhone=String(contact.phone_number||"").replace(/\\D/g,"");
-      const expectedPhone=String(challenge.phone||"").replace(/\\D/g,"");
+      const actualPhone=String(contact.phone_number||"").replace(/\D/g,"");
+      const expectedPhone=String(challenge.phone||"").replace(/\D/g,"");
       if(String(contact.user_id||"")!==String(message.from?.id||"")||actualPhone!==expectedPhone){
         await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Нужен именно твой собственный контакт с номером, который указан в FROSS.",reply_markup:{remove_keyboard:true}});
         return res.status(200).send("ok");
