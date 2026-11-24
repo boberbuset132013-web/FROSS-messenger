@@ -38,7 +38,7 @@ let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=n
 let chatProfileStops=new Map(),messageProfileStops=new Map();
 let chatNotificationStops=new Map(),chatNotificationSeen=new Map(),notificationAudioContext=null;
 window.FROSS = {
-  get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},
+  get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},get apiOrigin(){return FROSS_API_ORIGIN},
   renderAvatar:(element,profile)=>avatar(element,profile),
   notifyIncomingCall:(profile,callId)=>{
     if(!S.notifyDesktop||!("Notification" in window)||Notification.permission!=="granted")return;
