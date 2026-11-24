@@ -231,13 +231,27 @@ async function api(request,env,url){
   if(request.method==="POST"&&url.pathname==="/api/files/delete-avatar")return await deleteAvatar(request,env);
   return json({error:"API route not found."},404);
 }
+function corsResponse(request,response){
+  const origin=request.headers.get("Origin")||"";
+  const allowed=origin==="https://fross-messenger.boberbuset132013.workers.dev"||origin.endsWith(".workers.dev")||origin==="https://localhost"||origin==="capacitor://localhost";
+  if(!allowed)return response;
+  const headers=new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin",origin);
+  headers.set("Access-Control-Allow-Methods","GET, POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers","Authorization, Content-Type");
+  headers.set("Access-Control-Max-Age","86400");
+  headers.append("Vary","Origin");
+  return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
 export default {async fetch(request,env){
   const url=new URL(request.url);
-  if(url.pathname.startsWith("/api/")){try{return await api(request,env,url)}catch(error){
+  if(url.pathname.startsWith("/api/")&&request.method==="OPTIONS")
+    return corsResponse(request,new Response(null,{status:204}));
+  if(url.pathname.startsWith("/api/")){try{return corsResponse(request,await api(request,env,url))}catch(error){
     console.error("FROSS private file API:",error?.message||error);const message=String(error?.message||"");
     const status=message.includes("Нужен вход")||message.includes("Сессия")||message.includes("Войди")?401:
       message.includes("Нет доступа")||message.includes("может только")?403:message.includes("Filebase ещё не подключён")?503:500;
-    return json({error:message||"Ошибка сервера при работе с файлом."},status);
+    return corsResponse(request,json({error:message||"Ошибка сервера при работе с файлом."},status));
   }}
   if(!env.ASSETS)return new Response("Static assets binding ASSETS is not configured.",{status:503});
   return env.ASSETS.fetch(request);

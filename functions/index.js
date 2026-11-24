@@ -164,7 +164,7 @@ const PHONE_CODE_TTL_MS = 10 * 60 * 1000;
 
 function setCors(req,res){
   const origin=req.get("Origin");
-  if(origin==="https://fross-messenger.boberbuset132013.workers.dev"||origin?.endsWith(".workers.dev"))res.set("Access-Control-Allow-Origin",origin);
+  if(origin==="https://fross-messenger.boberbuset132013.workers.dev"||origin?.endsWith(".workers.dev")||origin==="https://localhost"||origin==="capacitor://localhost")res.set("Access-Control-Allow-Origin",origin);
   else res.set("Access-Control-Allow-Origin","https://fross-messenger.boberbuset132013.workers.dev");
   res.set("Vary","Origin");
   res.set("Access-Control-Allow-Methods","POST, OPTIONS");

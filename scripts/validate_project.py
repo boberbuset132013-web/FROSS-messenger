@@ -71,7 +71,7 @@ checks = {
     "voice calling has Firestore signaling": (root / "public/voice-calls.js").exists() and "callerCandidates" in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
     "voice call signaling is limited to chat members": "match /calls/{callId}" in rules and "participantUids" in rules,
     "global account reset is admin and opt-in protected": "decoded.frossAdmin !== true" in (root / "functions/index.js").read_text(encoding="utf-8") and 'ENABLE_DANGEROUS_TEST_RESET !== "true"' in (root / "functions/index.js").read_text(encoding="utf-8"),
-    "phone bot UI and call identity controls exist": 'id="phoneViaMax"' in js and 'id="phoneViaTelegram"' in js and 'id="call-code"' in html,
+    "phone bot UI, single attachment button and call identity controls exist": 'id="phoneViaMax"' in js and 'id="phoneViaTelegram"' in js and 'id="call-code"' in html and 'id="attach-url"' in html and 'id="attach-link"' not in html,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
