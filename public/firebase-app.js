@@ -30,6 +30,7 @@ const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d
 let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
 const SYSTEM_CHAT_ID="system:fross";
 let systemInboxMessages=[],systemInboxLoaded=false,systemInboxError="",systemInboxLoading=null,systemInboxTimer=null;
+let selectedFrossModel="openrouter/free",frossModelCatalog=[],frossModelsConfigured=false;
 let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
 let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
@@ -864,24 +865,89 @@ async function markSystemInboxRead(){
 function renderSystemMessages(){
   const box=$("msgs");if(cur!==SYSTEM_CHAT_ID)return;
   box.innerHTML="";
-  if(!systemInboxLoaded){
-    const empty=document.createElement("div");empty.className="empty";empty.textContent=systemInboxError||"Загрузка сообщений FROSS…";box.append(empty);return;
+  if(!systemInboxLoaded&&!systemInboxMessages.length){
+    const empty=document.createElement("div");empty.className="empty";empty.textContent=systemInboxError||"Загрузка чата FROSS…";box.append(empty);return;
   }
   if(!systemInboxMessages.length){
-    const empty=document.createElement("div");empty.className="empty";empty.textContent="Пока нет уведомлений от FROSS.";box.append(empty);return;
+    const empty=document.createElement("div");empty.className="empty";empty.textContent="Напиши FROSS. Например: «Покажи моих ботов» или «Добавь кнопку Поддержка».";box.append(empty);return;
   }
   for(const message of systemInboxMessages){
-    const row=document.createElement("div");row.className="mr system-message";row.dataset.messageId=message.id;
+    const isUser=message.role==="user";
+    const row=document.createElement("div");row.className="mr system-message"+(isUser?" me":"");row.dataset.messageId=message.id||"";
     const bubble=document.createElement("div");bubble.className="msg";
-    const sender=document.createElement("small");sender.className="system-message-sender";sender.textContent="FROSS · официальный бот";bubble.append(sender);
-    const body=document.createElement("div");body.textContent=message.text;bubble.append(body);
+    const sender=document.createElement("small");sender.className="system-message-sender";sender.textContent=isUser?"Ты":"FROSS · ИИ-помощник";bubble.append(sender);
+    const body=document.createElement("div");body.textContent=message.text||"";bubble.append(body);
+    if(message.model){
+      const model=document.createElement("small");model.className="system-message-model";
+      const selected=frossModelCatalog.find(item=>item.id===message.model);
+      model.textContent="Модель: "+(selected?.name||message.model);bubble.append(model);
+    }
     const time=document.createElement("time");time.textContent=new Date(message.createdAt||Date.now()).toLocaleString("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});bubble.append(time);
     row.append(bubble);box.append(row);
   }
   box.scrollTop=box.scrollHeight;
   markSystemInboxRead();
 }
-
+async function loadFrossModels(){
+  const response=await fetch(FROSS_API_ORIGIN+"/api/system/models",{
+    method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},body:"{}"
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"Не удалось загрузить список моделей.");
+  frossModelCatalog=Array.isArray(data.models)?data.models:[];
+  frossModelsConfigured=data.configured===true;
+  if(!frossModelCatalog.some(item=>item.id===selectedFrossModel))selectedFrossModel=frossModelCatalog[0]?.id||"openrouter/free";
+  return data;
+}
+async function openFrossModelPicker(){
+  openM('<h3>Модели FROSS</h3><p class="mut">Выбери модель для встроенного ИИ. Сейчас в каталоге семь бесплатных вариантов.</p><div id="fross-model-load">Загружаем список…</div><div id="fross-model-error" class="err"></div><button id="fross-model-close" style="width:100%;margin-top:8px">Закрыть</button>');
+  $("fross-model-close").onclick=closeM;
+  try{
+    const data=await loadFrossModels(),host=$("fross-model-load");
+    if(!host)return;
+    host.innerHTML='<label>Модель ИИ</label><select id="fross-model-select" style="width:100%;margin-bottom:10px"></select><small id="fross-model-state" class="mut"></small><button id="fross-model-save" class="pr" style="width:100%;margin-top:12px">Сохранить модель</button>';
+    const select=$("fross-model-select");
+    frossModelCatalog.forEach(model=>{
+      const option=document.createElement("option");option.value=model.id;option.textContent=model.name+" — "+model.provider+" · бесплатно";select.append(option);
+    });
+    select.value=selectedFrossModel;
+    $("fross-model-state").textContent=data.configured
+      ?"Ключ ИИ-провайдера подключён. Запросы бесплатных моделей ограничены лимитами OpenRouter."
+      :"Каталог доступен, но ответы ИИ пока не включатся, пока владелец не добавит секрет OPENROUTER_API_KEY в GitHub. Сам ключ в чат не отправлять.";
+    $("fross-model-save").onclick=()=>{
+      selectedFrossModel=select.value;
+      try{localStorage.setItem("fross-model-"+currentUser.uid,selectedFrossModel)}catch{}
+      closeM();head();
+    };
+  }catch(error){const target=$("fross-model-error");if(target)target.textContent=error.message||"Не удалось загрузить модели."}
+}
+async function sendToFross(text){
+  const input=$("inp"),sendButton=$("send");
+  const priorMessages=systemInboxMessages.slice();
+  const loading={id:"fross-local-thinking",role:"assistant",text:"FROSS думает…",createdAt:Date.now()};
+  systemInboxMessages=[...priorMessages,loading];renderSystemMessages();
+  if(input)input.disabled=true;if(sendButton)sendButton.disabled=true;
+  try{
+    const response=await fetch(FROSS_API_ORIGIN+"/api/system/chat",{
+      method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},
+      body:JSON.stringify({text,model:selectedFrossModel})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||("FROSS ответил HTTP "+response.status+"."));
+    systemInboxMessages=Array.isArray(data.messages)?data.messages:priorMessages;
+    systemInboxLoaded=true;systemInboxError="";
+    try{localStorage.setItem("fross-model-"+currentUser.uid,selectedFrossModel)}catch{}
+    renderSystemMessages();
+    if(input){input.value="";input.style.height=""}
+  }catch(error){
+    systemInboxMessages=[...priorMessages,{id:"fross-error-"+Date.now(),role:"assistant",text:error.message||"Не удалось получить ответ FROSS.",createdAt:Date.now()}];
+    renderSystemMessages();
+    if(input)input.value=text;
+  }finally{
+    if(input)input.disabled=false;if(sendButton)sendButton.disabled=false;
+    input?.focus();
+  }
+}
 function renderList() {
   const L=$("list"),term=$("q").value.trim().toLowerCase();L.innerHTML="";
   let count=0;
@@ -1124,15 +1190,16 @@ function head() {
   if(cur===SYSTEM_CHAT_ID){
     avatar(avatarElement,{displayName:"FROSS",profileColor:"#a855f7"});
     titleElement.innerHTML='FROSS <span class="verified-mark" title="Официальный системный бот">✓</span>';
-    subtitleElement.textContent="Официальный системный бот · уведомления аккаунта";
+    subtitleElement.textContent="ИИ-помощник · управление твоими Telegram-ботами";
     avatarElement.onclick=null;titleElement.onclick=null;avatarElement.style.cursor="default";titleElement.style.cursor="default";
     if($("call"))$("call").style.display="none";
-    $("bots-open-button")?.remove();
-    const botButton=document.createElement("button");botButton.id="bots-open-button";botButton.type="button";botButton.className="ic";botButton.textContent="🤖";botButton.title="Мои боты";botButton.onclick=openBotsPanel;
-    $("chat-settings").before(botButton);$("chat-settings").style.display="none";
+    $("bots-open-button")?.remove();$("fross-model-button")?.remove();
+    const botButton=document.createElement("button");botButton.id="bots-open-button";botButton.type="button";botButton.className="ic";botButton.textContent="🤖";botButton.title="Мои Telegram-боты";botButton.onclick=openBotsPanel;
+    const modelButton=document.createElement("button");modelButton.id="fross-model-button";modelButton.type="button";modelButton.className="ic";modelButton.textContent="🧠";modelButton.title="Выбрать модель ИИ";modelButton.onclick=openFrossModelPicker;
+    $("chat-settings").before(botButton);$("chat-settings").before(modelButton);$("chat-settings").style.display="none";
     return;
   }
-  $("bots-open-button")?.remove();$("chat-settings").style.display="";
+  $("bots-open-button")?.remove();$("fross-model-button")?.remove();$("chat-settings").style.display="";
   const chat=chats.find(item=>item.id===cur);
   if(!chat){
     avatarElement.style.backgroundImage="none";avatarElement.textContent="";avatarElement.style.background="transparent";
@@ -1153,11 +1220,15 @@ function head() {
 function openChat(id) {
   if(id===SYSTEM_CHAT_ID){
     cur=SYSTEM_CHAT_ID;document.body.classList.add("ch");renderList();head();
-    const composer=document.querySelector(".comp");if(composer)composer.style.display="none";
+    const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
+    if($("inp"))$("inp").placeholder="Напиши FROSS: например, «покажи моих ботов» или «добавь кнопку Поддержка»";
+    if($("attach"))$("attach").style.display="none";
     subscribeMessages();loadSystemInbox();return;
   }
   const chat=chats.find(item=>item.id===id);if(!chat)return;
   const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
+  if($("inp"))$("inp").placeholder="Сообщение…";
+  if($("attach"))$("attach").style.display="";
   cur=id;document.body.classList.add("ch");renderList();head();subscribeMessages();
   if(chat.type==="dm"){
     const other=(chat.memberProfiles||[]).find(person=>person.uid!==me.uid);
@@ -1520,9 +1591,10 @@ async function publishChatMessage(chatId,message,summary) {
   return messageRef;
 }
 async function send() {
-  if(cur===SYSTEM_CHAT_ID){alert("В официальный чат FROSS нельзя отправлять сообщения. Это канал системных уведомлений.");return}
+  const input=$("inp"),text=input.value.trim();
+  if(cur===SYSTEM_CHAT_ID){if(text)await sendToFross(text);return}
   if(!cur){alert("Сначала выберите личный чат или группу.");return}
-  const input=$("inp"),text=input.value.trim();if(!text&&!replyTarget)return;input.value="";input.style.height="";
+  if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
   try{
     const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text,readBy:[me.uid],createdAt:serverTimestamp()};
@@ -1997,7 +2069,8 @@ $("gb").onclick=()=>{
       if(previousAvatarUrl.startsWith("filebase:")&&previousAvatarUrl!==avatarUrl)privateFileApi("/api/files/delete-avatar",{path:previousAvatarUrl.slice(9)}).catch(error=>console.warn("Old avatar cleanup failed:",error.message));
       S={...DEF,...o};me.settings={...S};P.avatarDirty=false;
       try{localStorage.setItem("fross-settings-"+me.uid,JSON.stringify(S))}catch{}
-      applyS(S);fillMe();closeM();head();renderList();
+      selectedFrossModel=localStorage.getItem("fross-model-"+currentUser.uid)||"openrouter/free";
+   applyS(S);fillMe();closeM();head();renderList();
       if (username !== oldUsername) location.reload();
     }catch(e){alert(authError(e));saveButton.disabled=false;saveButton.textContent=originalLabel}
   };
