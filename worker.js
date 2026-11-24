@@ -173,12 +173,39 @@ async function callIceConfiguration(request,env){
     {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
     {urls:["stun:stun.cloudflare.com:3478"]}
   ];
-  const urls=String(env.FROSS_TURN_URLS||"").split(",").map(value=>value.trim()).filter(Boolean);
-  const username=String(env.FROSS_TURN_USERNAME||"").trim();
-  const credential=String(env.FROSS_TURN_CREDENTIAL||"");
-  const turnConfigured=urls.length>0&&!!username&&!!credential;
-  if(turnConfigured)iceServers.push({urls,username,credential});
-  return json({iceServers,turnConfigured});
+  let turnConfigured=false,turnProvider="";
+  if(env.FROSS_TURN_KEY_ID&&env.FROSS_TURN_API_TOKEN){
+    try{
+      const response=await fetch("https://rtc.live.cloudflare.com/v1/turn/keys/"+encodeURIComponent(env.FROSS_TURN_KEY_ID)+"/credentials/generate-ice-servers",{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+env.FROSS_TURN_API_TOKEN,"Content-Type":"application/json"},
+        body:JSON.stringify({ttl:86400})
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(String(result?.error||result?.message||"Cloudflare TURN HTTP "+response.status).slice(0,240));
+      const issued=Array.isArray(result.iceServers)?result.iceServers:[];
+      for(const server of issued){
+        const urls=(Array.isArray(server.urls)?server.urls:[server.urls]).filter(Boolean)
+          .filter(url=>!/:53(?:\/|\?|$)/.test(String(url)));
+        if(!urls.length)continue;
+        if(server.username&&server.credential){
+          iceServers.push({urls,username:String(server.username),credential:String(server.credential)});
+          turnConfigured=true;turnProvider="cloudflare";
+        }else if(urls.some(url=>String(url).startsWith("stun:"))){
+          iceServers.push({urls});
+        }
+      }
+    }catch(error){
+      console.warn("Cloudflare Realtime TURN credentials unavailable:",error?.message||error);
+    }
+  }
+  if(!turnConfigured){
+    const urls=String(env.FROSS_TURN_URLS||"").split(",").map(value=>value.trim()).filter(Boolean)
+      .filter(url=>!/:53(?:\/|\?|$)/.test(url));
+    const username=String(env.FROSS_TURN_USERNAME||"").trim(),credential=String(env.FROSS_TURN_CREDENTIAL||"");
+    if(urls.length&&username&&credential){iceServers.push({urls,username,credential});turnConfigured=true;turnProvider="custom"}
+  }
+  return json({iceServers,turnConfigured,turnProvider,turnSetupRequired:!turnConfigured});
 }
 
 function phoneBotConfig(env){
