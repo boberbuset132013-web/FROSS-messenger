@@ -58,11 +58,11 @@ service cloud.firestore {
         && request.resource.data.usernameLower.matches('[a-z0-9_]{3,20}')
         && getAfter(/databases/$(database)/documents/usernameIndex/$(request.resource.data.usernameLower)).data.uid == uid
         && request.resource.data.keys().hasOnly([
-          "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic"
+          "username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic", "phoneStatus"
         ]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic"])
+          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic", "phoneStatus"])
         && (
           (request.resource.data.username == resource.data.username
             && request.resource.data.usernameLower == resource.data.usernameLower)

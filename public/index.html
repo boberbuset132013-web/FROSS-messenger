@@ -555,6 +555,17 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
 
 /* The account header shows only the display name; username belongs on the profile page. */
 #mu{display:none!important}
+
+.profile-handle-row{display:flex;align-items:center;gap:8px}
+.profile-copy-btn{flex:none;min-width:29px;min-height:27px;padding:3px 8px;border:1px solid #b65cff44;border-radius:8px;background:#a855f718;color:#ead6ff;font-size:14px}
+.profile-description-label{margin-top:14px;color:#cda6f4;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.profile-phone-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px}
+.phone-visibility{display:flex!important;align-items:center;gap:9px;margin:12px 0;padding:11px;border:1px solid var(--line);border-radius:12px;background:#ffffff06}
+.phone-visibility input{width:17px;height:17px;margin:0;accent-color:var(--accent)}
+.logout-confirm{display:grid;gap:14px;min-width:min(360px,80vw)}
+.logout-confirm h3{margin:0}
+.logout-confirm .row>*{flex:1}
+
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>

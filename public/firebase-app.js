@@ -1191,6 +1191,19 @@ async function loadChatProfile(uid) {
   if(!snap.exists())throw new Error("Пользователь не найден.");
   return{uid,...snap.data()};
 }
+async function copyProfileValue(value,button){
+  if(!value)return;
+  try{
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);
+    else{
+      const field=document.createElement("textarea");field.value=value;field.style.position="fixed";field.style.opacity="0";
+      document.body.append(field);field.select();
+      const ok=document.execCommand("copy");field.remove();if(!ok)throw new Error("Копирование недоступно.");
+    }
+    const previous=button.textContent;button.textContent="Скопировано";
+    setTimeout(()=>{if(button.isConnected)button.textContent=previous},1300);
+  }catch(error){alert("Не удалось скопировать: "+(error.message||"попробуй ещё раз."))}
+}
 async function openUserProfile(userOrName) {
   try {
     let profile=userOrName;
@@ -1202,17 +1215,22 @@ async function openUserProfile(userOrName) {
       }else profile=await findPublicProfileByUsername(value);
     }
     if(!profile||profile.deleted)throw new Error("Профиль недоступен.");
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ПРОФИЛЬ FROSS</span><span class="profile-live" id="profile-card-presence"></span></div><div class="profile-public-card-main"><div class="av big" id="profile-card-avatar"></div><div class="profile-public-card-identity"><h3 id="profile-card-name"></h3><b class="profile-handle" id="profile-card-handle"></b></div></div><div id="profile-card-phone" class="profile-phone-row" hidden><span>Номер телефона</span><b id="profile-card-phone-value"></b></div><p id="profile-card-bio" class="profile-public-bio"></p><div class="profile-public-actions"><button type="button" id="profile-card-close">Закрыть</button><button type="button" class="pr" id="profile-card-chat">Написать</button></div></div>');
+    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ПРОФИЛЬ FROSS</span><span class="profile-live" id="profile-card-presence"></span></div><div class="profile-public-card-main"><div class="av big" id="profile-card-avatar"></div><div class="profile-public-card-identity"><h3 id="profile-card-name"></h3><div class="profile-handle-row"><b class="profile-handle" id="profile-card-handle"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-username" aria-label="Копировать username">⧉</button></div></div></div><div id="profile-card-phone" class="profile-phone-row"><span>Номер телефона</span><b id="profile-card-phone-value"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-phone" aria-label="Копировать номер" hidden>⧉</button></div><div class="profile-description-label">Описание</div><p id="profile-card-bio" class="profile-public-bio"></p><div class="profile-public-actions"><button type="button" id="profile-card-close">Закрыть</button><button type="button" class="pr" id="profile-card-chat">Написать</button></div></div>');
     avatar($("profile-card-avatar"),profile);
     $("profile-card-name").textContent=profile.displayName||profile.username||"Пользователь";
     $("profile-card-handle").textContent="@"+(profile.username||"user");
     $("profile-card-presence").textContent=presenceLabel(profile);
     $("profile-card-presence").classList.toggle("online",isOnline(profile));
-    $("profile-card-bio").textContent=profile.bio||"Пользователь пока ничего не рассказал о себе.";
+    $("profile-card-bio").textContent=profile.bio||"Описание не добавлено.";
+    const phoneValue=$("profile-card-phone-value"),phoneCopy=$("profile-card-copy-phone");
     if(profile.phonePublic){
-      $("profile-card-phone").hidden=false;
-      $("profile-card-phone-value").textContent=profile.phonePublic;
+      phoneValue.textContent=profile.phonePublic;phoneCopy.hidden=false;
+      phoneCopy.onclick=()=>copyProfileValue(profile.phonePublic,phoneCopy);
+    }else{
+      phoneValue.textContent=profile.phoneStatus==="hidden"?"Номер скрыт":"Номер не подтверждён";
+      phoneCopy.hidden=true;
     }
+    $("profile-card-copy-username").onclick=()=>copyProfileValue("@"+(profile.username||"user"),$("profile-card-copy-username"));
     $("profile-card-close").onclick=closeM;
     $("profile-card-chat").onclick=()=>startDM(profile);
   } catch(error) { alert(authError(error)); }
@@ -1268,7 +1286,7 @@ async function loadCurrentProfile() {
   const priv=await getDoc(doc(db,"users",currentUser.uid));
   if(!snap.exists())throw new Error("Профиль Firebase не найден.");
   const p=snap.data(),v=priv.exists()?priv.data():{};
-  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{},phoneNumber:v.phoneNumber||currentUser.phoneNumber||"",phoneVerified:v.phoneVerified===true||!!currentUser.phoneNumber,phoneVisible:v.phoneVisible===true,phonePublic:p.phonePublic||"",mutedChats:Array.isArray(v.mutedChats)?v.mutedChats:[]};
+  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{},phoneNumber:v.phoneNumber||currentUser.phoneNumber||"",phoneVerified:v.phoneVerified===true||!!currentUser.phoneNumber,phoneVisible:v.phoneVisible===true,phonePublic:p.phonePublic||"",phoneStatus:p.phoneStatus||"unverified",telegramLinked:!!v.telegramUserId,mutedChats:Array.isArray(v.mutedChats)?v.mutedChats:[]};
   let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}
   S={...DEF,...cached,...me.settings};
   const priorPalette={accent:"#9181ff",bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff"};
@@ -1644,7 +1662,7 @@ $("gb").onclick=()=>{
       const tokenInfo = await currentUser.getIdTokenResult();
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Открой бота, поделись собственным контактом и введи код из него.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер ещё не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><div class="phone-methods"><button type="button" class="pr" id="phoneViaMax">Отправить код в MAX</button><button type="button" id="phoneViaTelegram">Отправить код в Telegram</button></div><label>Код из бота</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и поделись собственным контактом.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label>Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Смена пароля</b><small class="mut">Бот пришлёт запрос с кнопками подтверждения и отказа. Ссылка на смену пароля появится только после твоего подтверждения.</small></div></div><button id="pc" class="pr" style="width:100%">Запросить смену пароля через Telegram</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -1655,7 +1673,11 @@ $("gb").onclick=()=>{
           $("pe").style.color="#3ddc84";$("pe").textContent="Пароль изменён.";
         }catch(e){$("pe").textContent=authError(e)}
       };
-      $("lo").onclick=logout;
+      $("lo").onclick=()=>{
+        openM('<div class="logout-confirm"><h3>Выйти из FROSS?</h3><p class="mut">Текущая сессия на этом устройстве будет завершена.</p><div class="row"><button type="button" id="logout-cancel">Отмена</button><button type="button" class="pr" id="logout-confirm">Выйти</button></div></div>');
+        $("logout-cancel").onclick=closeM;
+        $("logout-confirm").onclick=async()=>{closeM();document.body.classList.remove("ch");await logout()};
+      };
       const authSdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
       const factors=authSdk.multiFactor(currentUser).enrolledFactors;
       if(factors.length){
@@ -1685,32 +1707,31 @@ $("gb").onclick=()=>{
         }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
       };
       let phoneChallengeId=null;
-      async function startPhoneBotVerification(channel){
+      $("phoneViaTelegram").onclick=async()=>{
         const phone=$("phoneNumber").value.trim().replace(/[\s().-]/g,"");
         if(!/^\+[1-9]\d{7,14}$/.test(phone)){$("phoneError").textContent="Введи номер в международном формате, например +447700900123.";return}
-        const button=$(channel==="max"?"phoneViaMax":"phoneViaTelegram"),oldLabel=button.textContent;
-        const botWindow=window.open("about:blank","_blank");
-        button.disabled=true;button.textContent="Открываем бота…";
+        const button=$("phoneViaTelegram"),label=button.textContent,botWindow=window.open("about:blank","_blank");
+        button.disabled=true;button.textContent="Открываем Telegram…";
         try{
           const token=await currentUser.getIdToken(true);
           const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/startPhoneVerification",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
-            body:JSON.stringify({phone,channel})
+            body:JSON.stringify({phone})
           });
           const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("Сервер подтверждения номера ответил HTTP "+response.status+". Проверь, опубликованы ли Firebase Functions."));
+          if(!response.ok)throw new Error(result.error||("Firebase Functions ответил HTTP "+response.status+"."));
           phoneChallengeId=result.challengeId;
           if(botWindow)botWindow.location.href=result.botUrl;else window.location.href=result.botUrl;
-          $("phoneError").textContent="В боте нажми «Поделиться номером», отправь свой контакт, затем вернись сюда за кодом.";
-        }catch(error){botWindow?.close();$("phoneError").textContent=error instanceof TypeError?"Не удалось связаться с сервером подтверждения номера. Проверь интернет и публикацию Firebase Functions.":(error.message||authError(error))}
-        finally{button.disabled=false;button.textContent=oldLabel}
-      }
-      $("phoneViaMax").onclick=()=>startPhoneBotVerification("max");
-      $("phoneViaTelegram").onclick=()=>startPhoneBotVerification("telegram");
+          $("phoneError").textContent="В Telegram нажми «Поделиться номером телефона», отправь собственный контакт и вернись сюда за кодом.";
+        }catch(error){
+          botWindow?.close();
+          $("phoneError").textContent=error instanceof TypeError?"Нет соединения с сервером. Проверь публикацию Firebase Functions и подключение.":(error.message||authError(error));
+        }finally{button.disabled=false;button.textContent=label}
+      };
       $("phoneConfirm").onclick=async()=>{
         const code=$("phoneCode").value.trim();
-        if(!phoneChallengeId){$("phoneError").textContent="Сначала запроси код через MAX или Telegram.";return}
-        if(!/^\d{6}$/.test(code)){$("phoneError").textContent="Введи шесть цифр из сообщения бота.";return}
+        if(!phoneChallengeId){$("phoneError").textContent="Сначала запроси код через Telegram.";return}
+        if(!/^\d{6}$/.test(code)){$("phoneError").textContent="Введи шесть цифр из Telegram-бота.";return}
         const button=$("phoneConfirm");button.disabled=true;button.textContent="Проверяем…";
         try{
           const token=await currentUser.getIdToken(true);
@@ -1719,13 +1740,38 @@ $("gb").onclick=()=>{
             body:JSON.stringify({challengeId:phoneChallengeId,code})
           });
           const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("Не удалось подтвердить номер (HTTP "+response.status+")."));
+          if(!response.ok)throw new Error(result.error||("Подтверждение отклонено (HTTP "+response.status+")."));
           me.phoneNumber=$("phoneNumber").value.trim().replace(/[\s().-]/g,"");
-          me.phoneVerified=true;phoneChallengeId=null;$("phoneCode").value="";
+          me.phoneVerified=true;me.telegramLinked=true;me.phoneStatus=me.phoneVisible?"visible":"hidden";
+          phoneChallengeId=null;$("phoneCode").value="";$("phoneVisible").disabled=false;
           $("phoneError").style.color="#3ddc84";
-          $("phoneError").textContent="Номер подтверждён через "+(result.channel==="max"?"MAX":"Telegram")+".";
+          $("phoneError").textContent="Номер подтверждён через Telegram. Привязка бота сохранена.";
         }catch(error){$("phoneError").textContent=error.message||authError(error)}
         finally{button.disabled=false;button.textContent="Подтвердить номер"}
+      };
+      $("phoneVisible").onchange=async()=>{
+        const visible=$("phoneVisible").checked;
+        if(visible&&!me.phoneVerified){$("phoneVisible").checked=false;$("phoneError").textContent="Сначала подтверди номер через Telegram.";return}
+        try{
+          const phonePublic=visible?(me.phoneNumber||""):"";
+          await updateDoc(doc(db,"users",me.uid),{phoneVisible:visible,updatedAt:serverTimestamp()});
+          await setDoc(doc(db,"publicUsers",me.uid),{phoneStatus:visible?"visible":"hidden",phonePublic},{merge:true});
+          me.phoneVisible=visible;me.phonePublic=phonePublic;me.phoneStatus=visible?"visible":"hidden";
+          $("phoneError").textContent=visible?"Номер показывается в публичном профиле.":"Номер скрыт от других пользователей.";
+        }catch(error){$("phoneVisible").checked=!visible;$("phoneError").textContent=authError(error)}
+      };
+      $("pc").onclick=async()=>{
+        const button=$("pc"),label=button.textContent;button.disabled=true;button.textContent="Отправляем запрос…";
+        try{
+          const token=await currentUser.getIdToken(true);
+          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/requestPasswordReset",{
+            method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:"{}"
+          });
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(result.error||("Не удалось отправить запрос (HTTP "+response.status+")."));
+          $("pe").style.color="#3ddc84";$("pe").textContent="Запрос отправлен в Telegram. Подтверди его в боте FROSS.";
+        }catch(error){$("pe").textContent=error.message||authError(error)}
+        finally{button.disabled=false;button.textContent=label}
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {
@@ -1763,7 +1809,7 @@ $("gb").onclick=()=>{
             const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/requestAccountDeletion",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:"{}"});
             const result=await response.json().catch(()=>({}));
             if(!response.ok)throw new Error(result.error||("HTTP "+response.status));
-            await signOut(auth);alert("Аккаунт помечен как удалённый. Личные чаты будут удалены в течение 24 часов.");
+            $("de").style.color="#3ddc84";$("de").textContent="Запрос отправлен в Telegram. Подтверди удаление в боте. После подтверждения будет 24 часа на отмену.";
           }catch(e){$("de").textContent=authError(e)}
         };
       };
@@ -1817,7 +1863,7 @@ $("gb").onclick=()=>{
   };
 };
 $("me-profile").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
-async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function logout(){closeM();document.body.classList.remove("ch");if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
   if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
