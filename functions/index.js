@@ -328,6 +328,35 @@ async function handleOwnerBotMessage(message,token,firestore){
   }
   return false;
 }
+async function sendManagedBotCreationRequest(token,chatId){
+  await telegramApi(token,"setMySettings",{can_manage_bots:true});
+  await telegramApi(token,"sendMessage",{
+    chat_id:chatId,
+    text:"Нажми кнопку ниже, чтобы создать своего Telegram-бота, который будет привязан к твоему Telegram-аккаунту и управляться через FROSS.",
+    reply_markup:{keyboard:[[{text:"Создать своего бота",request_managed_bot:{request_id:1,suggested_name:"My FROSS Bot"}}]],resize_keyboard:true,one_time_keyboard:true}
+  });
+}
+async function registerManagedBotCreated(message,firestore,token){
+  const created=message?.managed_bot_created?.bot,owner=message?.from;
+  if(!created?.id||!owner?.id||String(message.chat?.type)!=="private")return false;
+  const linked=await firestore.collection("users").where("telegramUserId","==",String(owner.id)).limit(1).get();
+  if(linked.empty){
+    await telegramApi(token,"sendMessage",{chat_id:message.chat.id,text:"Бот создан, но Telegram пока не привязан к FROSS. Подтверди номер в настройках приложения."});
+    return true;
+  }
+  const uid=linked.docs[0].id;
+  await firestore.doc("managedBots/"+String(created.id)).set({
+    botId:String(created.id),username:String(created.username||""),firstName:String(created.first_name||""),
+    ownerUid:uid,ownerTelegramUserId:String(owner.id),createdAt:Timestamp.now(),status:"active"
+  },{merge:true});
+  await telegramApi(token,"sendMessage",{
+    chat_id:message.chat.id,
+    text:"✅ Твой бот создан: "+(created.username?"@"+created.username:(created.first_name||"My bot"))+
+      ". Он добавлен в список управляемых ботов FROSS. Секретный токен не отправляю в историю чата.",
+    reply_markup:{remove_keyboard:true}
+  });
+  return true;
+}
 async function sendBotHelp(token,chatId){
   await telegramApi(token,"sendMessage",{
     chat_id:chatId,
