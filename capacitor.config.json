@@ -1,0 +1,9 @@
+{
+  "appId": "com.fross.messenger",
+  "appName": "FROSS",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#080611"
+  }
+}

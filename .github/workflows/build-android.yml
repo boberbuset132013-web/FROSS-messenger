@@ -1,0 +1,70 @@
+name: Build FROSS Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "scripts/prepare_android.mjs"
+      - "capacitor.config.json"
+      - "package.json"
+      - ".github/workflows/build-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install project and Capacitor dependencies
+        run: npm install --no-audit --no-fund
+      - name: Prepare locally bundled FROSS interface
+        run: npm run android:prepare
+      - name: Generate native Android project
+        run: npx cap add android
+      - name: Sync Capacitor plugins
+        run: npx cap sync android
+      - name: Configure Android permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("android/app/src/main/AndroidManifest.xml")
+          s=p.read_text()
+          permissions=[
+            '    <uses-permission android:name="android.permission.INTERNET" />',
+            '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+            '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
+            '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
+          ]
+          marker='<application'
+          if marker not in s: raise SystemExit("AndroidManifest application tag not found")
+          for permission in reversed(permissions):
+            if permission.split('"')[1] not in s:
+              s=s.replace(marker,permission+'\n    '+marker,1)
+          s=s.replace('android:allowBackup="false"','android:allowBackup="false" android:usesCleartextTraffic="false"')
+          p.write_text(s)
+          PY
+      - name: Build installable debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FROSS-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
