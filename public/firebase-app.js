@@ -1106,10 +1106,14 @@ function subscribeMessages() {
   reactionStops.forEach(stop=>stop());reactionStops=[];
   const box=$("msgs");
   if(!cur){box.innerHTML='<div class="empty">Выберите переписку или создайте новый чат.</div>';return}
+  box.dataset.initialized="0";
   box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
   stopMessages=onSnapshot(q,snapshot=>{
     const stick=box.scrollHeight-box.scrollTop-box.clientHeight<140;
+    const isFirstSnapshot=box.dataset.initialized!=="1";
+    const hasNewMessages=!isFirstSnapshot&&snapshot.docChanges().some(change=>change.type==="added");
+    box.dataset.initialized="1";
     const oldHeight=box.scrollHeight,oldScrollTop=box.scrollTop,boxRect=box.getBoundingClientRect();
     const visibleAnchor=[...box.querySelectorAll(".mr")].find(node=>node.getBoundingClientRect().bottom>boxRect.top);
     const anchorId=visibleAnchor?.dataset.messageId||"";
@@ -1175,7 +1179,12 @@ function subscribeMessages() {
     });
     requestAnimationFrame(()=>{
       if(!box.isConnected)return;
-      if(stick){box.scrollTop=box.scrollHeight;return}
+      if(stick){
+        const target=box.scrollHeight;
+        if(isFirstSnapshot||!hasNewMessages||S.reduceMotion)box.scrollTop=target;
+        else box.scrollTo({top:target,behavior:"smooth"});
+        return;
+      }
       const anchor=anchorId?[...box.querySelectorAll(".mr")].find(node=>node.dataset.messageId===anchorId):null;
       if(anchor){
         const nextOffset=anchor.getBoundingClientRect().top-box.getBoundingClientRect().top;
