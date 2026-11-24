@@ -301,7 +301,40 @@ async function telegramPhoneWebhook(request,env){
   return new Response("ok");
 }
 
+
+async function getSystemInbox(request,env){
+  const identity=await verifyFirebaseToken(request),key="systemInbox/"+identity.uid+".json";
+  let inbox=await readPhoneRecord(key,env);
+  if(!inbox){
+    inbox={
+      version:1,uid:identity.uid,createdAt:Date.now(),readAt:0,
+      messages:[{
+        id:"welcome",sender:"fross",kind:"welcome",
+        text:"Добро пожаловать в FROSS! Это официальный системный чат. Здесь будут появляться важные уведомления о безопасности, аккаунте и новых возможностях. Настоящие сообщения FROSS отправляются сервером; другие пользователи не могут писать от имени системного бота.",
+        createdAt:Date.now()
+      }]
+    };
+    await savePhoneRecord(key,inbox,env);
+  }
+  if(inbox.uid!==identity.uid||!Array.isArray(inbox.messages))throw new Error("Системный чат не прошёл проверку владельца.");
+  const messages=inbox.messages.slice(-100).map(message=>({
+    id:String(message.id||""),sender:"fross",kind:String(message.kind||"notice"),
+    text:String(message.text||"").slice(0,4000),createdAt:Number(message.createdAt)||0
+  }));
+  return json({ok:true,bot:{id:"fross-system",name:"FROSS",verified:true},messages,unreadCount:messages.filter(message=>message.createdAt>(Number(inbox.readAt)||0)).length});
+}
+async function markSystemInboxRead(request,env){
+  const identity=await verifyFirebaseToken(request),key="systemInbox/"+identity.uid+".json";
+  const inbox=await readPhoneRecord(key,env);
+  if(!inbox||inbox.uid!==identity.uid)return json({ok:true});
+  inbox.readAt=Date.now();
+  await savePhoneRecord(key,inbox,env);
+  return json({ok:true});
+}
+
 async function api(request,env,url){
+  if(request.method==="POST"&&url.pathname==="/api/system/inbox")return await getSystemInbox(request,env);
+  if(request.method==="POST"&&url.pathname==="/api/system/read")return await markSystemInboxRead(request,env);
   if(request.method==="POST"&&url.pathname==="/api/phone/start")return await startPhoneVerification(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/phone/confirm")return await confirmPhoneVerification(request,env);
   if(request.method==="POST"&&url.pathname==="/api/telegram/webhook")return await telegramPhoneWebhook(request,env);

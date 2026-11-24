@@ -28,6 +28,8 @@ const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","
 const DEF = {theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
+const SYSTEM_CHAT_ID="system:fross";
+let systemInboxMessages=[],systemInboxLoaded=false,systemInboxError="",systemInboxLoading=null,systemInboxTimer=null;
 let globalAudioTrackKey="", globalAudioRequest=0, globalAudioAttachment=null, globalAudioRetryUsed=false;
 let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
@@ -832,9 +834,66 @@ function watchMessageProfile(uid,box){
   },error=>console.warn("FROSS message profile listener:",error?.message||error));
   messageProfileStops.set(uid,stop);
 }
+
+async function loadSystemInbox(){
+  if(systemInboxLoading)return systemInboxLoading;
+  systemInboxLoading=(async()=>{
+    try{
+      const user=auth.currentUser||currentUser;if(!user)throw new Error("Войди в аккаунт FROSS.");
+      const response=await fetch(FROSS_API_ORIGIN+"/api/system/inbox",{method:"POST",headers:{"Authorization":"Bearer "+await user.getIdToken(),"Content-Type":"application/json"},body:"{}"});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||("Ошибка системного чата: "+response.status));
+      systemInboxMessages=Array.isArray(data.messages)?data.messages:[];
+      systemInboxLoaded=true;systemInboxError="";
+      if(cur===SYSTEM_CHAT_ID)renderSystemMessages();
+    }catch(error){
+      systemInboxError=error?.message||"Не удалось загрузить системный чат.";
+      console.warn("FROSS system inbox:",systemInboxError);
+    }finally{
+      systemInboxLoading=null;
+    }
+  })();
+  return systemInboxLoading;
+}
+async function markSystemInboxRead(){
+  try{
+    const user=auth.currentUser||currentUser;if(!user)return;
+    await fetch(FROSS_API_ORIGIN+"/api/system/read",{method:"POST",headers:{"Authorization":"Bearer "+await user.getIdToken(),"Content-Type":"application/json"},body:"{}"});
+  }catch(error){console.warn("FROSS system read receipt:",error?.message||error)}
+}
+function renderSystemMessages(){
+  const box=$("msgs");if(cur!==SYSTEM_CHAT_ID)return;
+  box.innerHTML="";
+  if(!systemInboxLoaded){
+    const empty=document.createElement("div");empty.className="empty";empty.textContent=systemInboxError||"Загрузка сообщений FROSS…";box.append(empty);return;
+  }
+  if(!systemInboxMessages.length){
+    const empty=document.createElement("div");empty.className="empty";empty.textContent="Пока нет уведомлений от FROSS.";box.append(empty);return;
+  }
+  for(const message of systemInboxMessages){
+    const row=document.createElement("div");row.className="mr system-message";row.dataset.messageId=message.id;
+    const bubble=document.createElement("div");bubble.className="msg";
+    const sender=document.createElement("small");sender.className="system-message-sender";sender.textContent="FROSS · официальный бот";bubble.append(sender);
+    const body=document.createElement("div");body.textContent=message.text;bubble.append(body);
+    const time=document.createElement("time");time.textContent=new Date(message.createdAt||Date.now()).toLocaleString("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});bubble.append(time);
+    row.append(bubble);box.append(row);
+  }
+  box.scrollTop=box.scrollHeight;
+  markSystemInboxRead();
+}
+
 function renderList() {
   const L=$("list"),term=$("q").value.trim().toLowerCase();L.innerHTML="";
   let count=0;
+  const systemMatches=!term||"fross официальный системный бот уведомления".includes(term);
+  if(systemMatches){
+    const latest=systemInboxMessages[systemInboxMessages.length-1];
+    const preview=latest?.text||systemInboxError||(systemInboxLoaded?"Официальный системный чат":"Загрузка уведомлений…");
+    const row=item({displayName:"FROSS",username:"FROSS",profileColor:"#a855f7"},"FROSS",preview,false,cur===SYSTEM_CHAT_ID,()=>openChat(SYSTEM_CHAT_ID));
+    row.classList.add("system-chat-item");
+    const title=row.querySelector(".t b");if(title)title.innerHTML='FROSS <span class="verified-mark" title="Официальный системный бот">✓</span>';
+    L.append(row);count++;
+  }
   for(const c of chats){
     const info=chatInfo(c);
     if(term&&!info.title.toLowerCase().includes(term))continue;
@@ -920,6 +979,9 @@ async function searchUsers(term) {
   catch(error){console.error("FROSS user search failed:",error);found=[];renderList()}
 }
 function startChatList() {
+  loadSystemInbox().then(()=>renderList());
+  if(systemInboxTimer)clearInterval(systemInboxTimer);
+  systemInboxTimer=setInterval(()=>{if(cur===SYSTEM_CHAT_ID)loadSystemInbox()},20000);
   if(stopChats)stopChats();
   chats=[];clearProfileObservers(chatProfileStops);renderList();head();
   const sortChats=items=>items.sort((a,b)=>{
@@ -944,8 +1006,16 @@ function startChatList() {
   });
 }
 function head() {
-  const chat=chats.find(item=>item.id===cur);
   const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
+  if(cur===SYSTEM_CHAT_ID){
+    avatar(avatarElement,{displayName:"FROSS",profileColor:"#a855f7"});
+    titleElement.innerHTML='FROSS <span class="verified-mark" title="Официальный системный бот">✓</span>';
+    subtitleElement.textContent="Официальный системный бот · уведомления аккаунта";
+    avatarElement.onclick=null;titleElement.onclick=null;avatarElement.style.cursor="default";titleElement.style.cursor="default";
+    if($("call"))$("call").style.display="none";
+    return;
+  }
+  const chat=chats.find(item=>item.id===cur);
   if(!chat){
     avatarElement.style.backgroundImage="none";avatarElement.textContent="";avatarElement.style.background="transparent";
     titleElement.textContent="Выберите чат";subtitleElement.textContent="Личные переписки и группы";
@@ -963,7 +1033,13 @@ function head() {
   if($("call"))$("call").style.display=chat.type==="dm"?"block":"none";
 }
 function openChat(id) {
+  if(id===SYSTEM_CHAT_ID){
+    cur=SYSTEM_CHAT_ID;document.body.classList.add("ch");renderList();head();
+    const composer=document.querySelector(".comp");if(composer)composer.style.display="none";
+    subscribeMessages();loadSystemInbox();return;
+  }
   const chat=chats.find(item=>item.id===id);if(!chat)return;
+  const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
   cur=id;document.body.classList.add("ch");renderList();head();subscribeMessages();
   if(chat.type==="dm"){
     const other=(chat.memberProfiles||[]).find(person=>person.uid!==me.uid);
@@ -1089,6 +1165,7 @@ function subscribeMessages() {
   reactionStops.forEach(stop=>stop());reactionStops=[];
   const box=$("msgs");
   if(!cur){box.innerHTML='<div class="empty">Выберите переписку или создайте новый чат.</div>';return}
+  if(cur===SYSTEM_CHAT_ID){stopMessages=null;renderSystemMessages();return}
   box.dataset.initialized="0";
   box.innerHTML='<div class="empty">Загрузка сообщений…</div>';
   const q=query(collection(db,"chats",cur,"messages"),orderBy("createdAt","asc"),limitToLast(100));
@@ -1325,6 +1402,7 @@ async function publishChatMessage(chatId,message,summary) {
   return messageRef;
 }
 async function send() {
+  if(cur===SYSTEM_CHAT_ID){alert("В официальный чат FROSS нельзя отправлять сообщения. Это канал системных уведомлений.");return}
   if(!cur){alert("Сначала выберите личный чат или группу.");return}
   const input=$("inp"),text=input.value.trim();if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
