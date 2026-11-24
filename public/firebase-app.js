@@ -1005,6 +1005,46 @@ function startChatList() {
     }
   });
 }
+async function openBotsPanel(){
+  openM('<h3>Мои боты</h3><div id="bot-list">Загрузка…</div><button class="pr" id="bot-new" style="width:100%">Создать бота</button><div class="err" id="bot-error"></div><button id="bot-close" style="width:100%">Закрыть</button>');
+  $("bot-close").onclick=closeM;
+  const call=async(path,data={})=>{
+    const response=await fetch(FROSS_API_ORIGIN+path,{method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(),"Content-Type":"application/json"},body:JSON.stringify(data)});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result.error||"Ошибка API");
+    return result;
+  };
+  const refresh=async()=>{
+    const data=await call("/api/bots/list"),host=$("bot-list");host.innerHTML="";
+    if(!data.bots.length){host.textContent="Пока нет ботов.";return}
+    data.bots.forEach(bot=>{
+      const row=document.createElement("div");row.className="group-contact";
+      const name=document.createElement("b");name.textContent=bot.name+" · @"+bot.username;
+      const state=document.createElement("small");state.textContent=bot.enabled?"Активен":"Отключён";state.style.display="block";
+      const edit=document.createElement("button");edit.textContent="Изменить";edit.onclick=async()=>{
+        const value=prompt("Новое название:",bot.name);if(value===null)return;
+        try{await call("/api/bots/update",{id:bot.id,name:value});await refresh()}catch(e){$("bot-error").textContent=e.message}
+      };
+      const revoke=document.createElement("button");revoke.textContent="Отозвать токен";revoke.onclick=async()=>{
+        if(!confirm("Отозвать токен без возможности восстановления?"))return;
+        try{await call("/api/bots/revoke",{id:bot.id});await refresh()}catch(e){$("bot-error").textContent=e.message}
+      };
+      row.append(name,state,edit,revoke);host.append(row);
+    });
+  };
+  $("bot-new").onclick=async()=>{
+    const name=prompt("Название бота:");if(name===null)return;
+    const username=prompt("Username (латиница, цифры и _):");if(username===null)return;
+    try{
+      const data=await call("/api/bots/create",{name,username});
+      openM('<h3>Бот создан</h3><p>Скопируй API-токен сейчас — повторно показать его нельзя.</p><textarea id="bot-token" rows="3" readonly></textarea><button class="pr" id="bot-copy">Скопировать токен</button><button id="bot-done">Готово</button>');
+      $("bot-token").value=data.token;
+      $("bot-copy").onclick=()=>navigator.clipboard.writeText(data.token);
+      $("bot-done").onclick=()=>{closeM();openBotsPanel()};
+    }catch(e){$("bot-error").textContent=e.message}
+  };
+  try{await refresh()}catch(e){$("bot-error").textContent=e.message}
+}
 function head() {
   const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
   if(cur===SYSTEM_CHAT_ID){
@@ -1013,8 +1053,12 @@ function head() {
     subtitleElement.textContent="Официальный системный бот · уведомления аккаунта";
     avatarElement.onclick=null;titleElement.onclick=null;avatarElement.style.cursor="default";titleElement.style.cursor="default";
     if($("call"))$("call").style.display="none";
+    $("bots-open-button")?.remove();
+    const botButton=document.createElement("button");botButton.id="bots-open-button";botButton.type="button";botButton.className="ic";botButton.textContent="🤖";botButton.title="Мои боты";botButton.onclick=openBotsPanel;
+    $("chat-settings").before(botButton);$("chat-settings").style.display="none";
     return;
   }
+  $("bots-open-button")?.remove();$("chat-settings").style.display="";
   const chat=chats.find(item=>item.id===cur);
   if(!chat){
     avatarElement.style.backgroundImage="none";avatarElement.textContent="";avatarElement.style.background="transparent";
