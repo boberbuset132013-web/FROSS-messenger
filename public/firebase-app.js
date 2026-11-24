@@ -19,6 +19,7 @@ const firebaseConfig = {
   messagingSenderId: "200886619645",
   appId: "1:200886619645:web:0f1bc9b750eedf22a05d94"
 };
+const FROSS_API_ORIGIN = window.FROSS_NATIVE_APP ? "https://fross-messenger.boberbuset132013.workers.dev" : "";
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -243,7 +244,7 @@ function hue(s) {
 const privateFileUrlCache = new Map();
 async function privateFileApi(endpoint,payload) {
   const user=auth.currentUser||currentUser;if(!user)throw new Error("Войди в аккаунт, чтобы открыть файл.");
-  const token=await user.getIdToken(),response=await fetch(endpoint,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const token=await user.getIdToken(),response=await fetch(FROSS_API_ORIGIN+endpoint,{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(payload)});
   let data={};try{data=await response.json()}catch{};if(!response.ok)throw new Error(data.error||("Ошибка файлового сервера: "+response.status));return data;
 }
 async function getPrivateFileUrl(path) {
@@ -266,7 +267,7 @@ async function downloadStoredFile(value,path,name) {
   if(source.startsWith("filebase:")){
     if(!user)throw new Error("Войди в аккаунт, чтобы скачать файл.");
     const token=await user.getIdToken();
-    const response=await fetch("/api/files/download",{
+    const response=await fetch(FROSS_API_ORIGIN+"/api/files/download",{
       method:"POST",
       headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
       body:JSON.stringify({path:path||source.slice(9),name:name||"download"})
@@ -584,7 +585,7 @@ async function uploadAvatar(uid,dataUrl) {
     const blob=await (await fetch(dataUrl)).blob();if(!blob.size)throw new Error("Получилось пустое изображение.");
     const user=auth.currentUser||currentUser;if(!user||user.uid!==uid)throw new Error("Не удалось подтвердить аккаунт для загрузки фото.");
     const token=await user.getIdToken(),result=await new Promise((resolve,reject)=>{
-      const xhr=new XMLHttpRequest();xhr.open("POST","/api/files/upload?scope=avatar&name=avatar.jpg");
+      const xhr=new XMLHttpRequest();xhr.open("POST",FROSS_API_ORIGIN+"/api/files/upload?scope=avatar&name=avatar.jpg");
       xhr.setRequestHeader("Authorization","Bearer "+token);xhr.setRequestHeader("Content-Type",blob.type||"image/jpeg");
       xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText)}catch{};if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(new Error(data.error||("Ошибка загрузки аватара: "+xhr.status)))};
       xhr.onerror=()=>reject(new Error("Сетевая ошибка при загрузке аватара."));xhr.send(blob);
