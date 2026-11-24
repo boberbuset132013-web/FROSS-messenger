@@ -402,28 +402,29 @@ const FROSS_AI_MODELS=[
 ];
 const FROSS_AI_TOOLS=[
   {type:"function",function:{
-    name:"list_my_bots",description:"Показать Telegram-ботов текущего пользователя, их имена, username, описание, приветствие и кнопки.",
+    name:"list_my_bots",description:"Показать собственных ботов FROSS пользователя: имя, username, описание, приветствие и кнопки.",
     parameters:{type:"object",properties:{},required:[],additionalProperties:false}
   }},
   {type:"function",function:{
-    name:"update_my_bot",description:"Изменить профиль и поведение одного из Telegram-ботов пользователя. Можно поменять имя, описание, короткое описание, приветствие /start, текст ответа по умолчанию и клавиатурные кнопки. Перед изменением найди точный bot id через list_my_bots. Вызывай только когда пользователь явно просит внести изменение.",
+    name:"update_my_bot",description:"Изменить профиль и поведение одного из внутренних ботов FROSS. Можно поменять имя, username, описание, приветствие, ответ по умолчанию, включённость и кнопки. Перед изменением найди точный bot id через list_my_bots. Вызывай только когда пользователь явно просит внести изменение.",
     parameters:{
       type:"object",
       properties:{
         id:{type:"string",description:"ID бота из результата list_my_bots"},
-        name:{type:"string",description:"Новое имя профиля Telegram-бота, до 64 символов"},
-        description:{type:"string",description:"Новое описание профиля, до 512 символов"},
-        shortDescription:{type:"string",description:"Краткое описание профиля, до 120 символов"},
+        name:{type:"string",description:"Новое имя бота FROSS, до 40 символов"},
+        username:{type:"string",description:"Новый уникальный username бота FROSS"},
+        description:{type:"string",description:"Новое описание профиля, до 300 символов"},
+        enabled:{type:"boolean",description:"Включить или отключить бота"},
         welcomeMessage:{type:"string",description:"Текст при команде /start, до 1000 символов"},
         fallbackMessage:{type:"string",description:"Ответ, если сообщение не совпадает ни с одной кнопкой, до 1000 символов"},
-        buttons:{type:"array",description:"Полный список до 8 кнопок. Каждая кнопка отвечает заданным текстом.",items:{type:"object",properties:{label:{type:"string"},response:{type:"string"}},required:["label","response"],additionalProperties:false}}
+        buttons:{type:"array",description:"Полный список до 12 кнопок FROSS. Каждая кнопка показывает название и задаёт ответ бота; можно добавить ссылку.",items:{type:"object",properties:{label:{type:"string"},response:{type:"string"},url:{type:"string"}},required:["label"],additionalProperties:false}}
       },
       required:["id"],additionalProperties:false
     }
   }}
 ];
 function frossAiSystemPrompt(){
-  return "Ты — FROSS, встроенный помощник мессенджера FROSS. Всегда отвечай на русском, дружелюбно и по делу. Текущий пользователь может попросить тебя управлять его собственными Telegram-ботами. У тебя есть инструменты list_my_bots и update_my_bot. Если пользователь хочет посмотреть ботов или изменить конкретного бота, сначала используй list_my_bots, чтобы выбрать правильный ID. Не утверждай, что изменение сделано, пока инструмент update_my_bot не вернул ok=true. Если пользователь явно просит создать или изменить кнопки, подбери лаконичные названия и полезные тексты ответов, затем сохрани весь список кнопок вызовом update_my_bot. Не меняй другие свойства без необходимости. Не запрашивай и не показывай API-токены, секреты, пароли и коды подтверждения. Никакие действия не выполняй для чужих аккаунтов: инструменты работают только с ботами текущего пользователя. Если пользователь не уточнил, какого бота менять, сначала покажи список и попроси выбрать.";
+  return "Ты — FROSS, встроенный помощник мессенджера FROSS. Всегда отвечай на русском, дружелюбно и по делу. Пользователь может попросить управлять его внутренними ботами FROSS: эти боты живут внутри приложения, а не в Telegram. Сначала используй list_my_bots, чтобы выбрать правильный ID. Изменять можно имя, username, описание, приветствие, ответ по умолчанию, включённость и кнопки. Не утверждай, что изменение сделано, пока update_my_bot не вернул ok=true. Если пользователь просит создать или изменить кнопки, составь понятные названия и полезные ответы и сохрани список через update_my_bot. Не меняй другие свойства без необходимости. Не запрашивай и не показывай API-токены, секреты, пароли и коды. Инструменты работают только с ботами текущего пользователя. Если пользователь не уточнил, какого бота менять, сначала покажи список и попроси выбрать.";
 }
 async function openRouterCompletion(env,model,messages){
   if(!env.OPENROUTER_API_KEY)throw new Error("ИИ-модели пока не подключены. Нужен бесплатный API-ключ OpenRouter: создай его на openrouter.ai/settings/keys и добавь в GitHub Secrets под именем OPENROUTER_API_KEY. Ключ не отправляй в чат.");
@@ -446,7 +447,7 @@ async function openRouterCompletion(env,model,messages){
 async function runFrossAiTool(name,args,identity,env,url){
   if(name==="list_my_bots"){
     const store=await readBotStore(identity.uid,env);
-    return {ok:true,bots:store.bots.filter(bot=>bot.botId).map(bot=>({
+    return {ok:true,bots:store.bots.filter(bot=>!bot.botId).map(bot=>({
       id:String(bot.id||bot.botId),name:bot.name||"",username:bot.username||"",
       description:bot.description||"",shortDescription:bot.shortDescription||"",
       welcomeMessage:bot.welcomeMessage||"",fallbackMessage:bot.fallbackMessage||"",
