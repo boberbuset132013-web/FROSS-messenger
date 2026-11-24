@@ -868,7 +868,7 @@ function renderSystemMessages(){
     const empty=document.createElement("div");empty.className="empty";empty.textContent=systemInboxError||"Загрузка чата FROSS…";box.append(empty);return;
   }
   if(!systemInboxMessages.length){
-    const empty=document.createElement("div");empty.className="empty";empty.textContent="Здесь будут появляться системные уведомления FROSS о безопасности, аккаунте и важных обновлениях."box.append(empty);return;
+    const empty=document.createElement("div");empty.className="empty";empty.textContent="Здесь будут появляться системные уведомления FROSS о безопасности, аккаунте и важных обновлениях.";box.append(empty);return;
   }
   for(const message of systemInboxMessages){
     const isUser=message.role==="user";
