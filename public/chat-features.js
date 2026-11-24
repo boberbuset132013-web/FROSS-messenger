@@ -1,7 +1,8 @@
+const FROSS_API_ORIGIN = window.FROSS_NATIVE_APP ? "https://fross-messenger.boberbuset132013.workers.dev" : "";
 export function uploadChatFile(chatId,file,token,onProgress=()=>{}) {
   return new Promise((resolve,reject)=>{
     const xhr=new XMLHttpRequest(),name=encodeURIComponent(file.name||"file");
-    xhr.open("POST","/api/files/upload?scope=chat&chatId="+encodeURIComponent(chatId)+"&name="+name);
+    xhr.open("POST",FROSS_API_ORIGIN+"/api/files/upload?scope=chat&chatId="+encodeURIComponent(chatId)+"&name="+name);
     xhr.setRequestHeader("Authorization","Bearer "+token);xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
     xhr.upload.onprogress=event=>{const percent=event.lengthComputable&&event.total?Math.round(event.loaded/event.total*100):0;onProgress(percent,event.loaded,event.total||0)};
     xhr.onload=()=>{let data={};try{data=JSON.parse(xhr.responseText)}catch{};if(xhr.status>=200&&xhr.status<300&&data.path)resolve({url:"filebase:"+data.path,path:data.path});else reject(new Error(data.error||("Файловый сервер вернул ошибку "+xhr.status)))};
