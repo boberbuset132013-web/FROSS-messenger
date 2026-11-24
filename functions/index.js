@@ -303,6 +303,10 @@ async function handleOwnerBotMessage(message,token,firestore){
   const from=message.from||{},chatId=message.chat?.id;
   if(String(message.chat?.type)!=="private"||!await isTelegramBotOwner(firestore,from))return false;
   const text=String(message.text||message.caption||"").trim();
+  if(text==="/owner"||text==="/help"||text==="/start"){
+    await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Панель владельца FROSS Security Bot (@denhic)\n/setname новое имя\n/setdescription новое описание\n/setabout краткое описание\n/setphoto — команда в подписи к фотографии\n\nТолько аккаунт FROSS с username denhic может менять профиль бота."});
+    return true;
+  }
   if(text.startsWith("/setname ")){
     const name=text.slice(9).trim();if(!name||name.length>64)throw new Error("Имя должно содержать от 1 до 64 символов.");
     await telegramApi(token,"setMyName",{name});
@@ -314,7 +318,7 @@ async function handleOwnerBotMessage(message,token,firestore){
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Описание бота обновлено."});return true;
   }
   if(text.startsWith("/setabout ")){
-    const shortDescription=text.slice(10).trim();if(shortDescription.length>120)throw new Error("Короткое описание должно быть не длиннее 120 символов.");
+    const shortDescription=text.slice(10).trim();if(shortDescription.length>120)throw new Error("Краткое описание должно быть не длиннее 120 символов.");
     await telegramApi(token,"setMyShortDescription",{short_description:shortDescription});
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Краткое описание бота обновлено."});return true;
   }
