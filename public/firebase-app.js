@@ -4,7 +4,7 @@ import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, reauthenticateWithPopup,
   EmailAuthProvider, deleteUser, GoogleAuthProvider, signInWithPopup, linkWithCredential,
-  sendEmailVerification, sendPasswordResetEmail
+  sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection,
@@ -51,10 +51,9 @@ function authEmail(username) {
 }
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none"; $("auth").scrollTop=0;
-  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
+  $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
   $("rg").onclick=()=>{W={username:"",email:"",password:"",display_name:"",bio:"",avatar:"",settings:{...DEF}};wiz(1)};
   $("gr").onclick=googleLogin;
-  $("reset").onclick=async()=>{const email=$("lu").value.trim();if(!email.includes("@")){$("le").textContent="Сначала введите email.";return}try{await sendPasswordResetEmail(auth,email);$("le").textContent="Письмо для сброса пароля отправлено."}catch(e){$("le").textContent=authError(e)}};
   $("lg").onclick=async()=>{try{
     const identifier=$("lu").value.trim();
     if(!identifier)throw Error("Введите email или имя пользователя.");
@@ -1655,7 +1654,7 @@ $("gb").onclick=()=>{
       const tokenInfo = await currentUser.getIdTokenResult();
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и поделись собственным контактом.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label>Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Смена пароля</b><small class="mut">Бот пришлёт запрос с кнопками подтверждения и отказа. Ссылка на смену пароля появится только после твоего подтверждения.</small></div></div><button id="pc" class="pr" style="width:100%">Запросить смену пароля через Telegram</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и отправь свой контакт. Код придёт только в Telegram.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label style="margin-top:16px;margin-bottom:6px">Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label style="margin-top:16px;margin-bottom:6px">Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("lo").onclick=()=>{
         openM('<div class="logout-confirm"><h3>Выйти из FROSS?</h3><p class="mut">Текущая сессия на этом устройстве будет завершена.</p><div class="row"><button type="button" id="logout-cancel">Отмена</button><button type="button" class="pr" id="logout-confirm">Выйти</button></div></div>');
         $("logout-cancel").onclick=closeM;
@@ -1717,19 +1716,6 @@ $("gb").onclick=()=>{
           me.phoneVisible=visible;me.phonePublic=phonePublic;me.phoneStatus=visible?"visible":"hidden";
           $("phoneError").textContent=visible?"Номер показывается в публичном профиле.":"Номер скрыт от других пользователей.";
         }catch(error){$("phoneVisible").checked=!visible;$("phoneError").textContent=authError(error)}
-      };
-      $("pc").onclick=async()=>{
-        const button=$("pc"),label=button.textContent;button.disabled=true;button.textContent="Отправляем запрос…";
-        try{
-          const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/requestPasswordReset",{
-            method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:"{}"
-          });
-          const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("Не удалось отправить запрос (HTTP "+response.status+")."));
-          $("pe").style.color="#3ddc84";$("pe").textContent="Запрос отправлен в Telegram. Подтверди его в боте FROSS.";
-        }catch(error){$("pe").textContent=error.message||authError(error)}
-        finally{button.disabled=false;button.textContent=label}
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {
