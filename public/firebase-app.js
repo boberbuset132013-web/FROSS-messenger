@@ -1682,7 +1682,8 @@ $("gb").onclick=()=>{
           const result=await response.json().catch(()=>({}));
           if(!response.ok)throw new Error(result.error||("Firebase Functions ответил HTTP "+response.status+"."));
           phoneChallengeId=result.challengeId;
-          const verificationBotUrl="https://t.me/FROSS_verification_bot?start="+encodeURIComponent(result.challengeId);\n          if(botWindow)botWindow.location.href=verificationBotUrl;else window.location.href=verificationBotUrl;
+          const verificationBotUrl="https://t.me/FROSS_verification_bot?start="+encodeURIComponent(result.challengeId);
+          if(botWindow)botWindow.location.href=verificationBotUrl;else window.location.href=verificationBotUrl;
           $("phoneError").textContent="Открылся @FROSS_verification_bot. Нажми «Поделиться номером телефона», отправь свой контакт и вернись сюда за кодом.";
         }catch(error){
           botWindow?.close();
