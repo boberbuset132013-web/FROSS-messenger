@@ -42,7 +42,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified", "phoneVisible"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified", "phoneVisible", "mutedChats"]);
       allow delete: if own(uid);
     }
 

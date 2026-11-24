@@ -33,7 +33,18 @@ let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
 let chatProfileStops=new Map(),messageProfileStops=new Map();
-window.FROSS = {get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},renderAvatar:(element,profile)=>avatar(element,profile)};
+let chatNotificationStops=new Map(),chatNotificationSeen=new Map(),notificationAudioContext=null;
+window.FROSS = {
+  get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},
+  renderAvatar:(element,profile)=>avatar(element,profile),
+  notifyIncomingCall:(profile,callId)=>{
+    if(!S.notifyDesktop||!("Notification" in window)||Notification.permission!=="granted")return;
+    try{
+      const n=new Notification("Входящий звонок",{body:(profile?.displayName||"Пользователь")+" звонит тебе",icon:"/fross-icon.webp",tag:"fross-call-"+callId,requireInteraction:true});
+      n.onclick=()=>{window.focus();n.close()};
+    }catch(error){console.warn("FROSS call notification:",error)}
+  }
+};
 
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
@@ -750,6 +761,56 @@ function item(o,title,sub,online,active,fn) {
   d.innerHTML='<div class="av"></div><div class="t"><b>'+esc(title)+'</b><small>'+esc(sub||"")+'</small></div>';
   avatar(d.firstChild,o,online);d.onclick=fn;return d;
 }
+function playNotificationBeep(){
+  if(!S.notifySound)return;
+  try{
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass)return;
+    notificationAudioContext ||= new AudioContextClass();
+    if(notificationAudioContext.state==="suspended")notificationAudioContext.resume().catch(()=>{});
+    const oscillator=notificationAudioContext.createOscillator(),gain=notificationAudioContext.createGain();
+    oscillator.type="sine";oscillator.frequency.value=740;gain.gain.value=.025;
+    oscillator.connect(gain);gain.connect(notificationAudioContext.destination);
+    const now=notificationAudioContext.currentTime;oscillator.start(now);
+    gain.gain.setTargetAtTime(0,now+.08,.04);oscillator.stop(now+.3);
+  }catch(error){console.warn("FROSS notification sound:",error?.message||error)}
+}
+function notifyAppEvent(title,body,tag,chatId){
+  if(!S.notifyDesktop&&!S.notifySound)return;
+  if(S.notifyDesktop&&"Notification" in window&&Notification.permission==="granted"){
+    try{
+      const n=new Notification(title,{body,icon:"/fross-icon.webp",tag,renotify:true});
+      n.onclick=()=>{window.focus();if(chatId)openChat(chatId);n.close()};
+    }catch(error){console.warn("FROSS notification:",error)}
+  }
+  playNotificationBeep();
+}
+function clearChatNotificationObservers(){
+  for(const stop of chatNotificationStops.values()){try{stop()}catch{}}
+  chatNotificationStops.clear();chatNotificationSeen.clear();
+}
+function syncChatNotificationObservers(){
+  const wanted=new Set(chats.map(chat=>chat.id));
+  for(const [id,stop] of chatNotificationStops){
+    if(!wanted.has(id)){try{stop()}catch{}chatNotificationStops.delete(id);chatNotificationSeen.delete(id)}
+  }
+  for(const chat of chats){
+    if(chatNotificationStops.has(chat.id))continue;
+    const latestQuery=query(collection(db,"chats",chat.id,"messages"),orderBy("createdAt","desc"),limit(1));
+    const stop=onSnapshot(latestQuery,snapshot=>{
+      const latest=snapshot.docs[0];if(!latest)return;
+      const message={id:latest.id,...latest.data()};
+      const previous=chatNotificationSeen.get(chat.id);chatNotificationSeen.set(chat.id,message.id);
+      if(previous===undefined||previous===message.id||message.senderUid===me.uid||cur===chat.id)return;
+      if((me.mutedChats||[]).includes(chat.id))return;
+      const sender=(chat.memberProfiles||[]).find(person=>person.uid===message.senderUid);
+      const name=sender?.displayName||message.displayName||"Пользователь";
+      const preview=message.attachment?(message.attachment.type?.startsWith("image/")?"Фото":message.attachment.type?.startsWith("audio/")?"Аудио":"Файл"):(message.text||"Новое сообщение").slice(0,100);
+      notifyAppEvent("FROSS · "+(chat.title||name),name+": "+preview,"fross-message-"+chat.id,chat.id);
+    },error=>console.warn("FROSS notification listener:",error?.message||error));
+    chatNotificationStops.set(chat.id,stop);
+  }
+}
 function clearProfileObservers(map){
   for(const stop of map.values()){try{stop()}catch{}}
   map.clear();
@@ -886,13 +947,13 @@ function startChatList() {
   const q=query(collection(db,"chats"),where("memberUids","array-contains",me.uid),limit(100));
   stopChats=onSnapshot(q,snapshot=>{
     chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
-    syncChatProfileObservers();renderList();head();
+    syncChatProfileObservers();syncChatNotificationObservers();renderList();head();
   },async error=>{
     console.error("Chat list listener:",error);
     try{
       const snapshot=await getDocs(q);
       chats=sortChats(snapshot.docs.map(d=>({id:d.id,...d.data()})));
-      syncChatProfileObservers();renderList();head();
+      syncChatProfileObservers();syncChatNotificationObservers();renderList();head();
     }catch(fallbackError){
       console.error("Chat list fallback:",fallbackError);
       $("list").innerHTML='<div class="empty" style="padding:20px">Не удалось загрузить чаты. Проверьте подключение и попробуйте снова.</div>';
@@ -1754,13 +1815,13 @@ $("gb").onclick=()=>{
   };
 };
 $("me-profile").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
-async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function logout(){if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
   if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
   else{
     currentUser=null;me=null;bootedUid=null;
-    if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);if(presenceTimer)clearInterval(presenceTimer);
+    if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);
     showLogin();
   }
 });
