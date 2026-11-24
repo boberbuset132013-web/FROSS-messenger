@@ -49,16 +49,6 @@ window.FROSS = {
 function authEmail(username) {
   return String(username).trim().toLowerCase() + "@fross-ca5d6.firebaseapp.com";
 }
-async function completeTotpSignIn(error) {
-  const sdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
-  const resolver=sdk.getMultiFactorResolver(auth,error);
-  const hint=resolver.hints.find(item=>item.factorId===sdk.TotpMultiFactorGenerator.FACTOR_ID);
-  if(!hint)throw new Error("Для этого аккаунта требуется другой способ второго фактора.");
-  const code=prompt("Введите шестизначный код из Google Authenticator:");
-  if(!code)throw new Error("Вход отменён.");
-  const assertion=sdk.TotpMultiFactorGenerator.assertionForSignIn(hint.uid,code.trim());
-  return await resolver.resolveSignIn(assertion);
-}
 function showLogin() {
   $("auth").style.display="grid"; $("app").style.display="none"; $("auth").scrollTop=0;
   $("ac").innerHTML='<div class="logo">FROSS</div><p class="mut">Вход в мессенджер</p><label>Email (для старых перенесённых аккаунтов — username)</label><input id="lu" type="text" autocomplete="username" maxlength="120" placeholder="name@example.com"><label>Пароль</label><input id="lp" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false"><div class="err" id="le"></div><div class="row"><button class="pr" id="lg">Войти</button><button id="gr">Google</button></div><p><button class="ic" id="reset">Забыли пароль?</button></p><p style="text-align:center" class="mut">Нет аккаунта? <button class="ic" style="font-size:15px;color:var(--accent)" id="rg">Регистрация</button></p>';
@@ -73,7 +63,7 @@ function showLogin() {
     if(!password)throw Error("Введите пароль. Большие и маленькие буквы учитываются отдельно.");
     const result=await signInWithEmailAndPassword(auth,email,password);
     if(!result.user.emailVerified){const token=await result.user.getIdTokenResult();if(token.claims.legacyAccount!==true){await sendEmailVerification(result.user);await signOut(auth);$("le").textContent="Подтвердите email по ссылке в письме, затем войдите снова.";return}}
-  }catch(e){try{if(e?.code==="auth/multi-factor-auth-required"){await completeTotpSignIn(e);return}}catch(mfaError){$("le").textContent=authError(mfaError);return}$("le").textContent=authError(e)}};
+  }catch(e){$("le").textContent=authError(e)}};
   $("lp").onkeydown=e=>{if(e.key==="Enter")$("lg").click()};
 }
 
@@ -1671,39 +1661,11 @@ $("gb").onclick=()=>{
       const tokenInfo = await currentUser.getIdTokenResult();
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и поделись собственным контактом.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label>Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Смена пароля</b><small class="mut">Бот пришлёт запрос с кнопками подтверждения и отказа. Ссылка на смену пароля появится только после твоего подтверждения.</small></div></div><button id="pc" class="pr" style="width:100%">Запросить смену пароля через Telegram</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и поделись собственным контактом.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label>Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Смена пароля</b><small class="mut">Бот пришлёт запрос с кнопками подтверждения и отказа. Ссылка на смену пароля появится только после твоего подтверждения.</small></div></div><button id="pc" class="pr" style="width:100%">Запросить смену пароля через Telegram</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("lo").onclick=()=>{
         openM('<div class="logout-confirm"><h3>Выйти из FROSS?</h3><p class="mut">Текущая сессия на этом устройстве будет завершена.</p><div class="row"><button type="button" id="logout-cancel">Отмена</button><button type="button" class="pr" id="logout-confirm">Выйти</button></div></div>');
         $("logout-cancel").onclick=closeM;
         $("logout-confirm").onclick=async()=>{closeM();document.body.classList.remove("ch");await logout()};
-      };
-      const authSdk=await import("https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js");
-      const factors=authSdk.multiFactor(currentUser).enrolledFactors;
-      if(factors.length){
-        $("totp-status").textContent="Подключено: "+factors.map(f=>f.displayName||"Authenticator").join(", ");
-        $("totp-start").textContent="Добавить Authenticator";
-        const disable=document.createElement("button");disable.textContent="Отключить Authenticator";disable.style.marginTop="8px";$("totp-box").append(disable);
-        disable.onclick=async()=>{try{await authSdk.multiFactor(currentUser).unenroll(factors[0]);$("totp-status").textContent="Authenticator отключён.";disable.remove()}catch(e){$("totp-status").textContent=authError(e)}};
-      }
-      $("totp-start").onclick=async()=>{
-        const status=$("totp-status"),box=$("totp-box");
-        try{
-          const session=await authSdk.multiFactor(currentUser).getSession();
-          const secret=await authSdk.TotpMultiFactorGenerator.generateSecret(session);
-          const uri=secret.generateQrCodeUrl(currentUser.email||currentUser.uid,"FROSS Messenger");
-          box.innerHTML='<p>Отсканируйте QR-код в Google Authenticator, затем введите текущий код. Если QR не загрузится, добавьте ключ вручную.</p><img id="totp-qr" alt="QR-код настройки" style="display:block;width:220px;max-width:100%;margin:12px auto;border-radius:12px"><label>Секретный ключ (если QR недоступен)</label><code id="totp-secret" style="overflow-wrap:anywhere"></code><label>Шестизначный код</label><input id="totp-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><div class="err" id="totp-error"></div><button class="pr" id="totp-confirm" style="width:100%">Подтвердить и включить</button>';
-          $("totp-secret").textContent=secret.secretKey;
-          try{const qrmod=await import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm");$("totp-qr").src=await qrmod.toDataURL(uri,{width:220,margin:2})}
-          catch(qrError){$("totp-qr").remove();$("totp-error").textContent="QR недоступен. Используйте секретный ключ вручную."}
-          $("totp-confirm").onclick=async()=>{
-            try{
-              const assertion=authSdk.TotpMultiFactorGenerator.assertionForEnrollment(secret,$("totp-code").value.trim());
-              await authSdk.multiFactor(currentUser).enroll(assertion,"FROSS Authenticator");
-              $("totp-error").style.color="#3ddc84";$("totp-error").textContent="Google Authenticator успешно подключён.";
-              $("totp-confirm").disabled=true;
-            }catch(e){$("totp-error").textContent=authError(e)}
-          };
-        }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
       };
       let phoneChallengeId=null;
       $("phoneViaTelegram").onclick=async()=>{
@@ -1720,8 +1682,8 @@ $("gb").onclick=()=>{
           const result=await response.json().catch(()=>({}));
           if(!response.ok)throw new Error(result.error||("Firebase Functions ответил HTTP "+response.status+"."));
           phoneChallengeId=result.challengeId;
-          if(botWindow)botWindow.location.href=result.botUrl;else window.location.href=result.botUrl;
-          $("phoneError").textContent="В Telegram нажми «Поделиться номером телефона», отправь собственный контакт и вернись сюда за кодом.";
+          const verificationBotUrl="https://t.me/FROSS_verification_bot?start="+encodeURIComponent(result.challengeId);\n          if(botWindow)botWindow.location.href=verificationBotUrl;else window.location.href=verificationBotUrl;
+          $("phoneError").textContent="Открылся @FROSS_verification_bot. Нажми «Поделиться номером телефона», отправь свой контакт и вернись сюда за кодом.";
         }catch(error){
           botWindow?.close();
           $("phoneError").textContent=error instanceof TypeError?"Нет соединения с сервером. Проверь публикацию Firebase Functions и подключение.":(error.message||authError(error));
