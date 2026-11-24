@@ -434,6 +434,36 @@ export const startPhoneVerification = onRequest({secrets:BOT_SECRETS},async(req,
 });
 
 
+export const requestPasswordResetByEmail = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
+  setCors(req,res);
+  if(req.method==="OPTIONS")return res.status(204).send("");
+  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
+  const generic={ok:true,message:"Если аккаунт существует и Telegram привязан, запрос придёт в бота FROSS."};
+  try{
+    const email=String(req.body?.email||"").trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(200).json(generic);
+    const firestore=getFirestore(),rateId=createHash("sha256").update(email).digest("hex");
+    const rateRef=firestore.doc("passwordResetRateLimits/"+rateId);
+    const allowed=await firestore.runTransaction(async tx=>{
+      const snap=await tx.get(rateRef),last=snap.data()?.requestedAt;
+      if(last&&Date.now()-last.toMillis()<60*1000)return false;
+      tx.set(rateRef,{requestedAt:Timestamp.now(),expiresAt:Timestamp.fromMillis(Date.now()+24*60*60*1000)});
+      return true;
+    });
+    if(!allowed)return res.status(200).json(generic);
+    try{
+      const user=await getAuth().getUserByEmail(email);
+      await sendPasswordResetRequest(user.uid);
+    }catch(error){
+      console.warn("Password reset by email not delivered:",error?.code||error?.message||"unknown");
+    }
+    return res.status(200).json(generic);
+  }catch(error){
+    console.error("Password reset by email:",error?.message||error);
+    return res.status(200).json(generic);
+  }
+});
+
 export const requestPasswordReset = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
   setCors(req,res);
   if(req.method==="OPTIONS")return res.status(204).send("");
@@ -539,9 +569,14 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
       const uid=linked.docs[0].id,privateData=linked.docs[0].data();
       await claimBotOwnerIfNeeded(firestore,uid,message.from?.id,message.from?.username);
       if(text==="/securitycode"){
+        const last=privateData.securityCodeCreatedAt?.toMillis?.()||0;
+        if(last&&Date.now()-last<30*1000){
+          await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Подожди 30 секунд перед запросом нового кода безопасности."});
+          return res.status(200).send("ok");
+        }
         const code=String(randomInt(100000,1000000)),expiresAt=Timestamp.fromMillis(Date.now()+5*60*1000);
         await firestore.doc("users/"+uid).set({securityCodeHash:createHash("sha256").update(uid+":"+code).digest("hex"),securityCodeExpiresAt:expiresAt,securityCodeCreatedAt:Timestamp.now()},{merge:true});
-        await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Твой одноразовый код безопасности FROSS: "+code+"\\nОн действует 5 минут. Никому его не пересылай."});
+        await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Твой одноразовый код безопасности FROSS: "+code+"\nОн действует 5 минут. Никому его не пересылай."});
         return res.status(200).send("ok");
       }
       if(text==="/createbot"){
