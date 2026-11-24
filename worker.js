@@ -248,6 +248,12 @@ async function confirmPhoneVerification(request,env){
     if(challenge.attempts>=5)await deletePhoneRecord(key,env);else await savePhoneRecord(key,challenge,env);
     return json({error:challenge.attempts>=5?"Слишком много попыток. Запроси новый код.":"Неверный код. Проверь сообщение от бота."},400);
   }
+  const phoneLink={uid:identity.uid,telegramChatId:String(challenge.chatId||""),telegramUserId:String(challenge.telegramUserId||""),telegramUsername:String(challenge.telegramUsername||""),linkedAt:Date.now()};
+  const previousLink=await readPhoneRecord("phoneLinks/"+identity.uid+".json",env);
+  if(phoneLink.telegramUserId){
+    const existing=await readPhoneRecord("telegramOwners/"+phoneLink.telegramUserId+".json",env);
+    if(existing&&existing.uid!==identity.uid)return json({error:"Этот Telegram уже привязан к другому аккаунту FROSS."},409);
+  }
   const userPath="users/"+encodeURIComponent(identity.uid),privateDoc=await firestoreGet(userPath,identity.token);
   const phoneVisible=privateDoc?.fields?.phoneVisible?.booleanValue===true;
   await firestorePatch(userPath,identity.token,{
@@ -258,13 +264,12 @@ async function confirmPhoneVerification(request,env){
     phoneStatus:{stringValue:phoneVisible?"visible":"hidden"},
     phonePublic:{stringValue:phoneVisible?challenge.phone:""}
   });
-  const phoneLink={uid:identity.uid,telegramChatId:String(challenge.chatId||""),telegramUserId:String(challenge.telegramUserId||""),telegramUsername:String(challenge.telegramUsername||""),linkedAt:Date.now()};
-  await savePhoneRecord("phoneLinks/"+identity.uid+".json",phoneLink,env);
-  if(phoneLink.telegramUserId){
-    const existing=await readPhoneRecord("telegramOwners/"+phoneLink.telegramUserId+".json",env);
-    if(existing&&existing.uid!==identity.uid)throw new Error("Этот Telegram уже привязан к другому аккаунту FROSS.");
-    await savePhoneRecord("telegramOwners/"+phoneLink.telegramUserId+".json",phoneLink,env);
+  if(previousLink?.telegramUserId&&previousLink.telegramUserId!==phoneLink.telegramUserId){
+    const oldOwner=await readPhoneRecord("telegramOwners/"+previousLink.telegramUserId+".json",env);
+    if(oldOwner?.uid===identity.uid)await deletePhoneRecord("telegramOwners/"+previousLink.telegramUserId+".json",env);
   }
+  await savePhoneRecord("phoneLinks/"+identity.uid+".json",phoneLink,env);
+  if(phoneLink.telegramUserId)await savePhoneRecord("telegramOwners/"+phoneLink.telegramUserId+".json",phoneLink,env);
   await deletePhoneRecord(key,env);
   if(challenge.chatId)await deletePhoneRecord("phoneSessions/"+String(challenge.chatId)+".json",env);
   return json({ok:true,phoneVerified:true,channel:"telegram"});
