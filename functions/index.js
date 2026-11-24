@@ -589,31 +589,3 @@ export const purgeDeletedChats = onSchedule("every 15 minutes", async () => {
     catch(error){console.error("Could not purge deleted chat "+chat.id,error)}
   }
 });
-
-export const deleteGroupForEveryone = onRequest(async(req,res)=>{
-  setCors(req,res);
-  if(req.method==="OPTIONS")return res.status(204).send("");
-  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
-  try{
-    const uid=await verifiedUid(req),chatId=String(req.body?.chatId||"");
-    if(!/^[A-Za-z0-9_-]{1,120}$/.test(chatId))return res.status(400).json({error:"Некорректный ID группы."});
-    const firestore=getFirestore(),chatRef=firestore.doc("chats/"+chatId),snap=await chatRef.get();
-    if(!snap.exists)return res.status(404).json({error:"Группа уже удалена."});
-    const chat=snap.data();
-    if(chat.type!=="group"||chat.ownerUid!==uid)return res.status(403).json({error:"Удалить группу у всех может только её создатель."});
-    await firestore.recursiveDelete(chatRef);
-    return res.status(200).json({ok:true,deleted:true});
-  }catch(error){
-    console.error("Delete group for everyone:",error?.message||error);
-    return res.status(400).json({error:error?.message||"Не удалось удалить группу."});
-  }
-});
-
-export const purgeDeletedChats = onSchedule("every 15 minutes", async () => {
-  const firestore=getFirestore(),now=Timestamp.now();
-  const due=await firestore.collection("chats").where("deleteAfter","<=",now).limit(100).get();
-  for(const chat of due.docs){
-    try{await firestore.recursiveDelete(chat.ref)}
-    catch(error){console.error("Could not purge deleted chat "+chat.id,error)}
-  }
-});
