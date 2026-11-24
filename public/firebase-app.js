@@ -1097,12 +1097,13 @@ async function openBotsPanel(){
   };
   const editBot=bot=>{
     const buttonRows=(bot.buttons||[]).map(item=>[item.label||"",item.response||"",item.url||""].join(" | ")).join("\n");
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>РЕДАКТОР БОТА FROSS</span><span class="profile-live online">Профиль</span></div><label>Имя бота</label><input id="bot-edit-name" maxlength="40"><label>Username</label><input id="bot-edit-username" maxlength="24"><small class="mut">3–24 символа: латиница, цифры и _. В профиле будет @username.</small><label>Описание</label><textarea id="bot-edit-description" rows="3" maxlength="300"></textarea><label>Приветствие</label><textarea id="bot-edit-welcome" rows="3" maxlength="1000"></textarea><label>Ответ по умолчанию</label><textarea id="bot-edit-fallback" rows="3" maxlength="1000"></textarea><label>Кнопки (одна на строку: Название | Ответ | Ссылка)</label><textarea id="bot-edit-buttons" rows="7" placeholder="Каталог | Посмотри наш каталог | https://example.com&#10;Поддержка | Напиши, чем помочь"></textarea><small class="mut">До 12 кнопок. Ссылка необязательна. Можно поручить FROSS изменить эти настройки прямо в его чате.</small><div class="err" id="bot-edit-error"></div><div class="row"><button id="bot-edit-cancel">Отмена</button><button class="pr" id="bot-edit-save">Сохранить</button></div></div>');
+    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>РЕДАКТОР БОТА FROSS</span><span class="profile-live online">Профиль</span></div><label>Имя бота</label><input id="bot-edit-name" maxlength="40"><label>Username</label><input id="bot-edit-username" maxlength="24"><small class="mut">3–24 символа: латиница, цифры и _. В профиле будет @username.</small><label>Описание</label><textarea id="bot-edit-description" rows="3" maxlength="300"></textarea><label>Приветствие</label><textarea id="bot-edit-welcome" rows="3" maxlength="1000"></textarea><label>Ответ по умолчанию</label><textarea id="bot-edit-fallback" rows="3" maxlength="1000"></textarea><label style="display:flex;align-items:center;gap:9px"><input id="bot-edit-enabled" type="checkbox" style="width:auto;margin:0"> Показывать бота в каталоге FROSS</label><label>Кнопки (одна на строку: Название | Ответ | Ссылка)</label><textarea id="bot-edit-buttons" rows="7" placeholder="Каталог | Посмотри наш каталог | https://example.com&#10;Поддержка | Напиши, чем помочь"></textarea><small class="mut">До 12 кнопок. Ссылка необязательна. Можно поручить FROSS изменить эти настройки прямо в его чате.</small><div class="err" id="bot-edit-error"></div><div class="row"><button id="bot-edit-cancel">Отмена</button><button class="pr" id="bot-edit-save">Сохранить</button></div></div>');
     $("bot-edit-name").value=bot.name||"";
     $("bot-edit-username").value=bot.username||"";
     $("bot-edit-description").value=bot.description||"";
     $("bot-edit-welcome").value=bot.welcomeMessage||"";
     $("bot-edit-fallback").value=bot.fallbackMessage||"";
+    $("bot-edit-enabled").checked=bot.enabled!==false;
     $("bot-edit-buttons").value=buttonRows;
     $("bot-edit-cancel").onclick=()=>{closeM();openBotsPanel()};
     $("bot-edit-save").onclick=async()=>{
@@ -1118,7 +1119,7 @@ async function openBotsPanel(){
         await call("/api/bots/update",{
           id:bot.id,name:$("bot-edit-name").value.trim(),username:$("bot-edit-username").value.trim(),
           description:$("bot-edit-description").value.trim(),welcomeMessage:$("bot-edit-welcome").value.trim(),
-          fallbackMessage:$("bot-edit-fallback").value.trim(),buttons:rows
+          fallbackMessage:$("bot-edit-fallback").value.trim(),enabled:$("bot-edit-enabled").checked,buttons:rows
         });
         closeM();openBotsPanel();
       }catch(errorValue){error.textContent=errorValue.message||"Не удалось сохранить бота."}
