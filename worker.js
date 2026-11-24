@@ -408,7 +408,8 @@ export default {async fetch(request,env){
   if(url.pathname.startsWith("/api/")){try{return corsResponse(request,await api(request,env,url))}catch(error){
     console.error("FROSS private file API:",error?.message||error);const message=String(error?.message||"");
     const status=message.includes("Нужен вход")||message.includes("Сессия")||message.includes("Войди")?401:
-      message.includes("Нет доступа")||message.includes("может только")?403:message.includes("Filebase ещё не подключён")?503:500;
+      message.includes("HTTP 403")||message.includes("Нет доступа")||message.includes("может только")?403:
+      message.includes("Filebase ещё не подключён")?503:500;
     return corsResponse(request,json({error:message||"Ошибка сервера при работе с файлом."},status));
   }}
   if(!env.ASSETS)return new Response("Static assets binding ASSETS is not configured.",{status:503});
