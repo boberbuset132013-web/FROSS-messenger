@@ -185,33 +185,17 @@ async function createSecurityRequest(uid,type,telegram,extra={}){
   });
   return {id,ref,expiresAt};
 }
-async function sendPasswordResetRequest(uid){
-  const firestore=getFirestore(),telegram=await linkedTelegramUser(firestore,uid),user=await getAuth().getUser(uid);
-  if(!user.email||!user.providerData.some(provider=>provider.providerId==="password"))
-    throw new Error("У этого аккаунта нет входа по паролю. Добавь пароль в настройках Firebase Auth.");
-  await ensureTelegramWebhook(TELEGRAM_BOT_TOKEN.value(),TELEGRAM_WEBHOOK_SECRET.value());
-  const request=await createSecurityRequest(uid,"password_reset",telegram,{email:user.email});
-  await telegramApi(TELEGRAM_BOT_TOKEN.value(),"sendMessage",{
-    chat_id:telegram.telegramChatId,
-    text:"⚠️ Кто-то запросил сброс пароля твоего аккаунта FROSS. Если это ты, подтверди запрос. Если нет — нажми «Это не я».",
-    reply_markup:{inline_keyboard:[[
-      {text:"Подтвердить смену пароля",callback_data:"pwd_yes_"+request.id},
-      {text:"Это не я",callback_data:"pwd_no_"+request.id}
-    ]]}
-  });
-  return request;
-}
 async function answerCallback(token,callbackId,text){
   if(callbackId)await telegramApi(token,"answerCallbackQuery",{callback_query_id:callbackId,text,show_alert:false}).catch(()=>{});
 }
 async function handleSecurityCallback(callback,token){
   const data=String(callback.data||""),fromId=String(callback.from?.id||""),chatId=String(callback.message?.chat?.id||"");
-  const match=data.match(/^(pwd_yes|pwd_no|del_yes|del_no|del_cancel)_([A-Za-z0-9_-]{12,32})$/);
+  const match=data.match(/^(del_yes|del_no|del_cancel)_([A-Za-z0-9_-]{12,32})$/);
   if(!match){await answerCallback(token,callback.id,"Неизвестное действие.");return}
   const [,action,id]=match,firestore=getFirestore(),requestRef=firestore.doc("securityRequests/"+id),snap=await requestRef.get();
   if(!snap.exists){await answerCallback(token,callback.id,"Запрос уже не существует.");return}
   const request=snap.data();
-  if((action.startsWith("pwd_")&&request.type!=="password_reset")||(action.startsWith("del_")&&request.type!=="account_delete")){
+  if(request.type!=="account_delete"){
     await answerCallback(token,callback.id,"Это действие не соответствует исходному запросу.");return;
   }
   if(String(request.telegramUserId)!==fromId||String(request.telegramChatId)!==chatId){
@@ -232,25 +216,11 @@ async function handleSecurityCallback(callback,token){
   if(request.status!=="pending_confirmation"||challengeExpired(request)){
     await answerCallback(token,callback.id,"Запрос уже истёк или обработан.");return;
   }
-  if(action==="pwd_no"||action==="del_no"){
+  if(action==="del_no"){
     await requestRef.update({status:"rejected",resolvedAt:Timestamp.now()});
     if(action==="del_no")await firestore.doc("accountDeletionRequests/"+request.uid).set({uid:request.uid,status:"cancelled",cancelledAt:Timestamp.now()},{merge:true});
     await answerCallback(token,callback.id,"Запрос отклонён.");
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Запрос FROSS отклонён. Никаких изменений не внесено."});
-    return;
-  }
-  if(action==="pwd_yes"){
-    const user=await getAuth().getUser(request.uid);
-    if(!user.email||!user.providerData.some(provider=>provider.providerId==="password")){
-      await answerCallback(token,callback.id,"У аккаунта нет пароля для сброса.");return;
-    }
-    const resetLink=await getAuth().generatePasswordResetLink(user.email);
-    await requestRef.update({status:"approved",resolvedAt:Timestamp.now(),resetLinkCreatedAt:Timestamp.now()});
-    await answerCallback(token,callback.id,"Запрос подтверждён.");
-    await telegramApi(token,"sendMessage",{
-      chat_id:chatId,text:"✅ Запрос подтверждён. Открой ссылку, чтобы задать новый пароль. Если ты этого не просил, просто не открывай её.",
-      reply_markup:{inline_keyboard:[[{text:"Сменить пароль FROSS",url:resetLink}]]}
-    });
     return;
   }
   if(action==="del_yes"){
@@ -433,50 +403,6 @@ export const startPhoneVerification = onRequest({secrets:BOT_SECRETS},async(req,
   }
 });
 
-
-export const requestPasswordResetByEmail = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
-  setCors(req,res);
-  if(req.method==="OPTIONS")return res.status(204).send("");
-  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
-  const generic={ok:true,message:"Если аккаунт существует и Telegram привязан, запрос придёт в бота FROSS."};
-  try{
-    const email=String(req.body?.email||"").trim().toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(200).json(generic);
-    const firestore=getFirestore(),rateId=createHash("sha256").update(email).digest("hex");
-    const rateRef=firestore.doc("passwordResetRateLimits/"+rateId);
-    const allowed=await firestore.runTransaction(async tx=>{
-      const snap=await tx.get(rateRef),last=snap.data()?.requestedAt;
-      if(last&&Date.now()-last.toMillis()<60*1000)return false;
-      tx.set(rateRef,{requestedAt:Timestamp.now(),expiresAt:Timestamp.fromMillis(Date.now()+24*60*60*1000)});
-      return true;
-    });
-    if(!allowed)return res.status(200).json(generic);
-    try{
-      const user=await getAuth().getUserByEmail(email);
-      await sendPasswordResetRequest(user.uid);
-    }catch(error){
-      console.warn("Password reset by email not delivered:",error?.code||error?.message||"unknown");
-    }
-    return res.status(200).json(generic);
-  }catch(error){
-    console.error("Password reset by email:",error?.message||error);
-    return res.status(200).json(generic);
-  }
-});
-
-export const requestPasswordReset = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
-  setCors(req,res);
-  if(req.method==="OPTIONS")return res.status(204).send("");
-  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
-  try{
-    const uid=await verifiedUid(req);
-    await sendPasswordResetRequest(uid);
-    return res.status(200).json({ok:true,confirmationSent:true});
-  }catch(error){
-    console.error("Password reset request:",error?.message||error);
-    return res.status(400).json({error:error?.message||"Не удалось отправить запрос в Telegram."});
-  }
-});
 
 export const confirmPhoneVerification = onRequest(async(req,res)=>{
   setCors(req,res);
