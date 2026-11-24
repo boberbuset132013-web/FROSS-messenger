@@ -136,7 +136,7 @@ async function telegramApi(token,method,body){
 async function ensureTelegramWebhook(token,secret){
   const info=await telegramApi(token,"getMe",{});
   if(!info?.username)throw new Error("У Telegram-бота не найден username.");
-  await telegramApi(token,"setWebhook",{url:TG_WEBHOOK_URL,secret_token:secret,allowed_updates:["message","callback_query"],drop_pending_updates:false});
+  await telegramApi(token,"setWebhook",{url:TG_WEBHOOK_URL,secret_token:secret,allowed_updates:["message","callback_query","managed_bot"],drop_pending_updates:false});
   return info.username;
 }
 async function sendTelegramContactRequest(token,chatId){
@@ -193,7 +193,7 @@ async function sendPasswordResetRequest(uid){
   const request=await createSecurityRequest(uid,"password_reset",telegram,{email:user.email});
   await telegramApi(TELEGRAM_BOT_TOKEN.value(),"sendMessage",{
     chat_id:telegram.telegramChatId,
-    text:"🔐 Запрошена смена пароля FROSS. Если это ты, подтверди запрос. Если нет — отклони его.",
+    text:"⚠️ Кто-то запросил сброс пароля твоего аккаунта FROSS. Если это ты, подтверди запрос. Если нет — нажми «Это не я».",
     reply_markup:{inline_keyboard:[[
       {text:"Подтвердить смену пароля",callback_data:"pwd_yes_"+request.id},
       {text:"Это не я",callback_data:"pwd_no_"+request.id}
@@ -211,6 +211,9 @@ async function handleSecurityCallback(callback,token){
   const [,action,id]=match,firestore=getFirestore(),requestRef=firestore.doc("securityRequests/"+id),snap=await requestRef.get();
   if(!snap.exists){await answerCallback(token,callback.id,"Запрос уже не существует.");return}
   const request=snap.data();
+  if((action.startsWith("pwd_")&&request.type!=="password_reset")||(action.startsWith("del_")&&request.type!=="account_delete")){
+    await answerCallback(token,callback.id,"Это действие не соответствует исходному запросу.");return;
+  }
   if(String(request.telegramUserId)!==fromId||String(request.telegramChatId)!==chatId){
     await answerCallback(token,callback.id,"Эта кнопка предназначена другому аккаунту.");return;
   }
@@ -266,17 +269,23 @@ async function handleSecurityCallback(callback,token){
   }
 }
 async function claimBotOwnerIfNeeded(firestore,uid,telegramUserId,telegramUsername){
-  if(String(telegramUsername||"").toLowerCase()!==BOT_OWNER_USERNAME)return;
+  const profileSnap=await firestore.doc("publicUsers/"+uid).get();
+  const profile=profileSnap.data()||{};
+  const frossUsername=String(profile.usernameLower||profile.username||"").toLowerCase();
+  if(frossUsername!==BOT_OWNER_USERNAME||!telegramUserId)return;
   const ref=firestore.doc("system/telegramBotOwner");
   await firestore.runTransaction(async tx=>{
     const snap=await tx.get(ref);
-    if(!snap.exists)tx.create(ref,{uid,telegramUserId:String(telegramUserId),username:BOT_OWNER_USERNAME,createdAt:Timestamp.now()});
+    if(!snap.exists)tx.create(ref,{
+      uid,telegramUserId:String(telegramUserId),telegramUsername:String(telegramUsername||"").toLowerCase(),
+      frossUsername:BOT_OWNER_USERNAME,createdAt:Timestamp.now()
+    });
   });
 }
 async function isTelegramBotOwner(firestore,user){
-  if(String(user?.username||"").toLowerCase()!==BOT_OWNER_USERNAME)return false;
   const snap=await firestore.doc("system/telegramBotOwner").get();
-  return snap.exists&&String(snap.data().telegramUserId)===String(user?.id||"");
+  return snap.exists&&snap.data().frossUsername===BOT_OWNER_USERNAME
+    &&String(snap.data().telegramUserId)===String(user?.id||"");
 }
 async function setBotProfilePhoto(token,fileId){
   const file=await telegramApi(token,"getFile",{file_id:fileId});
@@ -337,9 +346,12 @@ export const requestAccountDeletion = onRequest({secrets:[TELEGRAM_BOT_TOKEN,TEL
     const userData=userSnap.data()||{};
     if(!userData.telegramChatId||!userData.telegramUserId)return res.status(409).json({error:"Сначала привяжи Telegram: подтверди свой номер через бота FROSS."});
     const active=await firestore.doc("accountDeletionRequests/"+uid).get();
-    if(active.exists&&["awaiting_confirmation","scheduled"].includes(active.data().status)
-      &&(!active.data().expiresAt||active.data().expiresAt.toMillis()>Date.now()))
-      return res.status(409).json({error:"Запрос на удаление уже существует. Проверь сообщения от бота FROSS."});
+    if(active.exists){
+      const state=active.data();
+      const stillPending=state.status==="awaiting_confirmation"&&(!state.expiresAt||state.expiresAt.toMillis()>Date.now());
+      const stillScheduled=state.status==="scheduled"&&state.deleteAfter&&state.deleteAfter.toMillis()>Date.now();
+      if(stillPending||stillScheduled)return res.status(409).json({error:"Запрос на удаление уже существует. Проверь сообщения от бота FROSS."});
+    }
     await ensureTelegramWebhook(TELEGRAM_BOT_TOKEN.value(),TELEGRAM_WEBHOOK_SECRET.value());
     const requestId=randomBytes(12).toString("base64url");
     const requestRef=firestore.doc("securityRequests/"+requestId);
