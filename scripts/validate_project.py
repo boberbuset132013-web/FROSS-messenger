@@ -39,7 +39,7 @@ checks = {
     "cinematic call overlay includes profile avatar, planet and ringback": 'class="call-planet"' in html and 'id="call-avatar"' in html and "startRingbackTone" in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
     "phone profile card shows hidden and unverified states": "profile-card-presence" in js and "profile.phoneStatus" in js and "phonePublic" in rules and '"phoneStatus"' in rules,
     "messages use plum bubbles without black shadow": "FROSS plum canvas and clean messages" in html and "box-shadow:none!important" in html,
-    "phone verification opens only Telegram": "phoneViaTelegram" in js and "phoneViaMax" not in js and "startPhoneVerification" in js and "botUrl" in js,
+    "phone verification opens only Telegram": "phoneViaTelegram" in js and "phoneViaMax" not in js and "startPhoneVerification" in js and "FROSS_verification_bot" in js,
     "general chat is no longer injected into the user's list": 'cur=""' in js and 'const all=[{id:"general"' not in js and "await ensureGeneral()" not in js,
     "old message avatars subscribe to current public profiles": "function watchMessageProfile(uid,box)" in js and 'onSnapshot(doc(db,"publicUsers",uid)' in js and "message-avatar" in js,
     "chat list avatars refresh when public profiles change": "function syncChatProfileObservers()" in js and "syncChatProfileObservers();syncChatNotificationObservers();renderList();head();" in js,
