@@ -16,7 +16,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyBflnOcg4btfTRLgFWV1HT47j0fcnC15d4",
   authDomain: "fross-ca5d6.firebaseapp.com",
   projectId: "fross-ca5d6",
-  storageBucket: "fross-ca5d6.firebasestorage.app",
   messagingSenderId: "200886619645",
   appId: "1:200886619645:web:0f1bc9b750eedf22a05d94"
 };
@@ -222,14 +221,8 @@ function authError(e) {
     "auth/popup-closed-by-user":"Окно Google было закрыто.",
     "auth/account-exists-with-different-credential":"Для этого email уже существует аккаунт с другим способом входа.",
     "permission-denied":"Firestore Rules запретили операцию. Проверьте опубликованные правила Firestore.",
-    "storage/unauthorized":"Firebase Storage запретил загрузку. Опубликуйте Storage Rules и проверьте, что вход выполнен в нужный аккаунт.",
-    "storage/bucket-not-found":"В Firebase не найден Storage bucket. Проверьте, создано ли хранилище в проекте.",
-    "storage/quota-exceeded":"Превышена квота Firebase Storage.",
-    "storage/retry-limit-exceeded":"Firebase не смог завершить загрузку после нескольких попыток. Проверьте интернет.",
-    "storage/canceled":"Загрузка была отменена.",
-    "storage/unknown":"Firebase Storage вернул неизвестную ошибку. Проверьте консоль и повторите попытку."
   };
-  return map[code] || e?.message || "Неизвестная ошибка Firebase.";
+  return map[code] || e?.message || "Неизвестная ошибка FROSS.";
 }
 function applyS(s) {
   const r=document.documentElement;
