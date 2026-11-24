@@ -7,7 +7,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 1, timeoutSeconds: 540, memory: "512MiB" });
@@ -293,7 +293,7 @@ async function setBotProfilePhoto(token,fileId){
 async function handleOwnerBotMessage(message,token,firestore){
   const from=message.from||{},chatId=message.chat?.id;
   if(String(message.chat?.type)!=="private"||!await isTelegramBotOwner(firestore,from))return false;
-  const text=String(message.text||"").trim();
+  const text=String(message.text||message.caption||"").trim();
   if(text.startsWith("/setname ")){
     const name=text.slice(9).trim();if(!name||name.length>64)throw new Error("Имя должно содержать от 1 до 64 символов.");
     await telegramApi(token,"setMyName",{name});
@@ -309,7 +309,7 @@ async function handleOwnerBotMessage(message,token,firestore){
     await telegramApi(token,"setMyShortDescription",{short_description:shortDescription});
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Краткое описание бота обновлено."});return true;
   }
-  if(text==="/setphoto"&&Array.isArray(message.photo)&&message.photo.length){
+  if((text==="/setphoto"||text.startsWith("/setphoto@"))&&Array.isArray(message.photo)&&message.photo.length){
     await setBotProfilePhoto(token,message.photo[message.photo.length-1].file_id);
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Фото профиля бота обновлено."});return true;
   }
@@ -590,7 +590,7 @@ export const purgeDeletedChats = onSchedule("every 15 minutes", async () => {
   }
 });
 
-export const deleteGroupForEveryoneexport const deleteGroupForEveryone = onRequest(async(req,res)=>{
+export const deleteGroupForEveryone = onRequest(async(req,res)=>{
   setCors(req,res);
   if(req.method==="OPTIONS")return res.status(204).send("");
   if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
