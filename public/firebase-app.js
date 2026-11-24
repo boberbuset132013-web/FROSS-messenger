@@ -1495,6 +1495,76 @@ async function copyProfileValue(value,button){
     setTimeout(()=>{if(button.isConnected)button.textContent=previous},1300);
   }catch(error){alert("Не удалось скопировать: "+(error.message||"попробуй ещё раз."))}
 }
+async function openOwnProfileEditor(profile){
+  const P={
+    username:me.username||profile.username||"",
+    displayName:me.displayName||profile.displayName||"",
+    bio:me.bio||profile.bio||"",
+    avatarUrl:me.avatarUrl||profile.avatarUrl||"",
+    avatarDirty:false,
+    phoneNumber:me.phoneNumber||""
+  };
+  openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>РЕДАКТИРОВАНИЕ ПРОФИЛЯ</span><span class="profile-live online">Мой профиль</span></div><div class="profile-edit-photo"><div class="av big" id="profile-edit-avatar"></div><div><button type="button" id="profile-edit-photo-button">📷 Изменить фото</button><button type="button" id="profile-edit-photo-remove">Убрать фото</button><input id="profile-edit-photo-file" type="file" accept="image/*" hidden><small class="mut" id="profile-edit-photo-state">Фото профиля</small></div></div><label>Имя</label><input id="profile-edit-display" maxlength="40"><label>Username</label><input id="profile-edit-username" maxlength="20"><small class="mut">3–20 символов: латиница, цифры и _.</small><label>Номер телефона</label><div class="profile-phone-row"><span id="profile-edit-phone"></span><button type="button" id="profile-edit-phone-change">Изменить</button></div><small class="mut">Номер меняется после повторного подтверждения через Telegram.</small><label>Описание</label><textarea id="profile-edit-bio" rows="3" maxlength="160" placeholder="Расскажи о себе"></textarea><div class="err" id="profile-edit-error"></div><div class="profile-public-actions"><button type="button" id="profile-edit-cancel">Отмена</button><button type="button" class="pr" id="profile-edit-save">Сохранить</button></div></div>');
+  $("profile-edit-display").value=P.displayName;
+  $("profile-edit-username").value=P.username;
+  $("profile-edit-bio").value=P.bio;
+  $("profile-edit-phone").textContent=P.phoneNumber||"Номер не подтверждён";
+  avatar($("profile-edit-avatar"),{...profile,displayName:P.displayName,avatarUrl:P.avatarUrl});
+  $("profile-edit-photo-button").onclick=()=>$("profile-edit-photo-file").click();
+  $("profile-edit-photo-file").onchange=event=>{
+    const file=event.target.files?.[0];event.target.value="";if(!file)return;
+    pickImg(file,dataUrl=>{
+      P.avatarUrl=dataUrl;P.avatarDirty=true;
+      avatar($("profile-edit-avatar"),{...profile,displayName:$("profile-edit-display").value,avatarUrl:dataUrl});
+      $("profile-edit-photo-state").textContent="Новое фото готово к сохранению.";
+    });
+  };
+  $("profile-edit-photo-remove").onclick=()=>{
+    P.avatarUrl="";P.avatarDirty=true;
+    avatar($("profile-edit-avatar"),{displayName:P.displayName,profileColor:me.profileColor});
+    $("profile-edit-photo-state").textContent="Фото будет удалено после сохранения.";
+  };
+  $("profile-edit-display").oninput=()=>P.displayName=$("profile-edit-display").value;
+  $("profile-edit-username").oninput=()=>P.username=$("profile-edit-username").value.trim().toLowerCase();
+  $("profile-edit-bio").oninput=()=>P.bio=$("profile-edit-bio").value;
+  $("profile-edit-phone-change").onclick=()=>{
+    closeM();window.FROSS_SETTINGS_START=0;$("gb").click();
+  };
+  $("profile-edit-cancel").onclick=()=>{closeM();openUserProfile({...me})};
+  $("profile-edit-save").onclick=async()=>{
+    const button=$("profile-edit-save"),error=$("profile-edit-error"),oldUsername=String(me.username||"").toLowerCase();
+    const username=P.username.trim().toLowerCase(),displayName=P.displayName.trim(),bio=P.bio.trim();
+    if(!/^[a-z0-9_]{3,20}$/.test(username)){error.textContent="Username: 3–20 символов, латиница, цифры и _.";return}
+    if(displayName.length>40){error.textContent="Имя не должно быть длиннее 40 символов.";return}
+    if(bio.length>160){error.textContent="Описание не должно быть длиннее 160 символов.";return}
+    button.disabled=true;button.textContent="Сохраняем…";
+    try{
+      const previousAvatar=me.avatarUrl||"",avatarUrl=P.avatarDirty?await uploadAvatar(me.uid,P.avatarUrl):(P.avatarUrl||"");
+      const publicRef=doc(db,"publicUsers",me.uid);
+      const fields={username,usernameLower:username,displayName:displayName||username,bio,avatarUrl,profileColor:me.profileColor||S.profileColor||DEF.profileColor,lastSeenAt:serverTimestamp()};
+      if(username!==oldUsername){
+        await runTransaction(db,async tx=>{
+          const nextRef=doc(db,"usernameIndex",username),oldRef=doc(db,"usernameIndex",oldUsername);
+          const taken=await tx.get(nextRef);
+          if(taken.exists()&&taken.data().uid!==me.uid)throw new Error("Этот username уже занят.");
+          const old=await tx.get(oldRef);
+          if(old.exists()&&old.data().uid===me.uid)tx.delete(oldRef);
+          tx.set(nextRef,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
+          tx.update(publicRef,fields);
+        });
+      }else{
+        await setDoc(publicRef,fields,{merge:true});
+      }
+      const saved=await getDoc(publicRef);
+      if(!saved.exists()||saved.data().username!==username||saved.data().bio!==bio)throw new Error("Не удалось проверить сохранение профиля.");
+      Object.assign(me,{username,usernameLower:username,displayName:displayName||username,bio,avatarUrl});
+      Object.assign(profile,me);
+      if(previousAvatar.startsWith("filebase:")&&previousAvatar!==avatarUrl)privateFileApi("/api/files/delete-avatar",{path:previousAvatar.slice(9)}).catch(error=>console.warn("Old profile photo cleanup:",error.message));
+      closeM();head();renderList();openUserProfile({...me});
+      if(username!==oldUsername)location.reload();
+    }catch(errorValue){error.textContent=authError(errorValue);button.disabled=false;button.textContent="Сохранить"}
+  };
+}
 async function openUserProfile(userOrName) {
   try {
     let profile=userOrName;
@@ -1506,7 +1576,8 @@ async function openUserProfile(userOrName) {
       }else profile=await findPublicProfileByUsername(value);
     }
     if(!profile||profile.deleted)throw new Error("Профиль недоступен.");
-    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ПРОФИЛЬ FROSS</span><span class="profile-live" id="profile-card-presence"></span></div><div class="profile-public-card-main"><div class="av big" id="profile-card-avatar"></div><div class="profile-public-card-identity"><h3 id="profile-card-name"></h3><div class="profile-handle-row"><b class="profile-handle" id="profile-card-handle"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-username" aria-label="Копировать username">⧉</button></div></div></div><div id="profile-card-phone" class="profile-phone-row"><span>Номер телефона</span><b id="profile-card-phone-value"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-phone" aria-label="Копировать номер" hidden>⧉</button></div><div class="profile-description-label">Описание</div><p id="profile-card-bio" class="profile-public-bio"></p><div class="profile-public-actions"><button type="button" id="profile-card-close">Закрыть</button><button type="button" class="pr" id="profile-card-chat">Написать</button></div></div>');
+    const own=!!(me&&profile.uid===me.uid);
+    openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>ПРОФИЛЬ FROSS</span><span class="profile-live" id="profile-card-presence"></span></div><div class="profile-public-card-main"><div class="av big" id="profile-card-avatar"></div><div class="profile-public-card-identity"><h3 id="profile-card-name"></h3><div class="profile-handle-row"><b class="profile-handle" id="profile-card-handle"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-username" aria-label="Копировать username">⧉</button></div></div></div><div id="profile-card-phone" class="profile-phone-row"><span>Номер телефона</span><b id="profile-card-phone-value"></b><button type="button" class="profile-copy-btn" id="profile-card-copy-phone" aria-label="Копировать номер" hidden>⧉</button></div><div class="profile-description-label">Описание</div><p id="profile-card-bio" class="profile-public-bio"></p><div class="profile-public-actions"><button type="button" id="profile-card-close">Закрыть</button>'+(own?'<button type="button" class="pr profile-edit-pencil" id="profile-card-edit" aria-label="Редактировать профиль" title="Редактировать профиль">✎</button>':'<button type="button" class="pr" id="profile-card-chat">Написать</button>')+'</div></div>');
     avatar($("profile-card-avatar"),profile);
     $("profile-card-name").textContent=profile.displayName||profile.username||"Пользователь";
     $("profile-card-handle").textContent="@"+(profile.username||"user");
@@ -1518,12 +1589,14 @@ async function openUserProfile(userOrName) {
       phoneValue.textContent=profile.phonePublic;phoneCopy.hidden=false;
       phoneCopy.onclick=()=>copyProfileValue(profile.phonePublic,phoneCopy);
     }else{
-      phoneValue.textContent=profile.phoneStatus==="hidden"?"Номер скрыт":"Номер не подтверждён";
+      phoneValue.textContent=own&&me.phoneNumber?me.phoneNumber:(profile.phoneStatus==="hidden"?"Номер скрыт":"Номер не подтверждён");
       phoneCopy.hidden=true;
+      if(own&&me.phoneNumber){phoneCopy.hidden=false;phoneCopy.onclick=()=>copyProfileValue(me.phoneNumber,phoneCopy)}
     }
     $("profile-card-copy-username").onclick=()=>copyProfileValue("@"+(profile.username||"user"),$("profile-card-copy-username"));
     $("profile-card-close").onclick=closeM;
-    $("profile-card-chat").onclick=()=>startDM(profile);
+    if(own)$("profile-card-edit").onclick=()=>openOwnProfileEditor(profile);
+    else $("profile-card-chat").onclick=()=>startDM(profile);
   } catch(error) { alert(authError(error)); }
 }
 async function resolveMention(username) { await openUserProfile(username); }
@@ -1584,7 +1657,7 @@ async function loadCurrentProfile() {
   for(const [key,value] of Object.entries(priorPalette))if(S[key]===value)S[key]=DEF[key];
   applyS(S);fillMe();
 }
-function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="";$("mu").style.display="none"}
+function fillMe(){avatar($("mav"),me,true);$("mn").textContent=me.displayName||me.username;$("mu").textContent="";$("mu").style.display="none";$("mav").onclick=()=>openUserProfile({...me});$("mn").onclick=()=>openUserProfile({...me});$("mav").style.cursor="pointer";$("mn").style.cursor="pointer"}
 async function boot(user) {
   if(bootedUid===user.uid)return;
   bootedUid=user.uid;
@@ -1884,7 +1957,7 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const startCategory=window.FROSS_SETTINGS_START===3?3:1;window.FROSS_SETTINGS_START=null;
+  const startCategory=window.FROSS_SETTINGS_START===3?3:window.FROSS_SETTINGS_START===0?0:1;window.FROSS_SETTINGS_START=null;
   const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S};
   const P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarDirty:false};
   openM('<div class="settings-head"><div><h3>Настройки FROSS</h3><p>Выбери раздел, который хочешь изменить</p></div><button type="button" id="settings-back" class="settings-back">← Чаты</button></div><div class="settings-layout"><nav class="settings-categories" aria-label="Разделы настроек"><button type="button" class="settings-category" data-i="0"><span>🛡️</span><b>Безопасность</b><small>Вход и защита аккаунта</small></button><button type="button" class="settings-category" data-i="1"><span>💬</span><b>Чаты</b><small>Переписки и уведомления</small></button><button type="button" class="settings-category" data-i="2"><span>🖼️</span><b>Медиа</b><small>Фото и файлы</small></button><button type="button" class="settings-category" data-i="3"><span>👤</span><b>Профиль</b><small>Фото и личные данные</small></button><button type="button" class="settings-category" data-i="4"><span>🎨</span><b>Кастомизация</b><small>Цвета и внешний вид</small></button></nav><section id="sc" class="settings-content"></section></div><div class="row settings-actions"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
