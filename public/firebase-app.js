@@ -1006,44 +1006,118 @@ function startChatList() {
   });
 }
 async function openBotsPanel(){
-  openM('<h3>Мои боты</h3><div id="bot-list">Загрузка…</div><button class="pr" id="bot-new" style="width:100%">Создать бота</button><div class="err" id="bot-error"></div><button id="bot-close" style="width:100%">Закрыть</button>');
+  openM('<h3>Мои Telegram-боты</h3><p class="mut">Создавай настоящих Telegram-ботов и управляй их профилями, токенами, приветствием и кнопками.</p><div id="bot-list">Загрузка…</div><button class="pr" id="bot-new" style="width:100%">＋ Создать Telegram-бота</button><button id="bot-refresh" style="width:100%;margin-top:8px">Обновить список</button><div class="err" id="bot-error"></div><button id="bot-close" style="width:100%;margin-top:8px">Закрыть</button>');
   $("bot-close").onclick=closeM;
   const call=async(path,data={})=>{
-    const response=await fetch(FROSS_API_ORIGIN+path,{method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(),"Content-Type":"application/json"},body:JSON.stringify(data)});
+    const response=await fetch(FROSS_API_ORIGIN+path,{method:"POST",headers:{"Authorization":"Bearer "+await currentUser.getIdToken(true),"Content-Type":"application/json"},body:JSON.stringify(data)});
     const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(result.error||"Ошибка API");
+    if(!response.ok)throw new Error(result.error||("Ошибка API: HTTP "+response.status));
     return result;
   };
+  const showError=message=>{const box=$("bot-error");if(box)box.textContent=message||""};
+  const copyToken=async token=>{
+    try{await navigator.clipboard.writeText(token);alert("Токен скопирован. Храни его как пароль и не отправляй посторонним.");}
+    catch{
+      openM('<h3>Токен бота</h3><p class="mut">Выдели токен и скопируй его вручную.</p><textarea id="bot-token-copy" rows="4" readonly></textarea><button id="bot-copy-fallback" class="pr" style="width:100%">Скопировать</button><button id="bot-token-close" style="width:100%">Закрыть</button>');
+      $("bot-token-copy").value=token;
+      $("bot-copy-fallback").onclick=async()=>{try{await navigator.clipboard.writeText(token);alert("Токен скопирован.");closeM()}catch{$("bot-token-copy").focus();$("bot-token-copy").select()}};
+      $("bot-token-close").onclick=()=>{closeM();openBotsPanel()};
+    }
+  };
+  const showToken=async(bot,rotate)=>{
+    try{
+      if(rotate&&!confirm("Заменить токен? Старый токен сразу перестанет работать."))return;
+      const data=await call(rotate?"/api/bots/rotate":"/api/bots/token",{id:bot.id});
+      openM('<h3>'+(rotate?"Новый токен":"Токен бота")+'</h3><p class="mut">Токен действующий. Не публикуй его и не отправляй в чаты.</p><textarea id="bot-token-view" rows="4" readonly></textarea><button class="pr" id="bot-token-copy" style="width:100%">Скопировать токен</button><button id="bot-token-done" style="width:100%;margin-top:8px">Готово</button>');
+      $("bot-token-view").value=data.token;
+      $("bot-token-copy").onclick=async()=>{try{await navigator.clipboard.writeText(data.token);$("bot-token-copy").textContent="Скопировано"}catch{$("bot-token-view").focus();$("bot-token-view").select()}};
+      $("bot-token-done").onclick=()=>{closeM();openBotsPanel()};
+    }catch(error){showError(error.message||"Не удалось получить токен.")}
+  };
+  const editBot=bot=>{
+    const buttonsText=(bot.buttons||[]).map(item=>item.label+" | "+item.response).join("\n");
+    openM('<h3>Редактор FROSS · '+esc(bot.name||"Бот")+'</h3><label>Имя профиля</label><input id="bot-edit-name" maxlength="64"><label>Описание профиля</label><textarea id="bot-edit-description" rows="3" maxlength="512"></textarea><label>Краткое описание</label><input id="bot-edit-short" maxlength="120"><label>Приветствие при /start</label><textarea id="bot-edit-welcome" rows="3" maxlength="1000"></textarea><label>Ответ, если команда не найдена</label><textarea id="bot-edit-fallback" rows="3" maxlength="1000"></textarea><label>Кнопки (одна на строку: Название | Ответ)</label><textarea id="bot-edit-buttons" rows="6" placeholder="Каталог | Вот наш каталог…&#10;Поддержка | Напиши, чем помочь"></textarea><small class="mut">До 8 кнопок. Текст после вертикальной черты — ответ бота.</small><div class="err" id="bot-edit-error"></div><button class="pr" id="bot-edit-save" style="width:100%">Сохранить профиль и кнопки</button><button id="bot-edit-cancel" style="width:100%;margin-top:8px">Назад</button>');
+    $("bot-edit-name").value=bot.name||"";
+    $("bot-edit-description").value=bot.description||"";
+    $("bot-edit-short").value=bot.shortDescription||"";
+    $("bot-edit-welcome").value=bot.welcomeMessage||"";
+    $("bot-edit-fallback").value=bot.fallbackMessage||"";
+    $("bot-edit-buttons").value=buttonsText;
+    $("bot-edit-cancel").onclick=()=>{closeM();openBotsPanel()};
+    $("bot-edit-save").onclick=async()=>{
+      const button=$("bot-edit-save"),error=$("bot-edit-error");
+      const rows=$("bot-edit-buttons").value.split(/\r?\n/).map(line=>{
+        const split=line.indexOf("|");return split<0?null:{label:line.slice(0,split).trim(),response:line.slice(split+1).trim()};
+      }).filter(Boolean);
+      if(rows.length>8){error.textContent="Можно добавить не больше 8 кнопок.";return}
+      if(rows.some(row=>!row.label||!row.response)){error.textContent="У каждой кнопки должны быть название и ответ через |.";return}
+      button.disabled=true;button.textContent="Сохраняем…";
+      try{
+        await call("/api/bots/update",{
+          id:bot.id,name:$("bot-edit-name").value.trim(),description:$("bot-edit-description").value.trim(),
+          shortDescription:$("bot-edit-short").value.trim(),welcomeMessage:$("bot-edit-welcome").value.trim(),
+          fallbackMessage:$("bot-edit-fallback").value.trim(),buttons:rows
+        });
+        closeM();openBotsPanel();
+      }catch(e){error.textContent=e.message||"Не удалось сохранить изменения."}
+      finally{button.disabled=false;button.textContent="Сохранить профиль и кнопки"}
+    };
+  };
   const refresh=async()=>{
-    const data=await call("/api/bots/list"),host=$("bot-list");host.innerHTML="";
-    if(!data.bots.length){host.textContent="Пока нет ботов.";return}
+    const host=$("bot-list");if(!host)return;
+    host.textContent="Загружаем список…";
+    const data=await call("/api/bots/list");host.innerHTML="";
+    if(!data.bots.length){host.innerHTML='<div class="empty" style="padding:18px">Пока нет Telegram-ботов. Нажми «Создать Telegram-бота».</div>';return}
     data.bots.forEach(bot=>{
-      const row=document.createElement("div");row.className="group-contact";
-      const name=document.createElement("b");name.textContent=bot.name+" · @"+bot.username;
-      const state=document.createElement("small");state.textContent=bot.enabled?"Активен":"Отключён";state.style.display="block";
-      const edit=document.createElement("button");edit.textContent="Изменить";edit.onclick=async()=>{
-        const value=prompt("Новое название:",bot.name);if(value===null)return;
-        try{await call("/api/bots/update",{id:bot.id,name:value});await refresh()}catch(e){$("bot-error").textContent=e.message}
-      };
-      const revoke=document.createElement("button");revoke.textContent="Отозвать токен";revoke.onclick=async()=>{
-        if(!confirm("Отозвать токен без возможности восстановления?"))return;
-        try{await call("/api/bots/revoke",{id:bot.id});await refresh()}catch(e){$("bot-error").textContent=e.message}
-      };
-      row.append(name,state,edit,revoke);host.append(row);
+      const row=document.createElement("div");row.className="group-contact";row.style.display="block";
+      const title=document.createElement("b");title.textContent=(bot.name||"Бот")+" · "+(bot.username?"@"+bot.username:"Telegram ID "+(bot.botId||bot.id));
+      const meta=document.createElement("small");meta.style.cssText="display:block;color:var(--muted);margin:5px 0 9px";
+      meta.textContent=bot.botId?"Настоящий Telegram-бот · подключён к FROSS":"Старая тестовая запись · не является Telegram-ботом";
+      const actions=document.createElement("div");actions.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
+      const makeButton=(label,fn)=>{const button=document.createElement("button");button.textContent=label;button.onclick=fn;return button};
+      if(bot.botId){
+        actions.append(
+          makeButton("Редактировать",()=>editBot(bot)),
+          makeButton("Скопировать токен",()=>showToken(bot,false)),
+          makeButton("Заменить токен",()=>showToken(bot,true))
+        );
+        if(bot.username){
+          actions.append(makeButton("Открыть в Telegram",()=>window.open("https://t.me/"+encodeURIComponent(bot.username),"_blank","noopener")));
+        }
+      }
+      actions.append(makeButton("Удалить",async()=>{
+        const message=bot.botId
+          ?"Удалить бота из панели FROSS и отключить его ответы? Сам Telegram-бот останется в твоём аккаунте Telegram."
+          :"Удалить устаревшую тестовую запись?";
+        if(!confirm(message))return;
+        try{await call("/api/bots/delete",{id:bot.id});await refresh()}
+        catch(error){showError(error.message||"Не удалось удалить запись.")}
+      }));
+      row.append(title,meta,actions);host.append(row);
     });
   };
-  $("bot-new").onclick=async()=>{
-    const name=prompt("Название бота:");if(name===null)return;
-    const username=prompt("Username (латиница, цифры и _):");if(username===null)return;
-    try{
-      const data=await call("/api/bots/create",{name,username});
-      openM('<h3>Бот создан</h3><p>Скопируй API-токен сейчас — повторно показать его нельзя.</p><textarea id="bot-token" rows="3" readonly></textarea><button class="pr" id="bot-copy">Скопировать токен</button><button id="bot-done">Готово</button>');
-      $("bot-token").value=data.token;
-      $("bot-copy").onclick=()=>navigator.clipboard.writeText(data.token);
-      $("bot-done").onclick=()=>{closeM();openBotsPanel()};
-    }catch(e){$("bot-error").textContent=e.message}
+  $("bot-new").onclick=()=>{
+    openM('<h3>Создать Telegram-бота</h3><p class="mut">FROSS отправит запрос в @FROSS_verification_bot. В Telegram нужно нажать «Создать Telegram-бота» и подтвердить создание. После этого бот появится здесь.</p><label>Название профиля</label><input id="bot-create-name" maxlength="64" placeholder="Например, Мой помощник"><div class="err" id="bot-create-error"></div><button class="pr" id="bot-create-start" style="width:100%">Продолжить в Telegram</button><button id="bot-create-cancel" style="width:100%;margin-top:8px">Отмена</button>');
+    $("bot-create-cancel").onclick=()=>{closeM();openBotsPanel()};
+    $("bot-create-start").onclick=async()=>{
+      const name=$("bot-create-name").value.trim(),button=$("bot-create-start"),error=$("bot-create-error");
+      if(name.length<2){error.textContent="Введи название от 2 до 64 символов.";return}
+      button.disabled=true;button.textContent="Создаём запрос…";
+      try{
+        const data=await call("/api/bots/create",{name});
+        closeM();
+        openM('<h3>Продолжи в Telegram</h3><p class="mut">Ссылка открывает @FROSS_verification_bot. Нажми «Создать Telegram-бота» в Telegram и заверши создание в системном окне. Затем вернись в FROSS.</p><button class="pr" id="bot-open-telegram" style="width:100%">Открыть Telegram</button><button id="bot-created-refresh" style="width:100%;margin-top:8px">Я создал бота — обновить список</button><button id="bot-create-back" style="width:100%;margin-top:8px">Назад к ботам</button>');
+        $("bot-open-telegram").onclick=()=>window.open(data.botUrl,"_blank","noopener");
+        $("bot-created-refresh").onclick=async()=>{
+          const button=$("bot-created-refresh");button.disabled=true;button.textContent="Проверяем…";
+          try{await refresh();openBotsPanel()}catch(error){const e=$("bot-error");if(e)e.textContent=error.message;button.disabled=false;button.textContent="Я создал бота — обновить список"}
+        };
+        $("bot-create-back").onclick=()=>{closeM();openBotsPanel()};
+      }catch(e){error.textContent=e.message||"Не удалось начать создание.";button.disabled=false;button.textContent="Продолжить в Telegram"}
+    };
   };
-  try{await refresh()}catch(e){$("bot-error").textContent=e.message}
+  $("bot-refresh").onclick=async()=>{try{showError("");await refresh()}catch(error){showError(error.message||"Не удалось обновить список.")}};
+  try{await refresh()}catch(e){showError(e.message||"Не удалось загрузить список ботов.")}
 }
 function head() {
   const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
