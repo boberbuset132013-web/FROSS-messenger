@@ -900,7 +900,7 @@ async function loadFrossModels(){
   return data;
 }
 async function openFrossModelPicker(){
-  openM('<h3>Модели FROSS</h3><p class="mut">Выбери модель для встроенного ИИ. Сейчас в каталоге семь бесплатных вариантов.</p><div id="fross-model-load">Загружаем список…</div><div id="fross-model-error" class="err"></div><button id="fross-model-close" style="width:100%;margin-top:8px">Закрыть</button>');
+  openM('<h3>Модели FROSS</h3><p class="mut">Выбери одну из семи бесплатных моделей. Текст чата и последние сообщения передаются OpenRouter для ответа ИИ. Не отправляй сюда пароли, токены, коды и личные секреты.</p><div id="fross-model-load">Загружаем список…</div><div id="fross-model-error" class="err"></div><button id="fross-model-close" style="width:100%;margin-top:8px">Закрыть</button>');
   $("fross-model-close").onclick=closeM;
   try{
     const data=await loadFrossModels(),host=$("fross-model-load");
@@ -912,7 +912,7 @@ async function openFrossModelPicker(){
     });
     select.value=selectedFrossModel;
     $("fross-model-state").textContent=data.configured
-      ?"Ключ ИИ-провайдера подключён. Запросы бесплатных моделей ограничены лимитами OpenRouter."
+      ?"Ключ ИИ-провайдера подключён. Бесплатные варианты имеют лимиты запросов и зависят от доступности провайдера."
       :"Каталог доступен, но ответы ИИ пока не включатся, пока владелец не добавит секрет OPENROUTER_API_KEY в GitHub. Сам ключ в чат не отправлять.";
     $("fross-model-save").onclick=()=>{
       selectedFrossModel=select.value;
@@ -1221,13 +1221,13 @@ function openChat(id) {
   if(id===SYSTEM_CHAT_ID){
     cur=SYSTEM_CHAT_ID;document.body.classList.add("ch");renderList();head();
     const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
-    if($("inp"))$("inp").placeholder="Напиши FROSS: например, «покажи моих ботов» или «добавь кнопку Поддержка»";
+    if($("inp")){$("inp").placeholder="Напиши FROSS: например, «покажи моих ботов» или «добавь кнопку Поддержка»";$("inp").maxLength=2000;}
     if($("attach"))$("attach").style.display="none";
     subscribeMessages();loadSystemInbox();return;
   }
   const chat=chats.find(item=>item.id===id);if(!chat)return;
   const composer=document.querySelector(".comp");if(composer)composer.style.display="flex";
-  if($("inp"))$("inp").placeholder="Сообщение…";
+  if($("inp")){$("inp").placeholder="Сообщение…";$("inp").maxLength=4000;}
   if($("attach"))$("attach").style.display="";
   cur=id;document.body.classList.add("ch");renderList();head();subscribeMessages();
   if(chat.type==="dm"){
