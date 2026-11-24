@@ -309,26 +309,6 @@ async function telegramPhoneWebhook(request,env,url){
   const message=update.message;
   if(!message?.chat?.id||String(message.chat.type)!=="private")return new Response("ok");
   const chatId=String(message.chat.id),from=message.from||{},telegramUserId=String(from.id||""),text=String(message.text||"");
-  const createMatch=text.match(/^\/start(?:@\w+)?\s+botcreate_([a-f0-9]{32})$/i);
-  if(createMatch){
-    const requestId=createMatch[1].toLowerCase(),pending=await readPhoneRecord("botCreateRequests/"+requestId+".json",env);
-    const linked=await readPhoneRecord("telegramOwners/"+telegramUserId+".json",env);
-    if(!pending||pending.expiresAt<=Date.now()||!linked||linked.uid!==pending.uid){
-      await telegramCall(token,"sendMessage",{chat_id:chatId,text:"Не удалось подтвердить владельца. Сначала привяжи Telegram в настройках FROSS и повтори создание."});return new Response("ok");
-    }
-    try{
-      const requestNumber=crypto.getRandomValues(new Uint32Array(1))[0]&0x7fffffff;
-      await savePhoneRecord("botCreateSessions/"+telegramUserId+".json",{uid:pending.uid,requestId,name:pending.name,expiresAt:Date.now()+15*60*1000},env);
-      await telegramCall(token,"sendMessage",{
-        chat_id:chatId,text:"Создаём «"+pending.name+"». Нажми кнопку ниже и заверши создание в Telegram. Если Telegram сообщает, что функция недоступна, владельцу @FROSS_verification_bot нужно включить управление ботами в Mini App @BotFather.",
-        reply_markup:{keyboard:[[{text:"Создать Telegram-бота",request_managed_bot:{request_id:requestNumber,suggested_name:pending.name}}]],resize_keyboard:true,one_time_keyboard:true}
-      });
-    }catch(error){
-      await deletePhoneRecord("botCreateSessions/"+telegramUserId+".json",env).catch(()=>{});
-      await telegramCall(token,"sendMessage",{chat_id:chatId,text:"Telegram не разрешил показать создание бота: "+String(error?.message||"ошибка").slice(0,250)+". Включи право управления ботами для @FROSS_verification_bot через Mini App @BotFather."});
-    }
-    return new Response("ok");
-  }
   const start=text.match(/^\/start(?:@\w+)?\s+([a-f0-9]{32})/i);
   if(start){
     const challengeId=start[1].toLowerCase(),key="phoneChallenges/"+challengeId+".json",challenge=await readPhoneRecord(key,env);
