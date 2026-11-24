@@ -36,6 +36,7 @@ jobs:
           FROSS_TURN_CREDENTIAL: ${{ secrets.FROSS_TURN_CREDENTIAL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::notice::Cloudflare deploy skipped; configure CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Cloudflare Git integration may deploy independently."
@@ -65,5 +66,6 @@ jobs:
           jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
             --arg turn_urls "$FROSS_TURN_URLS" --arg turn_user "$FROSS_TURN_USERNAME" --arg turn_credential "$FROSS_TURN_CREDENTIAL" \
             --arg telegram_token "$TELEGRAM_BOT_TOKEN" --arg telegram_secret "$WEBHOOK_SECRET" \
-            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end)' > "$SECRETS_FILE"
+            --arg openrouter_key "$OPENROUTER_API_KEY" \
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end) + (if $openrouter_key != "" then {OPENROUTER_API_KEY: $openrouter_key} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
