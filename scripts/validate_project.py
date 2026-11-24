@@ -72,12 +72,12 @@ checks = {
     "voice call signaling is limited to chat members": "match /calls/{callId}" in rules and "participantUids" in rules,
     "global account reset is admin and opt-in protected": "decoded.frossAdmin !== true" in (root / "functions/index.js").read_text(encoding="utf-8") and 'ENABLE_DANGEROUS_TEST_RESET !== "true"' in (root / "functions/index.js").read_text(encoding="utf-8"),
     "Telegram phone UI, copyable profile and call identity controls exist": 'id="phoneViaTelegram"' in js and 'id="phoneViaMax"' not in js and 'id="profile-card-copy-username"' in js and 'id="profile-card-copy-phone"' in js and 'id="call-code"' in html and 'id="attach-link"' not in html,
-}
     "password reset requires Telegram confirmation": "requestPasswordReset" in js and "generatePasswordResetLink" in (root / "functions/index.js").read_text(encoding="utf-8"),
     "account deletion waits 24 hours and is cancellable": "deleteAfter=Timestamp.fromMillis(Date.now()+24*60*60*1000)" in (root / "functions/index.js").read_text(encoding="utf-8") and "del_cancel_" in (root / "functions/index.js").read_text(encoding="utf-8"),
     "logout asks for Cancel or Exit": 'id="logout-cancel"' in js and 'id="logout-confirm"' in js,
     "profile labels Description and phone status": 'profile-description-label' in js and 'Номер не подтверждён' in js and 'Номер скрыт' in js,
     "MAX is removed from app and backend": "phoneViaMax" not in js and "MAX_BOT_TOKEN" not in worker and "maxPhoneWebhook" not in worker and "maxPhoneWebhook" not in (root / "functions/index.js").read_text(encoding="utf-8"),
+}
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
 if not all(checks.values()):

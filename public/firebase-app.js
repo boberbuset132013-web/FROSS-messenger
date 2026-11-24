@@ -1663,16 +1663,6 @@ $("gb").onclick=()=>{
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
       c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Введи номер, открой Telegram-бот FROSS и поделись собственным контактом.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><button type="button" class="pr" id="phoneViaTelegram" style="width:100%">Отправить код в Telegram</button><label>Код из Telegram</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+(me.phoneVerified?"":" disabled")+'><span>Показывать номер в публичном профиле</span></label><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Смена пароля</b><small class="mut">Бот пришлёт запрос с кнопками подтверждения и отказа. Ссылка на смену пароля появится только после твоего подтверждения.</small></div></div><button id="pc" class="pr" style="width:100%">Запросить смену пароля через Telegram</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
-      $("pc").onclick=async()=>{
-        try{
-          const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
-          await reauthenticateWithCredential(currentUser,credential);
-          const newPassword=$("pn").value;
-          if(newPassword.length<8)throw Error("Новый пароль должен содержать минимум 8 символов.");
-          await updatePassword(currentUser,newPassword);
-          $("pe").style.color="#3ddc84";$("pe").textContent="Пароль изменён.";
-        }catch(e){$("pe").textContent=authError(e)}
-      };
       $("lo").onclick=()=>{
         openM('<div class="logout-confirm"><h3>Выйти из FROSS?</h3><p class="mut">Текущая сессия на этом устройстве будет завершена.</p><div class="row"><button type="button" id="logout-cancel">Отмена</button><button type="button" class="pr" id="logout-confirm">Выйти</button></div></div>');
         $("logout-cancel").onclick=closeM;
@@ -1754,8 +1744,10 @@ $("gb").onclick=()=>{
         if(visible&&!me.phoneVerified){$("phoneVisible").checked=false;$("phoneError").textContent="Сначала подтверди номер через Telegram.";return}
         try{
           const phonePublic=visible?(me.phoneNumber||""):"";
-          await updateDoc(doc(db,"users",me.uid),{phoneVisible:visible,updatedAt:serverTimestamp()});
-          await setDoc(doc(db,"publicUsers",me.uid),{phoneStatus:visible?"visible":"hidden",phonePublic},{merge:true});
+          const batch=writeBatch(db);
+          batch.update(doc(db,"users",me.uid),{phoneVisible:visible,updatedAt:serverTimestamp()});
+          batch.set(doc(db,"publicUsers",me.uid),{phoneStatus:visible?"visible":"hidden",phonePublic},{merge:true});
+          await batch.commit();
           me.phoneVisible=visible;me.phonePublic=phonePublic;me.phoneStatus=visible?"visible":"hidden";
           $("phoneError").textContent=visible?"Номер показывается в публичном профиле.":"Номер скрыт от других пользователей.";
         }catch(error){$("phoneVisible").checked=!visible;$("phoneError").textContent=authError(error)}
@@ -1798,10 +1790,10 @@ $("gb").onclick=()=>{
       $("dl").onclick=()=>{
         const hasGoogle=currentUser.providerData.some(provider=>provider.providerId==="google.com");
         const hasPassword=currentUser.providerData.some(provider=>provider.providerId==="password");
-        $("db").innerHTML='<label>Удаление аккаунта необратимо. Профиль станет помечен как удалённый. Личные чаты будут автоматически удалены через 24 часа, а в группах останется уведомление.</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password" placeholder="Пароль для подтверждения">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Подтвердить удаление аккаунта</button>';
+        $("db").innerHTML='<label>После подтверждения в Telegram аккаунт будет удалён через 24 часа. До истечения срока удаление можно отменить в боте FROSS. Личные чаты будут очищены позже.</label>'+(hasGoogle?'':'<input id="dp" type="password" autocomplete="current-password" placeholder="Пароль для подтверждения">')+'<div class="err" id="de"></div><button class="dg" id="dk" style="width:100%">Подтвердить удаление аккаунта</button>';
         $("dk").onclick=async()=>{
           try{
-            if(!confirm("Удалить аккаунт? Личные чаты будут удалены через 24 часа. Это действие нельзя отменить."))return;
+            if(!confirm("Отправить запрос на удаление? В Telegram нужно будет подтвердить действие. После подтверждения будет 24 часа на отмену."))return;
             if(hasGoogle)await reauthenticateWithPopup(currentUser,new GoogleAuthProvider());
             else if(hasPassword)await reauthenticateWithCredential(currentUser,EmailAuthProvider.credential(currentUser.email,$("dp").value));
             else throw new Error("Для удаления аккаунта войдите повторно через привязанный способ входа.");
