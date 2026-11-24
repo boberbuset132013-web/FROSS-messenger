@@ -375,11 +375,148 @@ async function getSystemInbox(request,env){
   }
   if(inbox.uid!==identity.uid||!Array.isArray(inbox.messages))throw new Error("Системный чат не прошёл проверку владельца.");
   const messages=inbox.messages.slice(-100).map(message=>({
-    id:String(message.id||""),sender:"fross",kind:String(message.kind||"notice"),
-    text:String(message.text||"").slice(0,4000),createdAt:Number(message.createdAt)||0
+    id:String(message.id||""),role:message.role==="user"?"user":"assistant",
+    sender:message.role==="user"?"Ты":"FROSS",kind:String(message.kind||"notice"),
+    model:String(message.model||""),text:String(message.text||"").slice(0,4000),
+    createdAt:Number(message.createdAt)||0
   }));
   return json({ok:true,bot:{id:"fross-system",name:"FROSS",verified:true},messages,unreadCount:messages.filter(message=>message.createdAt>(Number(inbox.readAt)||0)).length});
 }
+const FROSS_AI_MODELS=[
+  {id:"openrouter/free",name:"Автовыбор бесплатной модели",provider:"OpenRouter",tools:true},
+  {id:"baidu/ernie-5.5-flash-preview:free",name:"ERNIE 5.5 Flash",provider:"Baidu",tools:true},
+  {id:"nvidia/nemotron-3.5-super-vl:free",name:"Nemotron 3.5 Super VL",provider:"NVIDIA",tools:true},
+  {id:"nvidia/nemotron-3.5-lightning:free",name:"Nemotron 3.5 Lightning",provider:"NVIDIA",tools:true},
+  {id:"particle-ai/particle-1:free",name:"Particle-1",provider:"Particle AI",tools:true},
+  {id:"dots-studio/dots-3-note-preview:free",name:"Dots3-Note Preview",provider:"Dots Studio",tools:true},
+  {id:"inclusionai/ling-3.2-flash:free",name:"Ling 3.2 Flash",provider:"inclusionAI",tools:true}
+];
+const FROSS_AI_TOOLS=[
+  {type:"function",function:{
+    name:"list_my_bots",description:"Показать Telegram-ботов текущего пользователя, их имена, username, описание, приветствие и кнопки.",
+    parameters:{type:"object",properties:{},required:[],additionalProperties:false}
+  }},
+  {type:"function",function:{
+    name:"update_my_bot",description:"Изменить профиль и поведение одного из Telegram-ботов пользователя. Можно поменять имя, описание, короткое описание, приветствие /start, текст ответа по умолчанию и клавиатурные кнопки. Перед изменением найди точный bot id через list_my_bots. Вызывай только когда пользователь явно просит внести изменение.",
+    parameters:{
+      type:"object",
+      properties:{
+        id:{type:"string",description:"ID бота из результата list_my_bots"},
+        name:{type:"string",description:"Новое имя профиля Telegram-бота, до 64 символов"},
+        description:{type:"string",description:"Новое описание профиля, до 512 символов"},
+        shortDescription:{type:"string",description:"Краткое описание профиля, до 120 символов"},
+        welcomeMessage:{type:"string",description:"Текст при команде /start, до 1000 символов"},
+        fallbackMessage:{type:"string",description:"Ответ, если сообщение не совпадает ни с одной кнопкой, до 1000 символов"},
+        buttons:{type:"array",description:"Полный список до 8 кнопок. Каждая кнопка отвечает заданным текстом.",items:{type:"object",properties:{label:{type:"string"},response:{type:"string"}},required:["label","response"],additionalProperties:false}}
+      },
+      required:["id"],additionalProperties:false
+    }
+  }}
+];
+function frossAiSystemPrompt(){
+  return "Ты — FROSS, встроенный помощник мессенджера FROSS. Всегда отвечай на русском, дружелюбно и по делу. Текущий пользователь может попросить тебя управлять его собственными Telegram-ботами. У тебя есть инструменты list_my_bots и update_my_bot. Если пользователь хочет посмотреть ботов или изменить конкретного бота, сначала используй list_my_bots, чтобы выбрать правильный ID. Не утверждай, что изменение сделано, пока инструмент update_my_bot не вернул ok=true. Если пользователь явно просит создать или изменить кнопки, подбери лаконичные названия и полезные тексты ответов, затем сохрани весь список кнопок вызовом update_my_bot. Не меняй другие свойства без необходимости. Не запрашивай и не показывай API-токены, секреты, пароли и коды подтверждения. Никакие действия не выполняй для чужих аккаунтов: инструменты работают только с ботами текущего пользователя. Если пользователь не уточнил, какого бота менять, сначала покажи список и попроси выбрать.";
+}
+async function openRouterCompletion(env,model,messages){
+  if(!env.OPENROUTER_API_KEY)throw new Error("ИИ-модели пока не подключены. Нужен бесплатный API-ключ OpenRouter: создай его на openrouter.ai/settings/keys и добавь в GitHub Secrets под именем OPENROUTER_API_KEY. Ключ не отправляй в чат.");
+  const response=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer "+env.OPENROUTER_API_KEY,
+      "Content-Type":"application/json",
+      "HTTP-Referer":"https://fross-messenger.boberbuset132013.workers.dev",
+      "X-Title":"FROSS Messenger"
+    },
+    body:JSON.stringify({model,messages,tools:FROSS_AI_TOOLS,tool_choice:"auto",parallel_tool_calls:false,max_tokens:1200})
+  });
+  const payload=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error("OpenRouter (HTTP "+response.status+"): "+String(payload?.error?.message||payload?.message||"модель временно недоступна").slice(0,500));
+  const message=payload?.choices?.[0]?.message;
+  if(!message)throw new Error("ИИ-провайдер не вернул ответ.");
+  return message;
+}
+async function runFrossAiTool(name,args,identity,env,url){
+  if(name==="list_my_bots"){
+    const store=await readBotStore(identity.uid,env);
+    return {ok:true,bots:store.bots.filter(bot=>bot.botId).map(bot=>({
+      id:String(bot.id||bot.botId),name:bot.name||"",username:bot.username||"",
+      description:bot.description||"",shortDescription:bot.shortDescription||"",
+      welcomeMessage:bot.welcomeMessage||"",fallbackMessage:bot.fallbackMessage||"",
+      buttons:Array.isArray(bot.buttons)?bot.buttons:[]
+    }))};
+  }
+  if(name==="update_my_bot"){
+    const request=new Request(new URL("/api/bots/update",url.origin).toString(),{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+identity.token,"Content-Type":"application/json"},
+      body:JSON.stringify(args||{})
+    });
+    const response=await botApi(request,env,url,"update");
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result.error||"Не удалось изменить бота.");
+    return {ok:true,bot:result.bot};
+  }
+  throw new Error("Неизвестная команда FROSS.");
+}
+async function createFrossAssistantReply(identity,env,url,inbox,text,model){
+  const messages=[{role:"system",content:frossAiSystemPrompt()}];
+  for(const item of inbox.messages.slice(-18)){
+    if(item.role==="user"||item.role==="assistant"){
+      messages.push({role:item.role,content:String(item.text||"").slice(0,4000)});
+    }
+  }
+  messages.push({role:"user",content:text});
+  let assistant=await openRouterCompletion(env,model,messages);
+  for(let round=0;round<3&&Array.isArray(assistant.tool_calls)&&assistant.tool_calls.length;round++){
+    messages.push(assistant);
+    for(const call of assistant.tool_calls.slice(0,2)){
+      const name=call.function?.name||"",rawArgs=call.function?.arguments||"{}";
+      let args={};
+      try{args=JSON.parse(rawArgs)}catch{throw new Error("ИИ прислал некорректные параметры для команды "+name+".")}
+      let result;
+      try{result=await runFrossAiTool(name,args,identity,env,url)}
+      catch(error){result={ok:false,error:String(error?.message||"Команда не выполнена").slice(0,500)}}
+      messages.push({role:"tool",tool_call_id:call.id,name,content:JSON.stringify(result)});
+    }
+    assistant=await openRouterCompletion(env,model,messages);
+  }
+  const content=String(assistant.content||"").trim();
+  return content||"Я выполнил доступное действие. Напиши, что ещё нужно изменить.";
+}
+async function frossAiModels(request,env){
+  const identity=await verifyFirebaseToken(request);
+  return json({ok:true,configured:!!env.OPENROUTER_API_KEY,models:FROSS_AI_MODELS});
+}
+async function frossAiChat(request,env,url){
+  const identity=await verifyFirebaseToken(request),body=await request.json().catch(()=>({}));
+  const text=String(body.text||"").trim(),model=String(body.model||"openrouter/free");
+  if(!text||text.length>2000)return json({error:"Сообщение должно содержать от 1 до 2000 символов."},400);
+  if(!FROSS_AI_MODELS.some(item=>item.id===model))return json({error:"Выбрана неизвестная модель FROSS."},400);
+  if(!env.OPENROUTER_API_KEY)return json({error:"Модели пока не активированы: добавь бесплатный ключ OpenRouter в GitHub Secrets с именем OPENROUTER_API_KEY. Сам ключ сюда не присылай.",needsApiKey:true},503);
+  const key="systemInbox/"+identity.uid+".json";
+  let inbox=await readPhoneRecord(key,env);
+  if(!inbox)inbox={version:1,uid:identity.uid,createdAt:Date.now(),readAt:0,messages:[]};
+  if(inbox.uid!==identity.uid||!Array.isArray(inbox.messages))throw new Error("История чата FROSS не прошла проверку владельца.");
+  const userMessage={id:crypto.randomUUID(),role:"user",sender:"Ты",kind:"chat",text,createdAt:Date.now()};
+  inbox.messages.push(userMessage);
+  let reply;
+  try{
+    reply=await createFrossAssistantReply(identity,env,url,inbox,text,model);
+  }catch(error){
+    console.error("FROSS AI request failed:",error?.message||error);
+    inbox.messages.pop();
+    return json({error:String(error?.message||"Не удалось получить ответ FROSS.").slice(0,650)},502);
+  }
+  inbox.messages.push({id:crypto.randomUUID(),role:"assistant",sender:"FROSS",kind:"chat",model,text:reply.slice(0,4000),createdAt:Date.now()});
+  inbox.messages=inbox.messages.slice(-100);
+  await savePhoneRecord(key,inbox,env);
+  const messages=inbox.messages.slice(-100).map(item=>({
+    id:String(item.id||""),role:item.role==="user"?"user":"assistant",
+    sender:item.role==="user"?"Ты":"FROSS",kind:String(item.kind||"chat"),
+    model:String(item.model||""),text:String(item.text||"").slice(0,4000),createdAt:Number(item.createdAt)||0
+  }));
+  return json({ok:true,message:messages[messages.length-1],messages,model});
+}
+
 async function markSystemInboxRead(request,env){
   const identity=await verifyFirebaseToken(request),key="systemInbox/"+identity.uid+".json";
   const inbox=await readPhoneRecord(key,env);
@@ -484,6 +621,8 @@ async function api(request,env,url){
   if(request.method==="POST"&&url.pathname==="/api/bots/rotate")return await botApi(request,env,url,"rotate");
   if(request.method==="POST"&&url.pathname==="/api/bots/delete")return await botApi(request,env,url,"delete");
   if(request.method==="POST"&&url.pathname==="/api/telegram/managed-webhook")return await telegramManagedWebhook(request,env,url);
+  if(request.method==="POST"&&url.pathname==="/api/system/models")return await frossAiModels(request,env);
+  if(request.method==="POST"&&url.pathname==="/api/system/chat")return await frossAiChat(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/system/inbox")return await getSystemInbox(request,env);
   if(request.method==="POST"&&url.pathname==="/api/system/read")return await markSystemInboxRead(request,env);
   if(request.method==="POST"&&url.pathname==="/api/phone/start")return await startPhoneVerification(request,env,url);
