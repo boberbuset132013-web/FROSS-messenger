@@ -1163,7 +1163,7 @@ async function openBotsPanel(){
     });
   };
   $("bot-new").onclick=()=>{
-    openM('<h3>Создать Telegram-бота</h3><p class="mut">FROSS отправит запрос в @FROSS_verification_bot. В Telegram нужно нажать «Создать Telegram-бота» и подтвердить создание. После этого бот появится здесь.</p><label>Название профиля</label><input id="bot-create-name" maxlength="64" placeholder="Например, Мой помощник"><div class="err" id="bot-create-error"></div><button class="pr" id="bot-create-start" style="width:100%">Продолжить в Telegram</button><button id="bot-create-cancel" style="width:100%;margin-top:8px">Отмена</button>');
+    openM('<h3>Создать Telegram-бота</h3><p class="mut">Перед первым созданием владелец @FROSS_verification_bot должен включить Bot Management Mode в Mini App @BotFather: выбери бота и включи режим управления ботами. Это обязательное разрешение Telegram. Затем FROSS отправит запрос, а в Telegram останется подтвердить создание.</p><label>Название профиля</label><input id="bot-create-name" maxlength="64" placeholder="Например, Мой помощник"><div class="err" id="bot-create-error"></div><button class="pr" id="bot-create-start" style="width:100%">Продолжить в Telegram</button><button id="bot-create-cancel" style="width:100%;margin-top:8px">Отмена</button>');
     $("bot-create-cancel").onclick=()=>{closeM();openBotsPanel()};
     $("bot-create-start").onclick=async()=>{
       const name=$("bot-create-name").value.trim(),button=$("bot-create-start"),error=$("bot-create-error");
