@@ -1,0 +1,52 @@
+name: Deploy FROSS Firebase backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "firebase.json"
+      - ".github/workflows/deploy-firebase.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy Firebase Functions and Firestore rules
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          MAX_BOT_TOKEN: ${{ secrets.MAX_BOT_TOKEN }}
+          MAX_WEBHOOK_SECRET: ${{ secrets.MAX_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in FIREBASE_SERVICE_ACCOUNT TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET MAX_BOT_TOKEN MAX_WEBHOOK_SECRET; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::warning::Firebase deployment skipped. Add these GitHub Actions secrets first: ${missing[*]}"
+            exit 0
+          fi
+          umask 077
+          CREDENTIALS_FILE="$(mktemp)"
+          trap 'rm -f "$CREDENTIALS_FILE"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDENTIALS_FILE"
+          export GOOGLE_APPLICATION_CREDENTIALS="$CREDENTIALS_FILE"
+          npm install --global firebase-tools
+          printf '%s' "$TELEGRAM_BOT_TOKEN" | firebase functions:secrets:set TELEGRAM_BOT_TOKEN --data-file - --project fross-ca5d6 --force
+          printf '%s' "$TELEGRAM_WEBHOOK_SECRET" | firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
+          printf '%s' "$MAX_BOT_TOKEN" | firebase functions:secrets:set MAX_BOT_TOKEN --data-file - --project fross-ca5d6 --force
+          printf '%s' "$MAX_WEBHOOK_SECRET" | firebase functions:secrets:set MAX_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
+          firebase deploy --only functions,firestore:rules --project fross-ca5d6 --non-interactive --force

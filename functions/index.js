@@ -358,8 +358,8 @@ export const telegramPhoneWebhook = onRequest({secrets:[TELEGRAM_BOT_TOKEN,TELEG
       const session=sessionSnap.data(),challengeRef=getFirestore().doc("phoneChallenges/"+session.challengeId),challengeSnap=await challengeRef.get();
       if(!challengeSnap.exists())return res.status(200).send("ok");
       const challenge=challengeSnap.data(),contact=message.contact;
-      const actualPhone=String(contact.phone_number||"").replace(/[\s().-]/g,"");
-      const expectedPhone=String(challenge.phone||"").replace(/[\s().-]/g,"");
+      const actualPhone=String(contact.phone_number||"").replace(/\D/g,"");
+      const expectedPhone=String(challenge.phone||"").replace(/\D/g,"");
       if(String(contact.user_id||"")!==String(message.from?.id||"")||actualPhone!==expectedPhone){
         await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Нужен именно твой собственный контакт с номером, который указан в FROSS.",reply_markup:{remove_keyboard:true}});
         return res.status(200).send("ok");
@@ -397,7 +397,7 @@ export const maxPhoneWebhook = onRequest({secrets:[MAX_BOT_TOKEN,MAX_WEBHOOK_SEC
       const expectedHash=createHmac("sha256",token).update(vcfInfo).digest("hex");
       if(!safeSecretEqual(expectedHash.toLowerCase(),hash.toLowerCase()))return res.status(200).send("ok");
       const senderId=String(message.sender?.user_id||""),ownerId=String(payload.max_info?.user_id||"");
-      const actualPhone=parseVcfPhone(vcfInfo),expectedPhone=String(challenge.phone||"").replace(/[\s().-]/g,"");
+      const actualPhone=parseVcfPhone(vcfInfo).replace(/\D/g,""),expectedPhone=String(challenge.phone||"").replace(/\D/g,"");
       if(!senderId||senderId!==ownerId||actualPhone!==expectedPhone){
         await maxApi(token,"/messages?chat_id="+encodeURIComponent(chatId),"POST",{text:"MAX не подтвердил этот номер для твоего профиля. Проверь, что делишься собственным контактом."});
         return res.status(200).send("ok");

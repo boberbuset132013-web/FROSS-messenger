@@ -1368,12 +1368,12 @@ if(attachmentButton&&attachmentInput){
 function validateExternalFileUrl(value){
   let parsed;try{parsed=new URL(String(value||"").trim())}catch{throw new Error("Вставь корректную HTTPS-ссылку на файл.")}
   const host=parsed.hostname.toLowerCase();
-  if(parsed.protocol!=="https:"||parsed.username||parsed.password||!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host)||host.includes(":"))
+  if(parsed.protocol!=="https:"||parsed.username||parsed.password||!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)||host.includes(":"))
     throw new Error("Поддерживаются только публичные HTTPS-ссылки без адресов локальной сети.");
   parsed.hash="";return parsed;
 }
 function externalFileType(path){
-  const ext=(path.match(/\\.([a-z0-9]{1,8})$/i)||[])[1]?.toLowerCase()||"";
+  const ext=(path.match(/\.([a-z0-9]{1,8})$/i)||[])[1]?.toLowerCase()||"";
   if(["jpg","jpeg","png","webp","gif","avif"].includes(ext))return "image/"+(ext==="jpg"?"jpeg":ext);
   if(["mp4","webm","mov"].includes(ext))return "video/"+(ext==="mov"?"quicktime":ext);
   if(["mp3","m4a","ogg","wav","flac"].includes(ext))return "audio/"+ext;
@@ -1684,8 +1684,8 @@ $("gb").onclick=()=>{
       };
       let phoneChallengeId=null;
       async function startPhoneBotVerification(channel){
-        const phone=$("phoneNumber").value.trim().replace(/[\\s().-]/g,"");
-        if(!/^\\+[1-9]\\d{7,14}$/.test(phone)){$("phoneError").textContent="Введи номер в международном формате, например +447700900123.";return}
+        const phone=$("phoneNumber").value.trim().replace(/[\s().-]/g,"");
+        if(!/^\+[1-9]\d{7,14}$/.test(phone)){$("phoneError").textContent="Введи номер в международном формате, например +447700900123.";return}
         const button=$(channel==="max"?"phoneViaMax":"phoneViaTelegram"),oldLabel=button.textContent;
         const botWindow=window.open("about:blank","_blank");
         button.disabled=true;button.textContent="Открываем бота…";
@@ -1708,7 +1708,7 @@ $("gb").onclick=()=>{
       $("phoneConfirm").onclick=async()=>{
         const code=$("phoneCode").value.trim();
         if(!phoneChallengeId){$("phoneError").textContent="Сначала запроси код через MAX или Telegram.";return}
-        if(!/^\\d{6}$/.test(code)){$("phoneError").textContent="Введи шесть цифр из сообщения бота.";return}
+        if(!/^\d{6}$/.test(code)){$("phoneError").textContent="Введи шесть цифр из сообщения бота.";return}
         const button=$("phoneConfirm");button.disabled=true;button.textContent="Проверяем…";
         try{
           const token=await currentUser.getIdToken(true);
@@ -1718,7 +1718,7 @@ $("gb").onclick=()=>{
           });
           const result=await response.json().catch(()=>({}));
           if(!response.ok)throw new Error(result.error||("Не удалось подтвердить номер (HTTP "+response.status+")."));
-          me.phoneNumber=$("phoneNumber").value.trim().replace(/[\\s().-]/g,"");
+          me.phoneNumber=$("phoneNumber").value.trim().replace(/[\s().-]/g,"");
           me.phoneVerified=true;phoneChallengeId=null;$("phoneCode").value="";
           $("phoneError").style.color="#3ddc84";
           $("phoneError").textContent="Номер подтверждён через "+(result.channel==="max"?"MAX":"Telegram")+".";
