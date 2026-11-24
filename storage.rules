@@ -6,7 +6,14 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Profile photos: each signed-in user can manage only their own avatar.
+    function verified() {
+      return signedIn() && (
+        request.auth.token.email_verified == true
+        || request.auth.token.legacyAccount == true
+      );
+    }
+
+    // Profile photos are visible to signed-in users; each user can manage only their own avatar.
     match /avatars/{userId}/{fileName} {
       allow read: if signedIn();
       allow create, update: if signedIn()
@@ -19,10 +26,9 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
-    // Signed-in users can read chat attachments so download URLs resolve.
-    // Uploads remain restricted to the uploader's own folder and chat membership.
+    // Chat files are readable only by verified members of that chat.
     function isChatMember(chatId) {
-      return signedIn() && (
+      return verified() && (
         chatId == "general"
         || (
           firestore.exists(/databases/(default)/documents/chats/$(chatId))
@@ -32,7 +38,7 @@ service firebase.storage {
     }
 
     match /chatFiles/{chatId}/{userId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if isChatMember(chatId);
 
       allow create, update: if isChatMember(chatId)
         && request.auth.uid == userId
@@ -42,6 +48,7 @@ service firebase.storage {
         && request.resource.contentType is string
         && request.resource.contentType.size() <= 120;
 
+      // Uploader can remove their own file even after leaving a chat.
       allow delete: if signedIn()
         && request.auth.uid == userId;
     }
