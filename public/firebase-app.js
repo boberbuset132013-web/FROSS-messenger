@@ -1151,7 +1151,7 @@ async function openBotsPanel(){
           actions.append(makeButton("Открыть в Telegram",()=>window.open("https://t.me/"+encodeURIComponent(bot.username),"_blank","noopener")));
         }
       }
-      actions.append(makeButton("Удалить",async()=>{
+      actions.append(makeButton("Удалить из FROSS",async()=>{
         const message=bot.botId
           ?"Удалить бота из панели FROSS и отключить его ответы? Сам Telegram-бот останется в твоём аккаунте Telegram."
           :"Удалить устаревшую тестовую запись?";
