@@ -81,6 +81,14 @@ checks = {
     "logout asks for Cancel or Exit": 'id="logout-cancel"' in js and 'id="logout-confirm"' in js,
     "profile labels Description and phone status": 'profile-description-label' in js and 'Номер не подтверждён' in js and 'Номер скрыт' in js,
     "MAX is removed from app and backend": "phoneViaMax" not in js and "MAX_BOT_TOKEN" not in worker and "maxPhoneWebhook" not in worker and "maxPhoneWebhook" not in (root / "functions/index.js").read_text(encoding="utf-8"),
+    "native FROSS bots have an in-app directory, chat, and profile": all(x in worker for x in ["/api/bots/directory", "/api/bots/chat", "frossBots/directory.json", "createInternalBot"]),
+    "FROSS bot API keys are hashed and can be revoked or rotated": all(x in worker for x in ["botTokens/", "async function botTokenApi", "action===\"rotate\"", "tokenHash:await sha256Hex(raw)"]),
+    "FROSS AI manages native bots, not Telegram-managed bots": "внутренними ботами FROSS" in worker and 'store.bots.filter(bot=>!bot.botId)' in worker,
+    "own profile card has pencil editor and no write action": 'id="profile-card-edit"' in js and "openOwnProfileEditor(profile)" in js and 'if(own)$("profile-card-edit")' in js,
+    "profile editor can update avatar, username, display name and bio": all(x in js for x in ["profile-edit-photo-file", "profile-edit-username", "profile-edit-display", "profile-edit-bio"]),
+    "WebRTC queues remote ICE candidates until SDP is set": all(x in (root / "public/voice-calls.js").read_text(encoding="utf-8") for x in ["pendingRemoteCandidates", "flushRemoteCandidates", "addRemoteCandidate"]),
+    "Worker can issue short-lived Cloudflare TURN credentials": "generate-ice-servers" in worker and "FROSS_TURN_KEY_ID" in worker and "FROSS_TURN_API_TOKEN" in worker,
+    "native app call configuration uses the Worker API origin": "get apiOrigin(){return FROSS_API_ORIGIN}" in js and 'window.FROSS?.apiOrigin||""' in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
