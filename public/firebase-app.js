@@ -1668,19 +1668,19 @@ $("gb").onclick=()=>{
         button.disabled=true;button.textContent="Открываем Telegram…";
         try{
           const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/startPhoneVerification",{
+          const response=await fetch(FROSS_API_ORIGIN+"/api/phone/start",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
             body:JSON.stringify({phone})
           });
           const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("Firebase Functions ответил HTTP "+response.status+"."));
+          if(!response.ok)throw new Error(result.error||("Сервер FROSS ответил HTTP "+response.status+"."));
           phoneChallengeId=result.challengeId;
-          const verificationBotUrl="https://t.me/FROSS_verification_bot?start="+encodeURIComponent(result.challengeId);
+          const verificationBotUrl=result.botUrl||("https://t.me/FROSS_verification_bot?start="+encodeURIComponent(result.challengeId));
           if(botWindow)botWindow.location.href=verificationBotUrl;else window.location.href=verificationBotUrl;
           $("phoneError").textContent="Открылся @FROSS_verification_bot. Нажми «Поделиться номером телефона», отправь свой контакт и вернись сюда за кодом.";
         }catch(error){
           botWindow?.close();
-          $("phoneError").textContent=error instanceof TypeError?"Нет соединения с сервером. Проверь публикацию Firebase Functions и подключение.":(error.message||authError(error));
+          $("phoneError").textContent=error instanceof TypeError?"Нет соединения с сервером FROSS. Проверь публикацию Cloudflare Worker и секреты Telegram-бота.":(error.message||authError(error));
         }finally{button.disabled=false;button.textContent=label}
       };
       $("phoneConfirm").onclick=async()=>{
@@ -1690,7 +1690,7 @@ $("gb").onclick=()=>{
         const button=$("phoneConfirm");button.disabled=true;button.textContent="Проверяем…";
         try{
           const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/confirmPhoneVerification",{
+          const response=await fetch(FROSS_API_ORIGIN+"/api/phone/confirm",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
             body:JSON.stringify({challengeId:phoneChallengeId,code})
           });
