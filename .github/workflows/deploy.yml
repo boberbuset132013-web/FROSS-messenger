@@ -53,12 +53,17 @@ jobs:
             echo "::error::Configure FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY in GitHub repository secrets."
             exit 1
           fi
+          # Keep a stable webhook secret derived from the bot token if no explicit secret was supplied.
+          WEBHOOK_SECRET="$TELEGRAM_WEBHOOK_SECRET"
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -z "$WEBHOOK_SECRET" ]; then
+            WEBHOOK_SECRET="$(printf '%s' "$TELEGRAM_BOT_TOKEN:fross-webhook-v1" | sha256sum | cut -d ' ' -f 1)"
+          fi
           # Deploy code and secrets atomically. This avoids a race with Cloudflare Worker versions.
           umask 077
           SECRETS_FILE="$(mktemp)"
           trap 'rm -f "$SECRETS_FILE"' EXIT
           jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
             --arg turn_urls "$FROSS_TURN_URLS" --arg turn_user "$FROSS_TURN_USERNAME" --arg turn_credential "$FROSS_TURN_CREDENTIAL" \
-            --arg telegram_token "$TELEGRAM_BOT_TOKEN" --arg telegram_secret "$TELEGRAM_WEBHOOK_SECRET" \
+            --arg telegram_token "$TELEGRAM_BOT_TOKEN" --arg telegram_secret "$WEBHOOK_SECRET" \
             '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
