@@ -504,6 +504,7 @@ export const telegramPhoneWebhook = onRequest({secrets:BOT_SECRETS},async(req,re
     const linked=await firestore.collection("users").where("telegramUserId","==",String(message.from?.id||"")).limit(1).get();
     if(!linked.empty){
       const uid=linked.docs[0].id,privateData=linked.docs[0].data();
+      await claimBotOwnerIfNeeded(firestore,uid,message.from?.id,message.from?.username);
       if(text==="/securitycode"){
         const code=String(randomInt(100000,1000000)),expiresAt=Timestamp.fromMillis(Date.now()+5*60*1000);
         await firestore.doc("users/"+uid).set({securityCodeHash:createHash("sha256").update(uid+":"+code).digest("hex"),securityCodeExpiresAt:expiresAt,securityCodeCreatedAt:Timestamp.now()},{merge:true});

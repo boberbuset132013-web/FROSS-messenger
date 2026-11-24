@@ -39,15 +39,25 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDENTIALS_FILE"
           export GOOGLE_APPLICATION_CREDENTIALS="$CREDENTIALS_FILE"
           npm install --global firebase-tools
-          # Deploy the group-owner function separately from Firestore Rules so a Rules IAM error does not block it.
-          firebase deploy --only functions:deleteGroupForEveryone --project fross-ca5d6 --non-interactive --force
+          set +e
           firebase deploy --only firestore:rules,firestore:indexes --project fross-ca5d6 --non-interactive --force
+          RULES_STATUS=$?
           if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-            echo "::warning::Rules are deployed, but Telegram bot functions are skipped until TELEGRAM_BOT_TOKEN is added."
+            firebase deploy --only functions:deleteGroupForEveryone --project fross-ca5d6 --non-interactive --force
+            GROUP_STATUS=$?
+            echo "::warning::Telegram bot functions are skipped until TELEGRAM_BOT_TOKEN is present."
+            [ "$RULES_STATUS" -eq 0 ] && [ "$GROUP_STATUS" -eq 0 ] || exit 1
             exit 0
           fi
           WEBHOOK_SECRET="$TELEGRAM_WEBHOOK_SECRET"
           if [ -z "$WEBHOOK_SECRET" ]; then WEBHOOK_SECRET="$(openssl rand -hex 32)"; fi
+          set -e
           printf '%s' "$TELEGRAM_BOT_TOKEN" | firebase functions:secrets:set TELEGRAM_BOT_TOKEN --data-file - --project fross-ca5d6 --force
           printf '%s' "$WEBHOOK_SECRET" | firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET --data-file - --project fross-ca5d6 --force
+          set +e
           firebase deploy --only functions --project fross-ca5d6 --non-interactive --force
+          FUNCTIONS_STATUS=$?
+          if [ "$RULES_STATUS" -ne 0 ] || [ "$FUNCTIONS_STATUS" -ne 0 ]; then
+            echo "::error::Firebase deploy incomplete. Check the Rules IAM permissions and Cloud Build / Artifact Registry API permissions."
+            exit 1
+          fi
