@@ -188,14 +188,22 @@ service cloud.firestore {
               && request.resource.data.replyTo.text is string
               && request.resource.data.replyTo.text.size() <= 160))
           && (!("attachment" in request.resource.data)
-            || (request.resource.data.attachment.keys().hasOnly(["name", "type", "size", "url", "path"])
+            || (request.resource.data.attachment.keys().hasOnly(["name", "type", "size", "url", "path", "external"])
               && request.resource.data.attachment.name is string
               && request.resource.data.attachment.type is string
               && request.resource.data.attachment.size is int
               && request.resource.data.attachment.url is string
               && request.resource.data.attachment.path is string
-              && request.resource.data.attachment.path.matches("chatFiles/" + chatId + "/" + request.auth.uid + "/.*")
-              && request.resource.data.attachment.size <= 20 * 1024 * 1024));
+              && (
+                (request.resource.data.attachment.external == true
+                  && request.resource.data.attachment.size == 0
+                  && request.resource.data.attachment.path == ""
+                  && request.resource.data.attachment.url.matches("https://.*"))
+                ||
+                (!(request.resource.data.attachment.external == true)
+                  && request.resource.data.attachment.path.matches("chatFiles/" + chatId + "/" + request.auth.uid + "/.*")
+                  && request.resource.data.attachment.size <= 20 * 1024 * 1024)
+              )));
         allow update: if canReadChat(chatId) && (
           (resource.data.senderUid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["text", "editedAt"])
@@ -258,8 +266,12 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/chats/$(request.resource.data.chatId))
         && request.auth.uid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
         && request.resource.data.calleeUid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
+        && request.resource.data.callId == callId
+        && callId.matches("[0-9]{9}")
+        && request.resource.data.callCode is string
+        && request.resource.data.callCode.matches("[0-9]{4}")
         && request.resource.data.keys().hasOnly([
-          "chatId", "callerUid", "calleeUid", "participantUids", "status", "createdAt"
+          "chatId", "callId", "callCode", "callerUid", "calleeUid", "participantUids", "status", "createdAt"
         ]);
       allow get: if callParticipant();
       allow list: if verified() && resource.data.calleeUid == request.auth.uid;

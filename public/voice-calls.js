@@ -62,7 +62,13 @@ async function changeAudioOutput(deviceId){
 }
 function toggleRemoteAudio(){
   if(!audioElement){
-    $("call-status").textContent="Аудиопоток ещё не получен. Проверьте соединение и разрешение на звук.";
+    $("call-status").textContent="Ожидаем аудиопоток собеседника…";
+    return;
+  }
+  if(audioElement.paused){
+    audioElement.muted=false;
+    audioElement.play().then(()=>{$("call-status").textContent="Звук собеседника включён."})
+      .catch(error=>{$("call-status").textContent="Браузер не разрешил воспроизведение: "+(error.message||"нажми ещё раз")});
     return;
   }
   audioElement.muted=!audioElement.muted;
@@ -129,15 +135,22 @@ function startRingbackTone(incoming=false){
   }catch(error){console.warn("FROSS call tone unavailable:",error?.message||error)}
 }
 
-function showCall(title, status, avatarText, actions, profile) {
+function showCall(title, status, avatarText, actions, profile, callInfo) {
   $("call-title").textContent = title;
   $("call-status").textContent = status || "";
+  const codeElement=$("call-code");
+  if(codeElement){
+    if(callInfo?.id&&callInfo?.code){
+      codeElement.hidden=false;
+      codeElement.textContent="ID "+callInfo.id+" · КОД "+callInfo.code;
+    }else codeElement.hidden=true;
+  }
   const avatarElement=$("call-avatar");
   if(profile&&window.FROSS?.renderAvatar)window.FROSS.renderAvatar(avatarElement,profile);
   else{avatarElement.style.backgroundImage="none";avatarElement.style.background="#6f3296";avatarElement.textContent=avatarText||"☎"}
   $("call-actions").replaceChildren();
   const visibleActions=[...(actions||[])];
-  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:audioElement?.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
+  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
   for (const action of visibleActions) {
     const button = document.createElement("button");
     button.textContent = action.label;
@@ -320,6 +333,17 @@ async function createPeer(callId, role, stream) {
   attachAudio(peer);
   return peer;
 }
+async function generateCallIdentity(){
+  for(let attempt=0;attempt<12;attempt++){
+    const random=new Uint32Array(2);crypto.getRandomValues(random);
+    const callId=String(100000000+(random[0]%900000000));
+    const reference=doc(db,"calls",callId);
+    if(!(await getDoc(reference)).exists()){
+      return {callId,callCode:String(random[1]%10000).padStart(4,"0"),reference};
+    }
+  }
+  throw new Error("Не удалось создать уникальный ID звонка. Попробуй ещё раз.");
+}
 async function startOutgoingCall() {
   if (activeCall) {
     $("call-status").textContent = "Сначала завершите текущий звонок.";
@@ -340,15 +364,14 @@ async function startOutgoingCall() {
       {label:"Отменить",danger:true,onClick:()=>finishCall("ended")}
     ],peerProfile);
     const stream = await getMicrophone();
-    const callRef = doc(collection(db,"calls"));
-    const callId = callRef.id;
-    const participantUids = [profile.uid,calleeUid];
+    const {callId,callCode,reference:callRef}=await generateCallIdentity();
+    const participantUids=[profile.uid,calleeUid];
     await setDoc(callRef,{
-      chatId,callerUid:profile.uid,calleeUid,participantUids,
+      chatId,callId,callCode,callerUid:profile.uid,calleeUid,participantUids,
       status:"preparing",createdAt:serverTimestamp()
     });
     const peer = await createPeer(callId,"caller",stream);
-    activeCall = {id:callId,ref:callRef,role:"caller",peer,stream,peerProfile};
+    activeCall = {id:callId,callCode,ref:callRef,role:"caller",peer,stream,peerProfile};
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     await updateDoc(callRef,{
@@ -357,7 +380,7 @@ async function startOutgoingCall() {
     });
     showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Вызов… идут гудки",String(peerProfile.displayName||peerProfile.username||"☎")[0],[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
-    ],peerProfile);
+    ],peerProfile,{id:callId,code:callCode});
     startRingbackTone(false);
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"calleeCandidates");
@@ -382,13 +405,14 @@ async function showIncomingCall(snapshot) {
   } catch {}
   if (activeCall) return;
   caller.uid=data.callerUid;
+  window.FROSS?.notifyIncomingCall?.(caller,callId);
   showCall(caller.displayName||caller.username||"Собеседник","Входящий звонок",String(caller.displayName||caller.username||"☎")[0],[
     {label:"Отклонить",danger:true,onClick:async()=>{
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
       stopRingbackTone();hideCall();
     }},
     {label:"Ответить",primary:true,onClick:()=>{stopRingbackTone();acceptCall(callId,data,caller)}}
-  ],caller);
+  ],caller,{id:data.callId||callId,code:data.callCode||""});
   startRingbackTone(true);
 }
 async function acceptCall(callId, data, caller) {
@@ -398,7 +422,7 @@ async function acceptCall(callId, data, caller) {
     const stream = await getMicrophone();
     const callRef = doc(db,"calls",callId);
     const peer = await createPeer(callId,"callee",stream);
-    activeCall = {id:callId,ref:callRef,role:"callee",peer,stream,peerProfile:caller};
+    activeCall = {id:callId,callCode:data.callCode||"",ref:callRef,role:"callee",peer,stream,peerProfile:caller};
     await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
@@ -408,7 +432,7 @@ async function acceptCall(callId, data, caller) {
     });
     showCall(caller.displayName||caller.username||"Собеседник","Соединяемся…",String(caller.displayName||caller.username||"☎")[0],[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
-    ],caller);
+    ],caller,{id:data.callId||callId,code:data.callCode||""});
     stopRingbackTone();
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"callerCandidates");
@@ -427,8 +451,15 @@ function listenForCalls(uid) {
   incomingStop = onSnapshot(callsQuery,snapshot => {
     for (const change of snapshot.docChanges()) {
       const data = change.doc.data();
-      if (data.status === "ringing") showIncomingCall(change.doc);
-      else seenIncoming.delete(change.doc.id);
+      if(data.status==="ringing"){
+        const createdAt=data.createdAt?.toMillis?.()||0;
+        if(!createdAt||Date.now()-createdAt>90*1000){
+          updateDoc(doc(db,"calls",change.doc.id),{status:"ended",endedAt:serverTimestamp(),updatedAt:serverTimestamp()}).catch(()=>{});
+          seenIncoming.delete(change.doc.id);
+          continue;
+        }
+        showIncomingCall(change.doc);
+      }else seenIncoming.delete(change.doc.id);
     }
   },error => console.error("Incoming call listener:",error));
 }
