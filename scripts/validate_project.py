@@ -5,7 +5,6 @@ html = (root / "public/index.html").read_text(encoding="utf-8")
 js = (root / "public/firebase-app.js").read_text(encoding="utf-8")
 worker = (root / "worker.js").read_text(encoding="utf-8")
 rules = (root / "firestore.rules").read_text(encoding="utf-8")
-storage = (root / "storage.rules").read_text(encoding="utf-8")
 checks = {
     "global audio dock survives chat switching": 'id="audio-dock"' in html and 'id="global-audio"' in html and "function startGlobalAudio(attachment)" in js,
     "global audio controls provide pause, speed and seek": all(x in js for x in ["audio-dock-toggle", "audio-dock-speed", "audio-dock-seek", "closeGlobalAudioDock"]),
@@ -64,7 +63,7 @@ checks = {
     "legacy accounts receive a trusted migration claim": "setCustomUserClaims" in (root / "migration/migrate-d1-to-firebase.mjs").read_text(encoding="utf-8"),
     "Google and password providers have useful setup errors": "auth/unauthorized-domain" in js,
     "chat access requires verified email or admin-migrated legacy claim": "function verified()" in rules and "email_verified == true" in rules and "legacyAccount == true" in rules,
-    "chat file access is restricted to verified chat members and the uploader": 'request.auth.uid == userId' in storage and 'match /chatFiles/{chatId}/{userId}/{fileName}' in storage and 'allow read: if isChatMember(chatId);' in storage and 'request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.memberUids' in storage and "function verified()" in storage,
+    "Filebase chat files require verified membership": "function isChatMember(chatId,uid,token)" in worker and "claims.email_verified!==true&&claims.legacyAccount!==true" in worker and "if(!await isChatMember(chatId,identity.uid,identity.token))" in worker and "allowed=await isChatMember(match[1],identity.uid,identity.token)" in worker,
     "Firebase Storage stays disabled; media is served through Filebase": "storage" not in __import__("json").loads((root / "firebase.json").read_text(encoding="utf-8")) and "FILEBASE_BUCKET" in (root / "wrangler.toml").read_text(encoding="utf-8"),
     "no unsafe diagnostic leakage": 'diagnostic:String(error?.message' not in js,
     "username availability can be checked before registration": "allow get: if true;" in rules,
