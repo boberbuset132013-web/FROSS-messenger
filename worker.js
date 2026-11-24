@@ -535,99 +535,170 @@ async function markSystemInboxRead(request,env){
 
 async function readBotStore(uid,env){
   const store=await readPhoneRecord("userBots/"+uid+".json",env);
-  return store&&store.uid===uid&&Array.isArray(store.bots)?store:{version:2,uid,bots:[]};
+  return store&&store.uid===uid&&Array.isArray(store.bots)?store:{version:3,uid,bots:[]};
 }
-function publicBot(bot){const {webhookSecret,...safe}=bot;return safe}
+function publicBot(bot){
+  const {tokenHash,webhookSecret,ownerUid,...safe}=bot;
+  return safe;
+}
 function cleanBotButtons(value){
   if(!Array.isArray(value))return [];
-  return value.slice(0,8).map(x=>({label:String(x?.label||"").trim().slice(0,32),response:String(x?.response||"").trim().slice(0,1000)})).filter(x=>x.label&&x.response);
+  return value.slice(0,12).map(item=>({
+    label:String(item?.label||"").trim().slice(0,32),
+    response:String(item?.response||"").trim().slice(0,1000),
+    url:String(item?.url||"").trim().slice(0,500)
+  })).filter(item=>item.label&&(item.response||item.url));
+}
+async function readBotDirectory(env){
+  const value=await readPhoneRecord("frossBots/directory.json",env);
+  return value&&Array.isArray(value.bots)?value:{version:1,bots:[]};
+}
+function directoryBot(bot){
+  return {id:String(bot.id),name:String(bot.name||"Бот FROSS"),username:String(bot.username||""),
+    description:String(bot.description||""),avatarUrl:String(bot.avatarUrl||""),ownerUsername:String(bot.ownerUsername||""),
+    enabled:bot.enabled!==false,buttons:cleanBotButtons(bot.buttons),createdAt:Number(bot.createdAt)||0,updatedAt:Number(bot.updatedAt)||0};
+}
+async function saveBotDirectory(env,directory){
+  directory.bots=directory.bots.filter(bot=>bot&&bot.id&&bot.username);
+  await savePhoneRecord("frossBots/directory.json",directory,env);
+}
+async function storeBotPublic(bot,env){
+  await savePhoneRecord("frossBots/"+bot.id+".json",{...directoryBot(bot),ownerUid:bot.ownerUid},env);
+  const directory=await readBotDirectory(env),index=directory.bots.findIndex(item=>item.id===bot.id),entry=directoryBot(bot);
+  if(index>=0)directory.bots[index]=entry;else directory.bots.push(entry);
+  await saveBotDirectory(env,directory);
+}
+async function removeBotPublic(bot,env){
+  await deletePhoneRecord("frossBots/"+bot.id+".json",env);
+  await deletePhoneRecord("frossBots/by-username/"+bot.username+".json",env);
+  const directory=await readBotDirectory(env);directory.bots=directory.bots.filter(item=>item.id!==bot.id);
+  await saveBotDirectory(env,directory);
+}
+async function createInternalBot(identity,env,body){
+  const store=await readBotStore(identity.uid,env),owned=store.bots.filter(bot=>!bot.botId);
+  if(owned.length>=20)return json({error:"Можно создать не более 20 ботов FROSS."},409);
+  const name=String(body.name||"").trim().slice(0,40),username=String(body.username||"").trim().toLowerCase().replace(/^@/,"");
+  const description=String(body.description||"").trim().slice(0,300);
+  if(name.length<2)return json({error:"Название должно содержать от 2 до 40 символов."},400);
+  if(!/^[a-z0-9_]{3,24}$/.test(username))return json({error:"Username: 3–24 символа, латиница, цифры и _."},400);
+  const directory=await readBotDirectory(env);
+  if(directory.bots.some(item=>String(item.username).toLowerCase()===username))return json({error:"Этот username бота уже занят в FROSS."},409);
+  const id=crypto.randomUUID(),raw="FRS_"+Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("");
+  const ownerProfile=await firestoreGet("publicUsers/"+encodeURIComponent(identity.uid),identity.token).catch(()=>null);
+  const bot={id,ownerUid:identity.uid,name,username,description,avatarUrl:"",ownerUsername:stringField(ownerProfile,"username"),
+    welcomeMessage:"Привет! Я "+name+". Чем могу помочь?",fallbackMessage:"Я пока не знаю, как ответить. Выбери одну из кнопок ниже.",
+    buttons:[],enabled:true,tokenHash:await sha256Hex(raw),createdAt:Date.now(),updatedAt:Date.now()};
+  store.version=3;store.bots=store.bots.filter(item=>item.botId);store.bots.push(bot);
+  await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+  await savePhoneRecord("botTokens/"+bot.tokenHash+".json",{uid:identity.uid,botId:id,createdAt:Date.now()},env);
+  await savePhoneRecord("frossBots/by-username/"+username+".json",{id,uid:identity.uid,createdAt:Date.now()},env);
+  await storeBotPublic(bot,env);
+  return json({ok:true,bot:publicBot(bot),token:raw,warning:"Токен показывается один раз. Скопируй его сейчас."},201);
+}
+function botResponseFor(bot,text,isFirst){
+  const message=String(text||"").trim();
+  if(isFirst||/^\/start(?:\s|$)/i.test(message))return {text:bot.welcomeMessage||("Привет! Я "+bot.name+".")};
+  const button=(bot.buttons||[]).find(item=>String(item.label||"").toLowerCase()===message.toLowerCase());
+  if(button)return {text:button.response||"",url:button.url||""};
+  if(/^\/help(?:\s|$)/i.test(message)&&bot.buttons?.length)return {text:"Выбери действие с помощью кнопок ниже."};
+  return {text:bot.fallbackMessage||"Я пока не знаю, как ответить."};
 }
 async function botApi(request,env,url,action){
   const identity=await verifyFirebaseToken(request),store=await readBotStore(identity.uid,env);
-  if(action==="list")return json({ok:true,bots:store.bots.map(publicBot)});
+  if(action==="list")return json({ok:true,bots:store.bots.filter(bot=>!bot.botId).map(publicBot)});
+  if(action==="directory"){
+    const directory=await readBotDirectory(env);
+    return json({ok:true,bots:directory.bots.filter(bot=>bot.enabled!==false).slice(-200)});
+  }
   const body=await request.json().catch(()=>({}));
-  if(action==="create"){
-    const linked=await readPhoneRecord("phoneLinks/"+identity.uid+".json",env);
-    if(!linked?.telegramUserId)return json({error:"Сначала подтверди номер через Telegram в настройках FROSS."},409);
-    const name=String(body.name||"").trim().slice(0,64);
-    if(name.length<2)return json({error:"Название должно содержать от 2 до 64 символов."},400);
-    if(store.bots.filter(x=>x.botId).length>=20)return json({error:"Лимит — 20 подключённых Telegram-ботов."},409);
-    const requestId=crypto.randomUUID().replace(/-/g,"");
-    await savePhoneRecord("botCreateRequests/"+requestId+".json",{uid:identity.uid,name,expiresAt:Date.now()+15*60*1000},env);
-    const mainBot=await telegramCall(env.TELEGRAM_BOT_TOKEN,"getMe",{});
-    return json({ok:true,requestId,botUrl:"https://t.me/"+mainBot.username+"?start=botcreate_"+requestId,expiresInSeconds:900});
+  if(action==="create")return createInternalBot(identity,env,body);
+  if(action==="chat"){
+    const botId=String(body.botId||""),text=String(body.text||"").trim();
+    if(!/^[0-9a-f-]{36}$/i.test(botId))return json({error:"Некорректный ID бота."},400);
+    if(text.length>1000)return json({error:"Сообщение не должно быть длиннее 1000 символов."},400);
+    const bot=await readPhoneRecord("frossBots/"+botId+".json",env);
+    if(!bot||bot.enabled===false)return json({error:"Бот не найден или отключён."},404);
+    const key="botChats/"+botId+"/"+identity.uid+".json";
+    let chat=await readPhoneRecord(key,env);
+    if(!chat||chat.botId!==botId||chat.uid!==identity.uid)chat={version:1,botId,uid:identity.uid,messages:[]};
+    if(!chat.messages.length&&!text){
+      const first=botResponseFor(bot,"",true);
+      chat.messages.push({id:crypto.randomUUID(),role:"assistant",text:first.text,url:first.url||"",createdAt:Date.now()});
+    }else if(text){
+      chat.messages.push({id:crypto.randomUUID(),role:"user",text,createdAt:Date.now()});
+      const answer=botResponseFor(bot,text,false);
+      chat.messages.push({id:crypto.randomUUID(),role:"assistant",text:answer.text,url:answer.url||"",createdAt:Date.now()});
+    }
+    chat.messages=chat.messages.slice(-80);await savePhoneRecord(key,chat,env);
+    return json({ok:true,bot:{id:bot.id,name:bot.name,username:bot.username,description:bot.description,avatarUrl:bot.avatarUrl,buttons:cleanBotButtons(bot.buttons)},messages:chat.messages});
   }
-  const id=String(body.id||""),bot=store.bots.find(x=>String(x.botId||x.id)===id);
-  if(!bot)return json({error:"Бот не найден."},404);
+  const id=String(body.id||""),bot=store.bots.find(item=>item.id===id&&!item.botId);
+  if(!bot)return json({error:"Бот FROSS не найден. Старые Telegram-записи не входят в каталог FROSS."},404);
   if(action==="delete"){
-    if(bot.botId){
-      const token=await managedBotToken(bot.botId,env);
-      await telegramCall(token,"deleteWebhook",{drop_pending_updates:true}).catch(()=>{});
-      await deletePhoneRecord("managedBots/"+bot.botId+".json",env);
-    }
-    store.bots=store.bots.filter(x=>x!==bot);await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
-    return json({ok:true,deletedFromFross:true,telegramBotRemains:!!bot.botId});
+    store.bots=store.bots.filter(item=>item.id!==id);
+    await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+    await removeBotPublic(bot,env);
+    if(bot.tokenHash)await deletePhoneRecord("botTokens/"+bot.tokenHash+".json",env);
+    return json({ok:true,deleted:true});
   }
-  if(action==="token"||action==="rotate"){
-    if(!bot.botId)return json({error:"Это старый тестовый токен, а не токен Telegram. Удали запись и создай настоящего бота."},409);
-    const result=action==="rotate"
-      ?await telegramCall(env.TELEGRAM_BOT_TOKEN,"replaceManagedBotToken",{user_id:Number(bot.botId)})
-      :await managedBotToken(bot.botId,env);
-    const token=typeof result==="string"?result:String(result?.token||"");
-    if(!token)throw new Error("Telegram не вернул токен.");
-    if(action==="rotate"){
-      const webhook=new URL("/api/telegram/managed-webhook?botId="+encodeURIComponent(bot.botId),url.origin).toString();
-      await telegramCall(token,"setWebhook",{url:webhook,secret_token:bot.webhookSecret,allowed_updates:["message","callback_query"]});
-    }
-    return json({ok:true,token,rotated:action==="rotate"});
+  if(action==="rotate"){
+    const oldHash=bot.tokenHash||"",raw="FRS_"+Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("");
+    const newHash=await sha256Hex(raw);bot.tokenHash=newHash;bot.updatedAt=Date.now();
+    await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+    if(oldHash)await deletePhoneRecord("botTokens/"+oldHash+".json",env);
+    await savePhoneRecord("botTokens/"+newHash+".json",{uid:identity.uid,botId:id,createdAt:Date.now()},env);
+    return json({ok:true,token:raw,rotated:true});
   }
   if(action==="update"){
-    if(!bot.botId)return json({error:"Старая тестовая запись не является Telegram-ботом. Удали её и создай нового."},409);
     const name=body.name===undefined?bot.name:String(body.name).trim();
+    const username=body.username===undefined?bot.username:String(body.username).trim().toLowerCase().replace(/^@/,"");
     const description=body.description===undefined?bot.description:String(body.description).trim();
-    const shortDescription=body.shortDescription===undefined?bot.shortDescription:String(body.shortDescription).trim();
     const welcomeMessage=body.welcomeMessage===undefined?bot.welcomeMessage:String(body.welcomeMessage).trim();
     const fallbackMessage=body.fallbackMessage===undefined?bot.fallbackMessage:String(body.fallbackMessage).trim();
-    if(!name||name.length>64)return json({error:"Имя: 1–64 символа."},400);
-    if(description.length>512||shortDescription.length>120)return json({error:"Описание: до 512 символов, краткое — до 120."},400);
-    if(!welcomeMessage||welcomeMessage.length>1000||!fallbackMessage||fallbackMessage.length>1000)return json({error:"Приветствие и ответ по умолчанию должны быть длиной 1–1000 символов."},400);
-    const token=await managedBotToken(bot.botId,env);
-    await telegramCall(token,"setMyName",{name});
-    await telegramCall(token,"setMyDescription",{description});
-    await telegramCall(token,"setMyShortDescription",{short_description:shortDescription});
-    const buttons=cleanBotButtons(body.buttons===undefined?bot.buttons:body.buttons);
-    bot.name=name;bot.description=description;bot.shortDescription=shortDescription;bot.welcomeMessage=welcomeMessage;bot.fallbackMessage=fallbackMessage;bot.buttons=buttons;bot.updatedAt=Date.now();
+    if(name.length<2||name.length>40)return json({error:"Название: от 2 до 40 символов."},400);
+    if(!/^[a-z0-9_]{3,24}$/.test(username))return json({error:"Username: 3–24 символа, латиница, цифры и _."},400);
+    if(description.length>300)return json({error:"Описание не должно быть длиннее 300 символов."},400);
+    if(!welcomeMessage||welcomeMessage.length>1000||!fallbackMessage||fallbackMessage.length>1000)return json({error:"Приветствие и ответ по умолчанию должны содержать 1–1000 символов."},400);
+    if(username!==bot.username){
+      const taken=await readPhoneRecord("frossBots/by-username/"+username+".json",env);
+      if(taken&&taken.id!==id)return json({error:"Этот username бота уже занят в FROSS."},409);
+      await deletePhoneRecord("frossBots/by-username/"+bot.username+".json",env);
+      await savePhoneRecord("frossBots/by-username/"+username+".json",{id,uid:identity.uid,createdAt:Date.now()},env);
+    }
+    bot.name=name;bot.username=username;bot.description=description;
+    bot.welcomeMessage=welcomeMessage;bot.fallbackMessage=fallbackMessage;
+    bot.buttons=cleanBotButtons(body.buttons===undefined?bot.buttons:body.buttons);
+    if(body.enabled!==undefined)bot.enabled=body.enabled===true;
+    bot.updatedAt=Date.now();
     await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
-    await savePhoneRecord("managedBots/"+bot.botId+".json",{uid:identity.uid,...bot},env);
+    await storeBotPublic(bot,env);
     return json({ok:true,bot:publicBot(bot)});
   }
   return json({error:"Неизвестное действие."},400);
 }
-async function telegramManagedWebhook(request,env,url){
-  const botId=String(url.searchParams.get("botId")||"");
-  if(!/^\d{5,22}$/.test(botId))return new Response("Not found",{status:404});
-  const bot=await readPhoneRecord("managedBots/"+botId+".json",env);
-  if(!bot||!bot.uid||!bot.enabled)return new Response("Not found",{status:404});
-  if(!constantTimeEqual(request.headers.get("X-Telegram-Bot-Api-Secret-Token"),bot.webhookSecret||""))return new Response("",{status:401});
-  const update=await request.json().catch(()=>({})),message=update.message;
-  if(!message?.chat?.id)return new Response("ok");
-  const received=String(message.text||"").trim(),token=await managedBotToken(botId,env);
-  let reply=bot.fallbackMessage||"Я пока не знаю, что ответить.";
-  if(/^\/start(?:@\w+)?$/i.test(received))reply=bot.welcomeMessage||"Привет! Я бот, созданный через FROSS.";
-  else if(/^\/help(?:@\w+)?$/i.test(received))reply=bot.buttons?.length?"Выбери кнопку ниже.":"Пока кнопок нет. Владелец может добавить их в FROSS.";
-  else{const found=(bot.buttons||[]).find(x=>String(x.label||"").toLowerCase()===received.toLowerCase());if(found)reply=found.response}
-  const keyboard=(bot.buttons||[]).map(x=>[{text:x.label}]),payload={chat_id:message.chat.id,text:reply};
-  if(keyboard.length)payload.reply_markup={keyboard,resize_keyboard:true};
-  await telegramCall(token,"sendMessage",payload);return new Response("ok");
+async function botTokenApi(request,env,action){
+  const match=(request.headers.get("Authorization")||"").match(/^Bearer\s+(FRS_[A-Fa-f0-9]{64})$/);
+  if(!match)return json({error:"Нужен действующий FROSS Bot API token."},401);
+  const tokenHash=await sha256Hex(match[1]),record=await readPhoneRecord("botTokens/"+tokenHash+".json",env);
+  if(!record?.uid||!record?.botId)return json({error:"Токен бота неверен или отозван."},401);
+  const store=await readBotStore(record.uid,env),bot=store.bots.find(item=>item.id===record.botId&&!item.botId);
+  if(!bot||bot.tokenHash!==tokenHash||bot.enabled===false)return json({error:"Бот отключён, удалён или токен отозван."},403);
+  if(action==="profile")return json({ok:true,bot:publicBot(bot)});
+  const body=await request.json().catch(()=>({})),text=String(body.text||"").trim();
+  if(!text||text.length>1000)return json({error:"text должен содержать от 1 до 1000 символов."},400);
+  const answer=botResponseFor(bot,text,false);
+  return json({ok:true,bot:{id:bot.id,username:bot.username},response:answer.text,url:answer.url||"",buttons:cleanBotButtons(bot.buttons)});
 }
 async function api(request,env,url){
   if(request.method==="POST"&&url.pathname==="/api/bots/list")return await botApi(request,env,url,"list");
+  if(request.method==="POST"&&url.pathname==="/api/bots/directory")return await botApi(request,env,url,"directory");
   if(request.method==="POST"&&url.pathname==="/api/bots/create")return await botApi(request,env,url,"create");
   if(request.method==="POST"&&url.pathname==="/api/bots/update")return await botApi(request,env,url,"update");
-  if(request.method==="POST"&&url.pathname==="/api/bots/token")return await botApi(request,env,url,"token");
   if(request.method==="POST"&&url.pathname==="/api/bots/rotate")return await botApi(request,env,url,"rotate");
   if(request.method==="POST"&&url.pathname==="/api/bots/delete")return await botApi(request,env,url,"delete");
-  if(request.method==="POST"&&url.pathname==="/api/telegram/managed-webhook")return await telegramManagedWebhook(request,env,url);
+  if(request.method==="POST"&&url.pathname==="/api/bots/chat")return await botApi(request,env,url,"chat");
+  if(request.method==="GET"&&url.pathname==="/api/bot/v1/me")return await botTokenApi(request,env,"profile");
+  if(request.method==="POST"&&url.pathname==="/api/bot/v1/respond")return await botTokenApi(request,env,"respond");
   if(request.method==="POST"&&url.pathname==="/api/system/models")return await frossAiModels(request,env);
   if(request.method==="POST"&&url.pathname==="/api/system/chat")return await frossAiChat(request,env,url);
   if(request.method==="POST"&&url.pathname==="/api/system/inbox")return await getSystemInbox(request,env);
