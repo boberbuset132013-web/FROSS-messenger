@@ -19,7 +19,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Skip Firebase Functions when no function source changed
+        if: github.event_name == 'push'
+        run: |
+          CHANGED="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA")"
+          if ! printf '%s\n' "$CHANGED" | grep -q '^functions/'; then
+            echo "::notice::No Firebase function source changed; rules are deployed by the dedicated rules workflow. Skipping billing-dependent Functions deployment."
+            echo "SKIP_FIREBASE_FUNCTIONS=true" >> "$GITHUB_ENV"
+          fi
       - name: Deploy Firebase rules and available backend functions
+        if: env.SKIP_FIREBASE_FUNCTIONS != 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
