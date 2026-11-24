@@ -233,19 +233,44 @@ function attachAudio(peer) {
     playRemote();
   };
 }
+async function addRemoteCandidate(call,candidate){
+  if(!call?.peer||!candidate)return;
+  if(!call.peer.remoteDescription){
+    call.pendingRemoteCandidates ||= [];
+    call.pendingRemoteCandidates.push(candidate);
+    return;
+  }
+  try{
+    await call.peer.addIceCandidate(new RTCIceCandidate(candidate));
+  }catch(error){
+    console.warn("ICE candidate rejected:",error?.message||error);
+    if(error?.name==="InvalidStateError"){
+      call.pendingRemoteCandidates ||= [];
+      call.pendingRemoteCandidates.push(candidate);
+    }
+  }
+}
+async function flushRemoteCandidates(call){
+  if(!call?.peer?.remoteDescription||!call.pendingRemoteCandidates?.length)return;
+  const pending=call.pendingRemoteCandidates.splice(0);
+  for(const candidate of pending){
+    try{await call.peer.addIceCandidate(new RTCIceCandidate(candidate))}
+    catch(error){console.warn("Queued ICE candidate rejected:",error?.message||error)}
+  }
+}
 function watchRemoteCandidates(callId, remoteSet) {
-  const call = activeCall;
-  call.candidateStop = onSnapshot(collection(db,"calls",callId,remoteSet),snapshot => {
-    snapshot.docChanges().forEach(change => {
-      if (change.type !== "added") return;
-      const candidate = change.doc.data()?.candidate;
-      if (!candidate || !activeCall?.peer) return;
-      activeCall.peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(error => {
-        console.warn("ICE candidate rejected:",error);
-      });
+  const call=activeCall;
+  if(!call||call.id!==callId)return;
+  call.pendingRemoteCandidates ||= [];
+  call.candidateStop=onSnapshot(collection(db,"calls",callId,remoteSet),snapshot=>{
+    snapshot.docChanges().forEach(change=>{
+      if(change.type!=="added")return;
+      const candidate=change.doc.data()?.candidate;
+      if(candidate)addRemoteCandidate(call,candidate);
     });
-  },error => {
-    $("call-status").textContent = "Ошибка соединения: " + error.message;
+  },error=>{
+    if(activeCall?.id===callId)$("call-status").textContent="Ошибка ICE-сигнализации: "+error.message;
+    console.warn("FROSS candidate listener failed:",error);
   });
 }
 function watchCallDocument(callId) {
@@ -280,6 +305,7 @@ function watchCallDocument(callId) {
       stopRingbackTone();
       try {
         await call.peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+        await flushRemoteCandidates(call);
         $("call-status").textContent = "Соединение установлено. Говорите!";
       } catch (e) {
         $("call-status").textContent = "Не удалось принять ответ: " + e.message;
@@ -378,7 +404,7 @@ async function startOutgoingCall() {
       status:"preparing",createdAt:serverTimestamp()
     });
     const peer = await createPeer(callId,"caller",stream);
-    activeCall = {id:callId,callCode,ref:callRef,role:"caller",peer,stream,peerProfile};
+    activeCall = {id:callId,callCode,ref:callRef,role:"caller",peer,stream,peerProfile,pendingRemoteCandidates:[]};
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     await updateDoc(callRef,{
@@ -429,8 +455,9 @@ async function acceptCall(callId, data, caller) {
     const stream = await getMicrophone();
     const callRef = doc(db,"calls",callId);
     const peer = await createPeer(callId,"callee",stream);
-    activeCall = {id:callId,callCode:data.callCode||"",ref:callRef,role:"callee",peer,stream,peerProfile:caller};
+    activeCall = {id:callId,callCode:data.callCode||"",ref:callRef,role:"callee",peer,stream,peerProfile:caller,pendingRemoteCandidates:[]};
     await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+    await flushRemoteCandidates(activeCall);
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
     await updateDoc(callRef,{
