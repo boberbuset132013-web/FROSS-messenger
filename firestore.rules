@@ -38,11 +38,27 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if own(uid);
       allow list: if false;
-      allow create: if own(uid)
-        && request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"]);
+      allow create: if own(uid) && (
+        request.resource.data.keys().hasOnly(["contactEmail", "settings", "createdAt", "authProvider"])
+        ||
+        (
+          request.resource.data.keys().hasOnly(["phoneNumber", "phoneVerified", "updatedAt"])
+          && request.resource.data.phoneVerified == true
+          && request.resource.data.phoneNumber is string
+          && request.resource.data.phoneNumber.matches("\\+[1-9][0-9]{7,14}")
+          && request.resource.data.updatedAt is timestamp
+        )
+      );
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified", "phoneVisible", "mutedChats"]);
+          .hasOnly(["contactEmail", "settings", "updatedAt", "phoneNumber", "phoneVerified", "phoneVisible", "mutedChats"])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["phoneNumber"])
+          || (request.resource.data.phoneNumber is string
+            && request.resource.data.phoneNumber.matches("\\+[1-9][0-9]{7,14}")))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["phoneVerified"])
+          || request.resource.data.phoneVerified == true)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["phoneVisible"])
+          || request.resource.data.phoneVisible is bool);
       allow delete: if own(uid);
     }
 
