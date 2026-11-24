@@ -344,6 +344,13 @@ async function generateCallIdentity(){
   }
   throw new Error("Не удалось создать уникальный ID звонка. Попробуй ещё раз.");
 }
+function friendlyCallError(error){
+  const code=error?.code||"";
+  if(code==="permission-denied")return "Firebase запретил доступ к звонку. Возможно, правила Firestore ещё не опубликованы или email аккаунта не подтверждён.";
+  if(code==="unavailable")return "Firebase временно недоступен. Проверь интернет и повтори звонок.";
+  if(code==="unauthenticated")return "Сессия закончилась. Войди в FROSS заново.";
+  return error?.message||"Не удалось выполнить действие со звонком.";
+}
 async function startOutgoingCall() {
   if (activeCall) {
     $("call-status").textContent = "Сначала завершите текущий звонок.";
@@ -387,7 +394,7 @@ async function startOutgoingCall() {
   } catch (e) {
     console.error("Call start failed:",e);
     if (activeCall) stopMedia();
-    $("call-status").textContent = e.message || "Не удалось начать звонок.";
+    $("call-status").textContent = friendlyCallError(e);
     showCall("Не удалось позвонить",e.message||"Проверьте микрофон и настройки Firebase.","!",[
       {label:"Закрыть",onClick:hideCall}
     ]);
@@ -440,7 +447,7 @@ async function acceptCall(callId, data, caller) {
     console.error("Could not answer call:",e);
     try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch {}
     if (activeCall) stopMedia();
-    showCall("Не удалось ответить",e.message||"Проверьте разрешение на микрофон.","!",[
+    showCall("Не удалось ответить",friendlyCallError(e),"!",[
       {label:"Закрыть",onClick:hideCall}
     ]);
   }

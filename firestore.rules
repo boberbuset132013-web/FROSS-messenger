@@ -273,7 +273,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "chatId", "callId", "callCode", "callerUid", "calleeUid", "participantUids", "status", "createdAt"
         ]);
-      allow get: if callParticipant();
+      allow get: if verified() && (
+        !exists(/databases/$(database)/documents/calls/$(callId))
+        || request.auth.uid in resource.data.participantUids
+      );
       allow list: if verified() && resource.data.calleeUid == request.auth.uid;
       allow update: if callParticipant()
         && request.resource.data.diff(resource.data).affectedKeys()

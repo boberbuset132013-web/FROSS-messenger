@@ -1340,8 +1340,11 @@ async function optimizeChatImage(file) {
     return new File([blob],name,{type:"image/webp",lastModified:file.lastModified||Date.now()});
   }catch(error){console.warn("Image optimization skipped:",error);return file}
 }
+const attachmentMenu=$("attach-menu"),uploadChoice=$("attach-upload"),urlChoice=$("attach-url");
 if(attachmentButton&&attachmentInput){
-  attachmentButton.onclick=()=>attachmentInput.click();
+  attachmentButton.onclick=()=>{if(attachmentMenu)attachmentMenu.hidden=!attachmentMenu.hidden;else attachmentInput.click()};
+  if(uploadChoice)uploadChoice.onclick=()=>{attachmentMenu.hidden=true;attachmentInput.click()};
+  if(urlChoice)urlChoice.onclick=()=>{attachmentMenu.hidden=true;sendExternalFileLink()};
   attachmentInput.onchange=async()=>{
     const files=[...(attachmentInput.files||[])];attachmentInput.value="";
     for(const file of files) {
@@ -1379,8 +1382,7 @@ function externalFileType(path){
   if(["mp3","m4a","ogg","wav","flac"].includes(ext))return "audio/"+ext;
   return "application/octet-stream";
 }
-const linkButton=$("attach-link");
-if(linkButton)linkButton.onclick=async()=>{
+async function sendExternalFileLink(){
   if(!cur){alert("Сначала открой личный чат или группу.");return}
   const input=prompt("Вставь публичную HTTPS-ссылку на файл:");
   if(input===null)return;
@@ -1392,7 +1394,7 @@ if(linkButton)linkButton.onclick=async()=>{
     const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
     await publishChatMessage(cur,message,type.startsWith("image/")?"фото":"файл");
   }catch(error){alert(error.message||authError(error))}
-};
+}
 $("chat-settings").onclick=openChatSettings;
 async function openChatSettings(){
   const chat=chats.find(c=>c.id===cur);if(!chat)return;
@@ -1453,7 +1455,7 @@ async function openChatSettings(){
         const button=$("delete-group-everyone");button.disabled=true;button.textContent="Удаляем…";
         try{
           const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/deleteGroupForEveryone",{
+          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/deleteGroupForEveryone",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
             body:JSON.stringify({chatId:cur})
           });
@@ -1691,16 +1693,16 @@ $("gb").onclick=()=>{
         button.disabled=true;button.textContent="Открываем бота…";
         try{
           const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/startPhoneVerification",{
+          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/startPhoneVerification",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
             body:JSON.stringify({phone,channel})
           });
           const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("Не удалось открыть бота (HTTP "+response.status+")."));
+          if(!response.ok)throw new Error(result.error||("Сервер подтверждения номера ответил HTTP "+response.status+". Проверь, опубликованы ли Firebase Functions."));
           phoneChallengeId=result.challengeId;
           if(botWindow)botWindow.location.href=result.botUrl;else window.location.href=result.botUrl;
           $("phoneError").textContent="В боте нажми «Поделиться номером», отправь свой контакт, затем вернись сюда за кодом.";
-        }catch(error){botWindow?.close();$("phoneError").textContent=error.message||authError(error)}
+        }catch(error){botWindow?.close();$("phoneError").textContent=error instanceof TypeError?"Не удалось связаться с сервером подтверждения номера. Проверь интернет и публикацию Firebase Functions.":(error.message||authError(error))}
         finally{button.disabled=false;button.textContent=oldLabel}
       }
       $("phoneViaMax").onclick=()=>startPhoneBotVerification("max");
@@ -1712,7 +1714,7 @@ $("gb").onclick=()=>{
         const button=$("phoneConfirm");button.disabled=true;button.textContent="Проверяем…";
         try{
           const token=await currentUser.getIdToken(true);
-          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/confirmPhoneVerification",{
+          const response=await fetch("https://us-central1-fross-ca5d6.cloudfunctions.net/confirmPhoneVerification",{
             method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
             body:JSON.stringify({challengeId:phoneChallengeId,code})
           });
