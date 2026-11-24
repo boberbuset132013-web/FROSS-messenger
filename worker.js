@@ -602,6 +602,38 @@ async function removeBotPublic(bot,env){
   const directory=await readBotDirectory(env);directory.bots=directory.bots.filter(item=>item.id!==bot.id);
   await saveBotDirectory(env,directory);
 }
+async function migrateLegacyFrossBots(identity,env,store){
+  const legacy=store.bots.filter(bot=>!bot.botId&&bot.id&&bot.username&&bot.apiVersion!==1);
+  if(!legacy.length)return [];
+  const profile=await firestoreGet("publicUsers/"+encodeURIComponent(identity.uid),identity.token).catch(()=>null);
+  const migratedKeys=[];
+  for(const bot of legacy){
+    const username=String(bot.username||"").trim().toLowerCase().replace(/^@/,"");
+    if(!/^[a-z0-9_]{3,24}$/.test(username))continue;
+    const taken=await readPhoneRecord("frossBots/by-username/"+username+".json",env);
+    if(taken&&taken.id!==bot.id)continue;
+    const raw="FRS_"+Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("");
+    const oldHash=String(bot.tokenHash||"");
+    bot.ownerUid=identity.uid;
+    bot.ownerUsername=stringField(profile,"username");
+    bot.avatarUrl=String(bot.avatarUrl||"");
+    bot.welcomeMessage=String(bot.welcomeMessage||("Привет! Я "+String(bot.name||"бот")+". Чем могу помочь?")).slice(0,1000);
+    bot.fallbackMessage=String(bot.fallbackMessage||"Я пока не знаю, как ответить. Выбери кнопку ниже.").slice(0,1000);
+    bot.buttons=cleanBotButtons(bot.buttons);
+    bot.enabled=bot.enabled!==false;
+    bot.apiVersion=1;
+    bot.tokenHash=await sha256Hex(raw);
+    bot.updatedAt=Date.now();
+    await savePhoneRecord("botTokens/"+bot.tokenHash+".json",{uid:identity.uid,botId:bot.id,createdAt:Date.now()},env);
+    if(oldHash)await deletePhoneRecord("botTokens/"+oldHash+".json",env);
+    await savePhoneRecord("frossBots/by-username/"+username+".json",{id:bot.id,uid:identity.uid,createdAt:bot.createdAt||Date.now()},env);
+    await storeBotPublic(bot,env);
+    migratedKeys.push({id:bot.id,name:bot.name||"Бот FROSS",token:raw});
+  }
+  store.version=3;
+  await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
+  return migratedKeys;
+}
 async function createInternalBot(identity,env,body){
   const store=await readBotStore(identity.uid,env),owned=store.bots.filter(bot=>!bot.botId);
   if(owned.length>=20)return json({error:"Можно создать не более 20 ботов FROSS."},409);
@@ -615,7 +647,7 @@ async function createInternalBot(identity,env,body){
   const ownerProfile=await firestoreGet("publicUsers/"+encodeURIComponent(identity.uid),identity.token).catch(()=>null);
   const bot={id,ownerUid:identity.uid,name,username,description,avatarUrl:"",ownerUsername:stringField(ownerProfile,"username"),
     welcomeMessage:"Привет! Я "+name+". Чем могу помочь?",fallbackMessage:"Я пока не знаю, как ответить. Выбери одну из кнопок ниже.",
-    buttons:[],enabled:true,tokenHash:await sha256Hex(raw),createdAt:Date.now(),updatedAt:Date.now()};
+    buttons:[],enabled:true,apiVersion:1,tokenHash:await sha256Hex(raw),createdAt:Date.now(),updatedAt:Date.now()};
   store.version=3;store.bots=store.bots.filter(item=>item.botId);store.bots.push(bot);
   await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
   await savePhoneRecord("botTokens/"+bot.tokenHash+".json",{uid:identity.uid,botId:id,createdAt:Date.now()},env);
@@ -633,7 +665,10 @@ function botResponseFor(bot,text,isFirst){
 }
 async function botApi(request,env,url,action){
   const identity=await verifyFirebaseToken(request),store=await readBotStore(identity.uid,env);
-  if(action==="list")return json({ok:true,bots:store.bots.filter(bot=>!bot.botId).map(publicBot)});
+  if(action==="list"){
+    const migratedKeys=await migrateLegacyFrossBots(identity,env,store);
+    return json({ok:true,bots:store.bots.filter(bot=>!bot.botId).map(publicBot),migratedKeys});
+  }
   if(action==="directory"){
     const directory=await readBotDirectory(env);
     return json({ok:true,bots:directory.bots.filter(bot=>bot.enabled!==false).slice(-200)});
