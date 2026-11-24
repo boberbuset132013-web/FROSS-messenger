@@ -6,6 +6,8 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
+import { defineSecret } from "firebase-functions/params";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 1, timeoutSeconds: 540, memory: "512MiB" });
@@ -146,6 +148,283 @@ export const requestAccountDeletion = onRequest(async (req, res) => {
   }catch(error){
     console.error("Account deletion failed:",error);
     return res.status(500).json({error:error?.message||"Account deletion failed."});
+  }
+});
+
+
+const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
+const TELEGRAM_WEBHOOK_SECRET = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+const MAX_BOT_TOKEN = defineSecret("MAX_BOT_TOKEN");
+const MAX_WEBHOOK_SECRET = defineSecret("MAX_WEBHOOK_SECRET");
+const BOT_SECRETS = [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, MAX_BOT_TOKEN, MAX_WEBHOOK_SECRET];
+const PROJECT_ID = "fross-ca5d6";
+const TG_WEBHOOK_URL = "https://us-central1-fross-ca5d6.cloudfunctions.net/telegramPhoneWebhook";
+const MAX_WEBHOOK_URL = "https://us-central1-fross-ca5d6.cloudfunctions.net/maxPhoneWebhook";
+const PHONE_CODE_TTL_MS = 10 * 60 * 1000;
+
+function setCors(req,res){
+  const origin=req.get("Origin");
+  if(origin==="https://fross-messenger.boberbuset132013.workers.dev"||origin?.endsWith(".workers.dev"))res.set("Access-Control-Allow-Origin",origin);
+  else res.set("Access-Control-Allow-Origin","https://fross-messenger.boberbuset132013.workers.dev");
+  res.set("Vary","Origin");
+  res.set("Access-Control-Allow-Methods","POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers","Authorization, Content-Type");
+  res.set("Cache-Control","no-store");
+}
+async function verifiedUid(req){
+  const match=(req.get("Authorization")||"").match(/^Bearer\s+(.+)$/i);
+  if(!match)throw new Error("Нужен вход в FROSS.");
+  const decoded=await getAuth().verifyIdToken(match[1],true);
+  if(decoded.email_verified!==true&&decoded.legacyAccount!==true)throw new Error("Сначала подтверди email аккаунта FROSS.");
+  return decoded.uid;
+}
+function normalizePhone(value){
+  const phone=String(value||"").replace(/[\s().-]/g,"");
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error("Введите номер в международном формате, например +447700900123.");
+  return phone;
+}
+function safeSecretEqual(left,right){
+  const a=Buffer.from(String(left||"")),b=Buffer.from(String(right||""));
+  return a.length===b.length&&timingSafeEqual(a,b);
+}
+function challengeExpired(data){
+  return !data?.expiresAt||data.expiresAt.toMillis()<=Date.now();
+}
+async function telegramApi(token,method,body){
+  const response=await fetch("https://api.telegram.org/bot"+token+"/"+method,{
+    method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||result.ok!==true)throw new Error("Telegram Bot API: "+(result.description||response.status));
+  return result.result;
+}
+async function maxApi(token,path,method="GET",body){
+  const response=await fetch("https://platform-api2.max.ru"+path,{
+    method,headers:{"Authorization":token,"Content-Type":"application/json"},
+    body:body===undefined?undefined:JSON.stringify(body)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error("MAX Bot API: "+(result.message||result.code||response.status));
+  return result;
+}
+async function deliverPhoneCode(challengeRef,challenge,channelChatId,botToken){
+  if(challenge.status==="code_sent"||!challenge.code)return;
+  if(challengeExpired(challenge))throw new Error("Ссылка для подтверждения истекла.");
+  if(challenge.channel==="telegram"){
+    await telegramApi(botToken,"sendMessage",{
+      chat_id:channelChatId,text:"Код подтверждения FROSS: "+challenge.code+"\nНикому не пересылайте этот код."
+    });
+  }else{
+    await maxApi(botToken,"/messages?chat_id="+encodeURIComponent(channelChatId),"POST",{
+      text:"Код подтверждения FROSS: "+challenge.code+"\nНикому не пересылайте этот код."
+    });
+  }
+  await challengeRef.update({status:"code_sent",botChatId:String(channelChatId),code:FieldValue.delete(),codeSentAt:Timestamp.now()});
+}
+async function ensureTelegramWebhook(token,secret){
+  const info=await telegramApi(token,"getMe",{});
+  if(!info?.username)throw new Error("У Telegram-бота не найден username.");
+  await telegramApi(token,"setWebhook",{url:TG_WEBHOOK_URL,secret_token:secret,allowed_updates:["message"],drop_pending_updates:false});
+  return info.username;
+}
+async function ensureMaxWebhook(token,secret){
+  const bot=await maxApi(token,"/me");
+  if(!bot?.username)throw new Error("У MAX-бота не задан публичный username.");
+  const existing=await maxApi(token,"/subscriptions").catch(()=>({subscriptions:[]}));
+  const subscriptions=existing.subscriptions||existing.items||[];
+  if(!subscriptions.some(item=>item.url===MAX_WEBHOOK_URL&&item.update_types?.includes("message_created")&&item.update_types?.includes("bot_started"))){
+    await maxApi(token,"/subscriptions","POST",{url:MAX_WEBHOOK_URL,update_types:["message_created","bot_started"],secret});
+  }
+  return bot.username;
+}
+async function sendTelegramContactRequest(token,chatId){
+  await telegramApi(token,"sendMessage",{
+    chat_id:chatId,text:"Чтобы подтвердить номер для FROSS, нажми кнопку ниже и отправь собственный контакт.",
+    reply_markup:{keyboard:[[{text:"Поделиться номером телефона",request_contact:true}]],resize_keyboard:true,one_time_keyboard:true}
+  });
+}
+async function sendMaxContactRequest(token,chatId){
+  await maxApi(token,"/messages?chat_id="+encodeURIComponent(chatId),"POST",{
+    text:"Чтобы подтвердить номер для FROSS, нажми кнопку ниже и поделись контактом, привязанным к твоему профилю MAX.",
+    attachments:[{type:"inline_keyboard",payload:{buttons:[[{type:"request_contact",text:"Поделиться номером"}]]}}]
+  });
+}
+async function activateChallenge(challengeId,channel,chatId,userId){
+  if(!/^[A-Za-z0-9_-]{20,40}$/.test(String(challengeId||"")))return null;
+  const firestore=getFirestore(),ref=firestore.doc("phoneChallenges/"+challengeId),snap=await ref.get();
+  if(!snap.exists)return null;
+  const data=snap.data();
+  if(data.channel!==channel||data.status!=="waiting_contact"||challengeExpired(data))return null;
+  if(data.botUserId&&String(data.botUserId)!==String(userId))return null;
+  await ref.update({botChatId:String(chatId),botUserId:String(userId||""),botStartedAt:Timestamp.now()});
+  await firestore.doc("phoneBotSessions/"+channel+"_"+String(chatId)).set({
+    challengeId,uid:data.uid,expiresAt:data.expiresAt,updatedAt:Timestamp.now()
+  });
+  return {ref,data:{...data,botChatId:String(chatId)}};
+}
+function parseVcfPhone(vcf){
+  const match=String(vcf||"").match(/^TEL(?:;[^:]*)?:(.+)$/im);
+  if(!match)return "";
+  return match[1].replace(/[\s().-]/g,"").startsWith("+")
+    ?match[1].replace(/[\s().-]/g,"")
+    :"+"+match[1].replace(/[^0-9]/g,"");
+}
+
+export const startPhoneVerification = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
+  setCors(req,res);
+  if(req.method==="OPTIONS")return res.status(204).send("");
+  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
+  try{
+    const uid=await verifiedUid(req);
+    const phone=normalizePhone(req.body?.phone),channel=String(req.body?.channel||"");
+    if(!["telegram","max"].includes(channel))return res.status(400).json({error:"Выберите Telegram или MAX."});
+    const token=channel==="telegram"?TELEGRAM_BOT_TOKEN.value():MAX_BOT_TOKEN.value();
+    const webhookSecret=channel==="telegram"?TELEGRAM_WEBHOOK_SECRET.value():MAX_WEBHOOK_SECRET.value();
+    if(!token||!webhookSecret)return res.status(503).json({error:"Бот ещё не подключён. Администратору нужно добавить токен и секрет webhook в Firebase."});
+    const botUsername=channel==="telegram"
+      ?await ensureTelegramWebhook(token,webhookSecret)
+      :await ensureMaxWebhook(token,webhookSecret);
+    const challengeId=randomBytes(18).toString("base64url");
+    const code=String(randomInt(100000,1000000));
+    const now=Date.now();
+    const expiresAt=Timestamp.fromMillis(now+PHONE_CODE_TTL_MS);
+    await getFirestore().doc("phoneChallenges/"+challengeId).create({
+      uid,phone,channel,code,codeHash:createHash("sha256").update(challengeId+":"+code).digest("hex"),
+      status:"waiting_contact",attempts:0,createdAt:Timestamp.now(),expiresAt
+    });
+    const botUrl=channel==="telegram"
+      ?"https://t.me/"+botUsername+"?start="+challengeId
+      :"https://max.ru/"+botUsername+"?start="+challengeId;
+    return res.status(200).json({ok:true,challengeId,botUrl,expiresInSeconds:600});
+  }catch(error){
+    console.error("Start phone verification:",error?.message||error);
+    const msg=String(error?.message||"Не удалось начать подтверждение номера.");
+    return res.status(400).json({error:msg});
+  }
+});
+
+export const confirmPhoneVerification = onRequest(async(req,res)=>{
+  setCors(req,res);
+  if(req.method==="OPTIONS")return res.status(204).send("");
+  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
+  try{
+    const uid=await verifiedUid(req);
+    const challengeId=String(req.body?.challengeId||""),code=String(req.body?.code||"").trim();
+    if(!/^[A-Za-z0-9_-]{20,40}$/.test(challengeId)||!/^\d{6}$/.test(code))return res.status(400).json({error:"Проверь ссылку и шестизначный код."});
+    const firestore=getFirestore(),challengeRef=firestore.doc("phoneChallenges/"+challengeId),snap=await challengeRef.get();
+    if(!snap.exists)return res.status(404).json({error:"Запрос подтверждения не найден. Запроси новый код."});
+    const challenge=snap.data();
+    if(challenge.uid!==uid)return res.status(403).json({error:"Этот запрос создан для другого аккаунта FROSS."});
+    if(challengeExpired(challenge))return res.status(410).json({error:"Код истёк. Запроси новый."});
+    if(challenge.status!=="code_sent"||!challenge.codeHash)return res.status(409).json({error:"Сначала открой бота и поделись своим контактом, чтобы получить код."});
+    if((challenge.attempts||0)>=5)return res.status(429).json({error:"Слишком много попыток. Запроси новый код."});
+    const codeHash=createHash("sha256").update(challengeId+":"+code).digest("hex");
+    if(!safeSecretEqual(codeHash,challenge.codeHash)){
+      await challengeRef.update({attempts:FieldValue.increment(1)});
+      return res.status(400).json({error:"Неверный код. Проверь сообщение от бота."});
+    }
+    const privateRef=firestore.doc("users/"+uid),publicRef=firestore.doc("publicUsers/"+uid);
+    const [privateSnap,publicSnap]=await Promise.all([privateRef.get(),publicRef.get()]);
+    const phoneData={phoneNumber:challenge.phone,phoneVerified:true,phoneVerifiedAt:Timestamp.now(),phoneVerificationChannel:challenge.channel,updatedAt:Timestamp.now()};
+    if(privateSnap.exists&&privateSnap.data().phoneVisible===true)phoneData.phoneVisible=true;
+    await privateRef.set(phoneData,{merge:true});
+    if(publicSnap.exists()&&privateSnap.data()?.phoneVisible===true)await publicRef.set({phonePublic:challenge.phone},{merge:true});
+    await challengeRef.delete();
+    if(challenge.botChatId)await firestore.doc("phoneBotSessions/"+challenge.channel+"_"+challenge.botChatId).delete().catch(()=>{});
+    return res.status(200).json({ok:true,phoneVerified:true,channel:challenge.channel});
+  }catch(error){
+    console.error("Confirm phone verification:",error?.message||error);
+    return res.status(400).json({error:error?.message||"Не удалось подтвердить номер."});
+  }
+});
+
+export const telegramPhoneWebhook = onRequest({secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET]},async(req,res)=>{
+  if(req.method!=="POST")return res.status(405).send("");
+  if(!safeSecretEqual(req.get("X-Telegram-Bot-Api-Secret-Token"),TELEGRAM_WEBHOOK_SECRET.value()))return res.status(401).send("");
+  try{
+    const update=req.body||{},message=update.message,token=TELEGRAM_BOT_TOKEN.value();
+    if(!message?.chat?.id)return res.status(200).send("ok");
+    const chatId=String(message.chat.id),sessionRef=getFirestore().doc("phoneBotSessions/telegram_"+chatId);
+    const text=String(message.text||"");
+    const start=text.match(/^\/start(?:@\w+)?\s+([A-Za-z0-9_-]{20,40})/);
+    if(start){
+      const active=await activateChallenge(start[1],"telegram",chatId,message.from?.id);
+      if(!active)return await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Ссылка FROSS истекла. Вернись в настройки мессенджера и запроси новый код."}).then(()=>res.status(200).send("ok"));
+      await sendTelegramContactRequest(token,chatId);
+      return res.status(200).send("ok");
+    }
+    if(message.contact){
+      const sessionSnap=await sessionRef.get();if(!sessionSnap.exists())return res.status(200).send("ok");
+      const session=sessionSnap.data(),challengeRef=getFirestore().doc("phoneChallenges/"+session.challengeId),challengeSnap=await challengeRef.get();
+      if(!challengeSnap.exists())return res.status(200).send("ok");
+      const challenge=challengeSnap.data(),contact=message.contact;
+      const actualPhone=String(contact.phone_number||"").replace(/[\s().-]/g,"");
+      const expectedPhone=String(challenge.phone||"").replace(/[\s().-]/g,"");
+      if(String(contact.user_id||"")!==String(message.from?.id||"")||actualPhone!==expectedPhone){
+        await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Нужен именно твой собственный контакт с номером, который указан в FROSS.",reply_markup:{remove_keyboard:true}});
+        return res.status(200).send("ok");
+      }
+      await deliverPhoneCode(challengeRef,challenge,chatId,token);
+      await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Контакт проверен. Код отправлен. Вернись в FROSS и введи шесть цифр.",reply_markup:{remove_keyboard:true}});
+    }
+    return res.status(200).send("ok");
+  }catch(error){
+    console.error("Telegram phone webhook:",error?.message||error);
+    return res.status(200).send("ok");
+  }
+});
+
+export const maxPhoneWebhook = onRequest({secrets:[MAX_BOT_TOKEN,MAX_WEBHOOK_SECRET]},async(req,res)=>{
+  if(req.method!=="POST")return res.status(405).send("");
+  if(!safeSecretEqual(req.get("X-Max-Bot-Api-Secret"),MAX_WEBHOOK_SECRET.value()))return res.status(401).send("");
+  try{
+    const update=req.body||{},token=MAX_BOT_TOKEN.value(),type=update.update_type;
+    if(type==="bot_started"){
+      const chatId=String(update.chat_id||"");
+      const challengeId=String(update.payload||"");
+      const active=await activateChallenge(challengeId,"max",chatId,update.user?.user_id);
+      if(active)await sendMaxContactRequest(token,chatId);
+      else if(chatId)await maxApi(token,"/messages?chat_id="+encodeURIComponent(chatId),"POST",{text:"Ссылка для подтверждения FROSS истекла. Запроси новый код в приложении."});
+    }else if(type==="message_created"){
+      const message=update.message||{},chatId=String(message.recipient?.chat_id||update.chat_id||"");
+      const sessionSnap=await getFirestore().doc("phoneBotSessions/max_"+chatId).get();
+      if(!sessionSnap.exists)return res.status(200).send("ok");
+      const session=sessionSnap.data(),challengeRef=getFirestore().doc("phoneChallenges/"+session.challengeId),challengeSnap=await challengeRef.get();
+      if(!challengeSnap.exists)return res.status(200).send("ok");
+      const challenge=challengeSnap.data(),contact=(message.body?.attachments||[]).find(item=>item.type==="contact");
+      const payload=contact?.payload||{},vcfInfo=String(payload.vcf_info||""),hash=String(payload.hash||"");
+      if(!vcfInfo||!/^[a-f0-9]{64}$/i.test(hash))return res.status(200).send("ok");
+      const expectedHash=createHmac("sha256",token).update(vcfInfo).digest("hex");
+      if(!safeSecretEqual(expectedHash.toLowerCase(),hash.toLowerCase()))return res.status(200).send("ok");
+      const senderId=String(message.sender?.user_id||""),ownerId=String(payload.max_info?.user_id||"");
+      const actualPhone=parseVcfPhone(vcfInfo),expectedPhone=String(challenge.phone||"").replace(/[\s().-]/g,"");
+      if(!senderId||senderId!==ownerId||actualPhone!==expectedPhone){
+        await maxApi(token,"/messages?chat_id="+encodeURIComponent(chatId),"POST",{text:"MAX не подтвердил этот номер для твоего профиля. Проверь, что делишься собственным контактом."});
+        return res.status(200).send("ok");
+      }
+      await deliverPhoneCode(challengeRef,challenge,chatId,token);
+      await maxApi(token,"/messages?chat_id="+encodeURIComponent(chatId),"POST",{text:"Контакт проверен. Код отправлен. Вернись в FROSS и введи шесть цифр."});
+    }
+  }catch(error){console.error("MAX phone webhook:",error?.message||error)}
+  return res.status(200).send("ok");
+});
+
+export const deleteGroupForEveryone = onRequest(async(req,res)=>{
+  setCors(req,res);
+  if(req.method==="OPTIONS")return res.status(204).send("");
+  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
+  try{
+    const uid=await verifiedUid(req),chatId=String(req.body?.chatId||"");
+    if(!/^[A-Za-z0-9_-]{1,120}$/.test(chatId))return res.status(400).json({error:"Некорректный ID группы."});
+    const firestore=getFirestore(),chatRef=firestore.doc("chats/"+chatId),snap=await chatRef.get();
+    if(!snap.exists)return res.status(404).json({error:"Группа уже удалена."});
+    const chat=snap.data();
+    if(chat.type!=="group"||chat.ownerUid!==uid)return res.status(403).json({error:"Удалить группу у всех может только её создатель."});
+    await firestore.recursiveDelete(chatRef);
+    return res.status(200).json({ok:true,deleted:true});
+  }catch(error){
+    console.error("Delete group for everyone:",error?.message||error);
+    return res.status(400).json({error:error?.message||"Не удалось удалить группу."});
   }
 });
 
