@@ -279,6 +279,10 @@ async function telegramPhoneWebhook(request,env,url){
     return new Response("ok");
   }
   const message=update.message;
+  if(message?.managed_bot_created?.bot){
+    await registerManagedBotCreated({bot:message.managed_bot_created.bot,user:message.from},env,url);
+    return new Response("ok");
+  }
   if(!message?.chat?.id||String(message.chat.type)!=="private")return new Response("ok");
   const chatId=String(message.chat.id),from=message.from||{},telegramUserId=String(from.id||""),text=String(message.text||"");
   const createMatch=text.match(/^\/start(?:@\w+)?\s+botcreate_([a-f0-9]{32})$/i);
