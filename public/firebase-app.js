@@ -1094,8 +1094,9 @@ function subscribeMessages() {
         if(a.type?.startsWith("video/")){
           const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video);
         }
-        const link=document.createElement("a");link.href="#";link.textContent="↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
-        link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
+        const link=document.createElement("a");link.href=a.external?a.url:"#";link.textContent=a.external?"↗ Открыть внешний файл: "+(a.name||"файл"):"↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
+        if(a.external){link.target="_blank";link.rel="noopener noreferrer"}
+        else link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
         b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
@@ -1206,7 +1207,7 @@ async function loadCurrentProfile() {
   const priv=await getDoc(doc(db,"users",currentUser.uid));
   if(!snap.exists())throw new Error("Профиль Firebase не найден.");
   const p=snap.data(),v=priv.exists()?priv.data():{};
-  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{},phoneNumber:v.phoneNumber||currentUser.phoneNumber||"",phoneVerified:v.phoneVerified===true||!!currentUser.phoneNumber,phoneVisible:v.phoneVisible===true,phonePublic:p.phonePublic||""};
+  me={uid:currentUser.uid,...p,contactEmail:v.contactEmail||"",settings:v.settings||{},phoneNumber:v.phoneNumber||currentUser.phoneNumber||"",phoneVerified:v.phoneVerified===true||!!currentUser.phoneNumber,phoneVisible:v.phoneVisible===true,phonePublic:p.phonePublic||"",mutedChats:Array.isArray(v.mutedChats)?v.mutedChats:[]};
   let cached={};try{cached=JSON.parse(localStorage.getItem("fross-settings-"+currentUser.uid)||"{}")}catch{}
   S={...DEF,...cached,...me.settings};
   const priorPalette={accent:"#9181ff",bgColor:"#0f1015",panelColor:"#16181f",textColor:"#f2f3f7",incomingColor:"#232632",outgoingColor:"#9181ff",profileColor:"#9181ff"};
@@ -1303,6 +1304,34 @@ if(attachmentButton&&attachmentInput){
   };
 }
 
+function validateExternalFileUrl(value){
+  let parsed;try{parsed=new URL(String(value||"").trim())}catch{throw new Error("Вставь корректную HTTPS-ссылку на файл.")}
+  const host=parsed.hostname.toLowerCase();
+  if(parsed.protocol!=="https:"||parsed.username||parsed.password||!host||host==="localhost"||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal")||/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host)||host.includes(":"))
+    throw new Error("Поддерживаются только публичные HTTPS-ссылки без адресов локальной сети.");
+  parsed.hash="";return parsed;
+}
+function externalFileType(path){
+  const ext=(path.match(/\\.([a-z0-9]{1,8})$/i)||[])[1]?.toLowerCase()||"";
+  if(["jpg","jpeg","png","webp","gif","avif"].includes(ext))return "image/"+(ext==="jpg"?"jpeg":ext);
+  if(["mp4","webm","mov"].includes(ext))return "video/"+(ext==="mov"?"quicktime":ext);
+  if(["mp3","m4a","ogg","wav","flac"].includes(ext))return "audio/"+ext;
+  return "application/octet-stream";
+}
+const linkButton=$("attach-link");
+if(linkButton)linkButton.onclick=async()=>{
+  if(!cur){alert("Сначала открой личный чат или группу.");return}
+  const input=prompt("Вставь публичную HTTPS-ссылку на файл:");
+  if(input===null)return;
+  try{
+    const parsed=validateExternalFileUrl(input);
+    const tail=decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop()||"Файл");
+    const name=(tail||"Файл").slice(0,180),type=externalFileType(parsed.pathname);
+    const attachment={name,type,size:0,url:parsed.href,path:"",external:true};
+    const message={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:"",attachment,readBy:[me.uid],createdAt:serverTimestamp()};
+    await publishChatMessage(cur,message,type.startsWith("image/")?"фото":"файл");
+  }catch(error){alert(error.message||authError(error))}
+};
 $("chat-settings").onclick=openChatSettings;
 async function openChatSettings(){
   const chat=chats.find(c=>c.id===cur);if(!chat)return;
@@ -1311,10 +1340,10 @@ async function openChatSettings(){
   let editor="";
   if(isGroup){
     editor=isOwner
-      ? '<div class="group-settings-editor"><label>Название группы</label><input id="group-title" maxlength="40"><label>Описание</label><textarea id="group-description" rows="3" maxlength="300" placeholder="Кратко расскажи о группе"></textarea><h4>Участники</h4><div id="group-members" class="group-settings-members"></div><h4>Добавить из личных чатов</h4><div id="group-candidates" class="group-settings-members"></div><div class="err" id="group-settings-error"></div><button class="pr" id="save-group-settings" style="width:100%">Сохранить настройки группы</button></div>'
+      ? '<div class="group-settings-editor"><label>Название группы</label><input id="group-title" maxlength="40"><label>Описание</label><textarea id="group-description" rows="3" maxlength="300" placeholder="Кратко расскажи о группе"></textarea><h4>Участники</h4><div id="group-members" class="group-settings-members"></div><h4>Добавить из личных чатов</h4><div id="group-candidates" class="group-settings-members"></div><div class="err" id="group-settings-error"></div><button class="pr" id="save-group-settings" style="width:100%">Сохранить настройки группы</button><button class="dg" id="delete-group-everyone" style="width:100%;margin-top:8px">Удалить группу у всех участников</button></div>'
       : '<p class="mut">Настраивать группу может только её создатель.</p><b>Участники</b><div id="group-members" class="group-settings-members"></div>';
   }
-  openM('<h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  openM('<h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button type="button" id="toggle-chat-mute" style="width:100%;margin-bottom:8px">'+((me.mutedChats||[]).includes(cur)?'Включить уведомления':'Отключить уведомления')+'</button><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
   if(isGroup){
     const currentMemberIds=new Set(chat.memberUids||[]);
     const profiles=new Map((chat.memberProfiles||[]).filter(person=>currentMemberIds.has(person.uid)).map(person=>[person.uid,{...person}]));
@@ -1358,6 +1387,20 @@ async function openChatSettings(){
     };
     renderMembers();if(isOwner)renderCandidates();
     if(isOwner){
+      $("delete-group-everyone").onclick=async()=>{
+        if(!confirm("Удалить группу и всю её переписку у всех участников? Действие необратимо."))return;
+        const button=$("delete-group-everyone");button.disabled=true;button.textContent="Удаляем…";
+        try{
+          const token=await currentUser.getIdToken(true);
+          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/deleteGroupForEveryone",{
+            method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+            body:JSON.stringify({chatId:cur})
+          });
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(result.error||("HTTP "+response.status));
+          closeM();cur="";document.body.classList.remove("ch");chats=chats.filter(item=>item.id!==chat.id);renderList();head();subscribeMessages();
+        }catch(error){$("chat-settings-error").textContent=error.message||authError(error);button.disabled=false;button.textContent="Удалить группу у всех участников"}
+      };
       $("group-title").value=chat.title||"";
       $("group-description").value=chat.description||"";
       $("save-group-settings").onclick=async()=>{
@@ -1378,6 +1421,17 @@ async function openChatSettings(){
       };
     }
   }
+  $("toggle-chat-mute").onclick=async()=>{
+    const muted=new Set(me.mutedChats||[]);
+    if(muted.has(cur))muted.delete(cur);else muted.add(cur);
+    const next=[...muted];
+    try{
+      await updateDoc(doc(db,"users",me.uid),{mutedChats:next,updatedAt:serverTimestamp()});
+      me.mutedChats=next;
+      $("toggle-chat-mute").textContent=muted.has(cur)?"Включить уведомления":"Отключить уведомления";
+      $("chat-settings-error").textContent=muted.has(cur)?"Уведомления этого чата отключены.":"Уведомления этого чата включены.";
+    }catch(error){$("chat-settings-error").textContent=authError(error)}
+  };
   $("clear-chat").onclick=async()=>{
     try{
       const snap=await getDocs(collection(db,"chats",cur,"messages"));
@@ -1510,8 +1564,14 @@ $("gb").onclick=()=>{
       };
     }
     if(i===1){
-      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
+      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<button type="button" id="enable-browser-notifications" style="width:100%;margin-top:10px">Разрешить уведомления браузера</button><small id="browser-notification-status" class="mut"></small><p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
+      $("browser-notification-status").textContent=("Notification" in window)?"Статус: "+Notification.permission:"Браузер не поддерживает уведомления";
+      $("enable-browser-notifications").onclick=async()=>{
+        if(!("Notification" in window)){$("browser-notification-status").textContent="Нет поддержки уведомлений.";return}
+        const permission=await Notification.requestPermission();
+        $("browser-notification-status").textContent="Статус: "+permission;
+      };
     }
     if(i===2){
       c.innerHTML=section("Медиа","Управляй загрузкой фотографий и файлов.")+'<h4>Загрузка</h4>'+toggle("autoDownload","Загружать превью сразу","Изображения и аудио будут подгружаться заранее.")+toggle("compressImages","Сжимать большие фотографии","Уменьшает размер изображений перед отправкой.")+toggle("autoPlayMedia","Автовоспроизведение аудио и видео")+'<div class="settings-info-card"><b>Ограничения файлов</b><span>До 20 МБ на один файл. Фото профиля обрезается до квадратного изображения с круглой маской.</span></div><p class="mut settings-footnote">Фотографии и вложения хранятся в Firebase Storage.</p>';
@@ -1521,7 +1581,7 @@ $("gb").onclick=()=>{
       const tokenInfo = await currentUser.getIdTokenResult();
       if(renderVersion!==settingsRenderVersion)return;
       const adminButton = tokenInfo.claims.frossAdmin === true ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><p class="mut">Только для администратора тестового проекта. Удаляет все Auth-аккаунты, профили, чаты и файлы.</p><button class="dg" id="wipeAll" style="width:100%">☠ Удалить ВСЕ тестовые аккаунты</button><div id="wipeBox"></div>' : "";
-      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Подтверди номер через MAX или используй резервный способ по SMS. Номер скрыт от других по умолчанию.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер ещё не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><div class="phone-methods"><button type="button" class="pr" id="maxPhoneVerify">Подтвердить через MAX</button><button type="button" id="phoneSend">Получить SMS</button></div><small class="mut" id="max-phone-help">Для MAX открой FROSS внутри мини-приложения MAX. В обычном браузере используй SMS.</small><div id="phone-recaptcha-container"></div><label>Код из SMS</label><input id="phoneCode" inputmode="numeric" maxlength="6" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm">Подтвердить SMS-код</button><label class="phone-visibility"><input type="checkbox" id="phoneVisible" '+(me.phoneVisible?"checked":"")+'> Показывать номер телефона в моём публичном профиле</label><small class="mut">Другие пользователи увидят номер только после подтверждения и включения этой настройки.</small><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
+      c.innerHTML='<div class="sum"><div><b>Google Authenticator (TOTP)</b><small class="mut">Шестизначный код для двухэтапной проверки. Требуется Firebase Authentication with Identity Platform.</small></div></div><div id="totp-box"><button id="totp-start">Подключить Google Authenticator</button><div id="totp-status" class="mut"></div></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="sum"><div><b>Подтверждение номера</b><small class="mut">Открой бота, поделись собственным контактом и введи код из него.</small></div></div><div id="phoneError" class="phone-verify-status">'+(me.phoneVerified?"Номер подтверждён: "+esc(me.phoneNumber):"Номер ещё не подтверждён.")+'</div><label>Номер телефона</label><input id="phoneNumber" type="tel" autocomplete="tel" placeholder="+447700900123" value="'+esc(me.phoneNumber||currentUser.phoneNumber||"")+'"><div class="phone-methods"><button type="button" class="pr" id="phoneViaMax">Отправить код в MAX</button><button type="button" id="phoneViaTelegram">Отправить код в Telegram</button></div><label>Код из бота</label><input id="phoneCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 цифр"><button type="button" class="pr" id="phoneConfirm" style="width:100%">Подтвердить номер</button><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><label>Смена пароля</label><input id="po" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="Старый пароль"><input id="pn" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="Новый пароль (от 8 символов)"><button id="pc">Сменить пароль</button><div class="err" id="pe"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><div class="row"><button id="lo">Выйти</button><button class="dg" id="dl">Удалить аккаунт</button></div><div id="db"></div>'+adminButton;
       $("pc").onclick=async()=>{
         try{
           const credential=EmailAuthProvider.credential(currentUser.email,$("po").value);
@@ -1561,82 +1621,48 @@ $("gb").onclick=()=>{
           };
         }catch(e){status.textContent=e.code==="auth/operation-not-allowed"?"В Firebase нужно включить Identity Platform и TOTP MFA.":authError(e)}
       };
-      let phoneConfirmation = null, phoneVerifier = null;
-      $("phoneSend").onclick = async () => {
-        try {
-          const phone = $("phoneNumber").value.trim().replace(/[\s()-]/g,"");
-          if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Введите номер в международном формате: +кодстраны и номер.");
-          if(phoneVerifier){try{phoneVerifier.clear()}catch{}phoneVerifier=null}
-          $("phoneError").style.color="var(--muted)";
-          $("phoneError").textContent="Подготавливаем проверку номера…";
-          phoneVerifier = new RecaptchaVerifier(auth,"phone-recaptcha-container",{size:"normal"});
-          await phoneVerifier.render();
-          phoneConfirmation = await linkWithPhoneNumber(currentUser,phone,phoneVerifier);
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "SMS отправлено. Введите код из сообщения.";
-        } catch(e) {
-          $("phoneError").textContent = authError(e);
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        }
-      };
-      $("phoneConfirm").onclick = async () => {
-        try {
-          if (!phoneConfirmation) throw new Error("Сначала запросите SMS-код.");
-          const linked = await phoneConfirmation.confirm($("phoneCode").value.trim());
-          currentUser = linked.user;
-          const verifiedPhone=linked.user.phoneNumber||$("phoneNumber").value.trim();
-          const visible=$("phoneVisible").checked;
-          const batch=writeBatch(db);
-          batch.update(doc(db,"users",me.uid),{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,updatedAt:serverTimestamp()});
-          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?verifiedPhone:""});
-          await batch.commit();
-          Object.assign(me,{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,phonePublic:visible?verifiedPhone:""});
-          $("phoneError").style.color = "#3ddc84";
-          $("phoneError").textContent = "Телефон успешно подтверждён и привязан.";
-          if (phoneVerifier) { try { phoneVerifier.clear(); } catch {} phoneVerifier = null; }
-        } catch(e) { $("phoneError").textContent = authError(e); }
-      };
-      $("phoneVisible").onchange=async()=>{
-        const visible=$("phoneVisible").checked;
-        if(visible&&!me.phoneVerified){$("phoneVisible").checked=false;$("phoneError").textContent="Сначала подтверди номер телефона.";return}
+      let phoneChallengeId=null;
+      async function startPhoneBotVerification(channel){
+        const phone=$("phoneNumber").value.trim().replace(/[\\s().-]/g,"");
+        if(!/^\\+[1-9]\\d{7,14}$/.test(phone)){$("phoneError").textContent="Введи номер в международном формате, например +447700900123.";return}
+        const button=$(channel==="max"?"phoneViaMax":"phoneViaTelegram"),oldLabel=button.textContent;
+        const botWindow=window.open("about:blank","_blank");
+        button.disabled=true;button.textContent="Открываем бота…";
         try{
-          const batch=writeBatch(db);
-          batch.update(doc(db,"users",me.uid),{phoneVisible:visible,updatedAt:serverTimestamp()});
-          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?(me.phoneNumber||""):""});
-          await batch.commit();
-          me.phoneVisible=visible;me.phonePublic=visible?(me.phoneNumber||""):"";
-          $("phoneError").textContent=visible?"Номер будет виден в публичном профиле.":"Номер скрыт от других пользователей.";
-        }catch(error){$("phoneVisible").checked=!visible;$("phoneError").textContent=authError(error)}
-      };
-      $("maxPhoneVerify").onclick=async()=>{
-        const maxApp=window.WebApp;
-        if(!maxApp?.requestContact||!maxApp?.initData||!maxApp?.initDataUnsafe?.user?.id){
-          $("phoneError").textContent="MAX не обнаружен. Открой FROSS из мини-приложения MAX, затем повтори попытку.";
-          return;
-        }
-        const button=$("maxPhoneVerify");button.disabled=true;button.textContent="Ожидаем подтверждение MAX…";
-        try{
-          const contact=await maxApp.requestContact();
-          if(!contact?.phone||!contact?.authDate||!contact?.hash)throw new Error("MAX не вернул подтверждённый номер. Разреши отправку контакта и попробуй снова.");
-          const token=await currentUser.getIdToken();
-          const response=await fetch("/api/phone/max/verify",{
-            method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
-            body:JSON.stringify({phone:contact.phone,authDate:String(contact.authDate),hash:contact.hash,userId:String(maxApp.initDataUnsafe.user.id),initData:maxApp.initData})
+          const token=await currentUser.getIdToken(true);
+          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/startPhoneVerification",{
+            method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+            body:JSON.stringify({phone,channel})
           });
           const result=await response.json().catch(()=>({}));
-          if(!response.ok)throw new Error(result.error||("MAX verification failed (HTTP "+response.status+")."));
-          const verifiedPhone=result.phone||contact.phone,visible=$("phoneVisible").checked;
-          const batch=writeBatch(db);
-          batch.update(doc(db,"users",me.uid),{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,updatedAt:serverTimestamp()});
-          batch.update(doc(db,"publicUsers",me.uid),{phonePublic:visible?verifiedPhone:""});
-          await batch.commit();
-          Object.assign(me,{phoneNumber:verifiedPhone,phoneVerified:true,phoneVisible:visible,phonePublic:visible?verifiedPhone:""});
-          $("phoneNumber").value=verifiedPhone;
+          if(!response.ok)throw new Error(result.error||("Не удалось открыть бота (HTTP "+response.status+")."));
+          phoneChallengeId=result.challengeId;
+          if(botWindow)botWindow.location.href=result.botUrl;else window.location.href=result.botUrl;
+          $("phoneError").textContent="В боте нажми «Поделиться номером», отправь свой контакт, затем вернись сюда за кодом.";
+        }catch(error){botWindow?.close();$("phoneError").textContent=error.message||authError(error)}
+        finally{button.disabled=false;button.textContent=oldLabel}
+      }
+      $("phoneViaMax").onclick=()=>startPhoneBotVerification("max");
+      $("phoneViaTelegram").onclick=()=>startPhoneBotVerification("telegram");
+      $("phoneConfirm").onclick=async()=>{
+        const code=$("phoneCode").value.trim();
+        if(!phoneChallengeId){$("phoneError").textContent="Сначала запроси код через MAX или Telegram.";return}
+        if(!/^\\d{6}$/.test(code)){$("phoneError").textContent="Введи шесть цифр из сообщения бота.";return}
+        const button=$("phoneConfirm");button.disabled=true;button.textContent="Проверяем…";
+        try{
+          const token=await currentUser.getIdToken(true);
+          const response=await fetch("https://us-central1-fross-ca5d.cloudfunctions.net/confirmPhoneVerification",{
+            method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
+            body:JSON.stringify({challengeId:phoneChallengeId,code})
+          });
+          const result=await response.json().catch(()=>({}));
+          if(!response.ok)throw new Error(result.error||("Не удалось подтвердить номер (HTTP "+response.status+")."));
+          me.phoneNumber=$("phoneNumber").value.trim().replace(/[\\s().-]/g,"");
+          me.phoneVerified=true;phoneChallengeId=null;$("phoneCode").value="";
           $("phoneError").style.color="#3ddc84";
-          $("phoneError").textContent="Номер подтверждён через MAX и сохранён в FROSS.";
-        }catch(error){$("phoneError").style.color="var(--danger)";$("phoneError").textContent=error.message||authError(error)}
-        finally{button.disabled=false;button.textContent="Подтвердить через MAX"}
+          $("phoneError").textContent="Номер подтверждён через "+(result.channel==="max"?"MAX":"Telegram")+".";
+        }catch(error){$("phoneError").textContent=error.message||authError(error)}
+        finally{button.disabled=false;button.textContent="Подтвердить номер"}
       };
       if (adminButton) {
         $("wipeAll").onclick = () => {
