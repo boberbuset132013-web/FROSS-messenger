@@ -628,7 +628,7 @@ async function migrateLegacyFrossBots(identity,env,store){
     if(oldHash)await deletePhoneRecord("botTokens/"+oldHash+".json",env);
     await savePhoneRecord("frossBots/by-username/"+username+".json",{id:bot.id,uid:identity.uid,createdAt:bot.createdAt||Date.now()},env);
     await storeBotPublic(bot,env);
-    migratedKeys.push({id:bot.id,name:bot.name||"Бот FROSS",token:raw});
+    migratedKeys.push({id:bot.id,name:bot.name||"Бот FROSS",username,token:raw});
   }
   store.version=3;
   await savePhoneRecord("userBots/"+identity.uid+".json",store,env);
