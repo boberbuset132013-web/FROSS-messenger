@@ -92,49 +92,6 @@ export const testDeleteAllAccounts = onRequest(async (req, res) => {
 });
 
 
-// Account deletion is first confirmed in the linked Telegram account, then scheduled for 24 hours.
- // The user can cancel it in Telegram until the deadline.
-export const requestAccountDeletion = onRequest({secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET]},async(req,res)=>{
-  setCors(req,res);
-  if(req.method==="OPTIONS")return res.status(204).send("");
-  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
-  try{
-    const uid=await verifiedUid(req),auth=getAuth(),firestore=getFirestore();
-    const decoded=await auth.verifyIdToken((req.get("Authorization")||"").replace(/^Bearer\s+/i,""),true);
-    if(!decoded.auth_time||Date.now()/1000-decoded.auth_time>300)return res.status(401).json({error:"Для удаления войди в аккаунт заново."});
-    const [userSnap,profileSnap]=await Promise.all([firestore.doc("users/"+uid).get(),firestore.doc("publicUsers/"+uid).get()]);
-    if(!profileSnap.exists||profileSnap.data().deleted===true)return res.status(404).json({error:"Профиль не найден."});
-    const userData=userSnap.data()||{};
-    if(!userData.telegramChatId||!userData.telegramUserId)return res.status(409).json({error:"Сначала привяжи Telegram: подтверди свой номер через бота FROSS."});
-    const active=await firestore.doc("accountDeletionRequests/"+uid).get();
-    if(active.exists&&["awaiting_confirmation","scheduled"].includes(active.data().status))
-      return res.status(409).json({error:"Запрос на удаление уже существует. Проверь сообщения от бота FROSS."});
-    await ensureTelegramWebhook(TELEGRAM_BOT_TOKEN.value(),TELEGRAM_WEBHOOK_SECRET.value());
-    const requestId=randomBytes(12).toString("base64url");
-    const requestRef=firestore.doc("securityRequests/"+requestId);
-    const expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);
-    await requestRef.create({
-      uid,type:"account_delete",status:"pending_confirmation",
-      telegramChatId:String(userData.telegramChatId),telegramUserId:String(userData.telegramUserId),
-      telegramUsername:userData.telegramUsername||"",createdAt:Timestamp.now(),expiresAt
-    });
-    await telegramApi(TELEGRAM_BOT_TOKEN.value(),"sendMessage",{
-      chat_id:userData.telegramChatId,
-      text:"⚠️ Запрошено удаление аккаунта FROSS. Если это ты, подтверди действие. После подтверждения аккаунт будет удалён через 24 часа. До истечения срока удаление можно отменить здесь, в боте.",
-      reply_markup:{inline_keyboard:[[
-        {text:"Подтвердить удаление",callback_data:"del_yes_"+requestId},
-        {text:"Это не я",callback_data:"del_no_"+requestId}
-      ]]}
-    });
-    return res.status(200).json({ok:true,confirmationSent:true});
-  }catch(error){
-    console.error("Request account deletion:",error?.message||error);
-    return res.status(400).json({error:error?.message||"Не удалось отправить запрос в Telegram."});
-  }
-});
-
-const TELEGRAM_BOT_TOKEN
-
 const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_WEBHOOK_SECRET = defineSecret("TELEGRAM_WEBHOOK_SECRET");
 const BOT_SECRETS = [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET];
@@ -274,6 +231,7 @@ async function handleSecurityCallback(callback,token){
   }
   if(action==="pwd_no"||action==="del_no"){
     await requestRef.update({status:"rejected",resolvedAt:Timestamp.now()});
+    if(action==="del_no")await firestore.doc("accountDeletionRequests/"+request.uid).set({uid:request.uid,status:"cancelled",cancelledAt:Timestamp.now()},{merge:true});
     await answerCallback(token,callback.id,"Запрос отклонён.");
     await telegramApi(token,"sendMessage",{chat_id:chatId,text:"Запрос FROSS отклонён. Никаких изменений не внесено."});
     return;
@@ -363,6 +321,49 @@ async function sendBotHelp(token,chatId){
     text:"FROSS Security Bot\n\n/securitycode — получить одноразовый код безопасности\n/createbot — инструкция по созданию собственного Telegram-бота\n\nВладелец бота @denhic может использовать /setname, /setdescription, /setabout и отправить фото с подписью /setphoto."
   });
 }
+
+// Account deletion is first confirmed in the linked Telegram account, then scheduled for 24 hours.
+ // The user can cancel it in Telegram until the deadline.
+export const requestAccountDeletion = onRequest({secrets:[TELEGRAM_BOT_TOKEN,TELEGRAM_WEBHOOK_SECRET]},async(req,res)=>{
+  setCors(req,res);
+  if(req.method==="OPTIONS")return res.status(204).send("");
+  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed."});
+  try{
+    const uid=await verifiedUid(req),auth=getAuth(),firestore=getFirestore();
+    const decoded=await auth.verifyIdToken((req.get("Authorization")||"").replace(/^Bearer\s+/i,""),true);
+    if(!decoded.auth_time||Date.now()/1000-decoded.auth_time>300)return res.status(401).json({error:"Для удаления войди в аккаунт заново."});
+    const [userSnap,profileSnap]=await Promise.all([firestore.doc("users/"+uid).get(),firestore.doc("publicUsers/"+uid).get()]);
+    if(!profileSnap.exists||profileSnap.data().deleted===true)return res.status(404).json({error:"Профиль не найден."});
+    const userData=userSnap.data()||{};
+    if(!userData.telegramChatId||!userData.telegramUserId)return res.status(409).json({error:"Сначала привяжи Telegram: подтверди свой номер через бота FROSS."});
+    const active=await firestore.doc("accountDeletionRequests/"+uid).get();
+    if(active.exists&&["awaiting_confirmation","scheduled"].includes(active.data().status)
+      &&(!active.data().expiresAt||active.data().expiresAt.toMillis()>Date.now()))
+      return res.status(409).json({error:"Запрос на удаление уже существует. Проверь сообщения от бота FROSS."});
+    await ensureTelegramWebhook(TELEGRAM_BOT_TOKEN.value(),TELEGRAM_WEBHOOK_SECRET.value());
+    const requestId=randomBytes(12).toString("base64url");
+    const requestRef=firestore.doc("securityRequests/"+requestId);
+    const expiresAt=Timestamp.fromMillis(Date.now()+15*60*1000);
+    await requestRef.create({
+      uid,type:"account_delete",status:"pending_confirmation",
+      telegramChatId:String(userData.telegramChatId),telegramUserId:String(userData.telegramUserId),
+      telegramUsername:userData.telegramUsername||"",createdAt:Timestamp.now(),expiresAt
+    });
+    await firestore.doc("accountDeletionRequests/"+uid).set({uid,status:"awaiting_confirmation",securityRequestId:requestId,expiresAt,telegramChatId:String(userData.telegramChatId),telegramUserId:String(userData.telegramUserId)});
+    await telegramApi(TELEGRAM_BOT_TOKEN.value(),"sendMessage",{
+      chat_id:userData.telegramChatId,
+      text:"⚠️ Запрошено удаление аккаунта FROSS. Если это ты, подтверди действие. После подтверждения аккаунт будет удалён через 24 часа. До истечения срока удаление можно отменить здесь, в боте.",
+      reply_markup:{inline_keyboard:[[
+        {text:"Подтвердить удаление",callback_data:"del_yes_"+requestId},
+        {text:"Это не я",callback_data:"del_no_"+requestId}
+      ]]}
+    });
+    return res.status(200).json({ok:true,confirmationSent:true});
+  }catch(error){
+    console.error("Request account deletion:",error?.message||error);
+    return res.status(400).json({error:error?.message||"Не удалось отправить запрос в Telegram."});
+  }
+});
 
 export const startPhoneVerification = onRequest({secrets:BOT_SECRETS},async(req,res)=>{
   setCors(req,res);
@@ -562,7 +563,7 @@ async function deleteAccountAfterDeadline(uid,requestData){
     await telegramApi(TELEGRAM_BOT_TOKEN.value(),"sendMessage",{chat_id:requestData.telegramChatId,text:"Аккаунт FROSS окончательно удалён. Личные чаты будут очищены в течение следующих 24 часов."}).catch(()=>{});
   }
 }
-export const purgePendingAccountDeletions = onSchedule({secrets:[TELEGRAM_BOT_TOKEN]},"every 15 minutes",async()=>{
+export const purgePendingAccountDeletions = onSchedule({schedule:"every 15 minutes",secrets:[TELEGRAM_BOT_TOKEN]},async()=>{
   const firestore=getFirestore(),now=Timestamp.now();
   const due=await firestore.collection("accountDeletionRequests").where("status","==","scheduled").where("deleteAfter","<=",now).limit(50).get();
   for(const item of due.docs){
