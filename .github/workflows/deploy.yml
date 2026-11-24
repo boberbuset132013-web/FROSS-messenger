@@ -34,6 +34,8 @@ jobs:
           FROSS_TURN_URLS: ${{ secrets.FROSS_TURN_URLS }}
           FROSS_TURN_USERNAME: ${{ secrets.FROSS_TURN_USERNAME }}
           FROSS_TURN_CREDENTIAL: ${{ secrets.FROSS_TURN_CREDENTIAL }}
+          FROSS_TURN_KEY_ID: ${{ secrets.FROSS_TURN_KEY_ID }}
+          FROSS_TURN_API_TOKEN: ${{ secrets.FROSS_TURN_API_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -65,7 +67,8 @@ jobs:
           trap 'rm -f "$SECRETS_FILE"' EXIT
           jq -n --arg access "$FILEBASE_ACCESS_KEY" --arg secret "$FILEBASE_SECRET_KEY" \
             --arg turn_urls "$FROSS_TURN_URLS" --arg turn_user "$FROSS_TURN_USERNAME" --arg turn_credential "$FROSS_TURN_CREDENTIAL" \
+            --arg cf_turn_key_id "$FROSS_TURN_KEY_ID" --arg cf_turn_api_token "$FROSS_TURN_API_TOKEN" \
             --arg telegram_token "$TELEGRAM_BOT_TOKEN" --arg telegram_secret "$WEBHOOK_SECRET" \
             --arg openrouter_key "$OPENROUTER_API_KEY" \
-            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end) + (if $openrouter_key != "" then {OPENROUTER_API_KEY: $openrouter_key} else {} end)' > "$SECRETS_FILE"
+            '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $cf_turn_key_id != "" and $cf_turn_api_token != "" then {FROSS_TURN_KEY_ID: $cf_turn_key_id, FROSS_TURN_API_TOKEN: $cf_turn_api_token} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end) + (if $openrouter_key != "" then {OPENROUTER_API_KEY: $openrouter_key} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
