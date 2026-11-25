@@ -154,3 +154,14 @@ After a successful import and verification:
 - Firestore listeners provide live updates; watch Firestore read usage and quotas as the app grows.
 - Enable Firebase App Check (reCAPTCHA Enterprise for web) after testing it in monitoring mode; App Check complements Auth and Security Rules but does not replace them.
 - Account deletion removes the account/profile and removes the user from chats; historical messages remain visible to other participants as conversation history.
+
+
+## Reconstructed UX and account-isolation fixes
+
+- Chat-list previews truncate long text inside each row.
+- Logout clears account-specific listeners, timers, search results, notification state and in-memory media state.
+- People search ignores stale responses and only uses the 1,000-profile compatibility scan if indexed queries fail.
+- Hidden messages no longer break sender grouping; the first message in a previously empty chat can trigger a notification.
+- Reaction listeners are reused across message snapshots.
+- Group read receipts show the double-check when at least one other participant has read the message.
+- The composer is guarded when no chat is selected; the service-worker shell cache is bumped to v17.
