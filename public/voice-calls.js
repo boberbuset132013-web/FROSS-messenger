@@ -318,10 +318,26 @@ function watchCallDocument(callId) {
   });
 }
 async function getMicrophone() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Браузер не поддерживает доступ к микрофону. Откройте сайт по HTTPS.");
+  if (!window.isSecureContext) {
+    throw new Error("Для звонка откройте FROSS по защищённому адресу HTTPS.");
   }
-  return navigator.mediaDevices.getUserMedia({audio:true,video:false});
+  const mediaDevices=navigator.mediaDevices;
+  if (!mediaDevices?.getUserMedia) {
+    throw new Error("Этот браузер не предоставляет доступ к микрофону. Обновите Chrome и откройте FROSS непосредственно в браузере.");
+  }
+  try {
+    return await mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:false
+    });
+  } catch (error) {
+    // Some Android devices or Chrome builds reject optional audio constraints.
+    if (["OverconstrainedError","ConstraintNotSatisfiedError","NotFoundError"].includes(error?.name)) {
+      try { return await mediaDevices.getUserMedia({audio:true,video:false}); }
+      catch (fallbackError) { throw fallbackError; }
+    }
+    throw error;
+  }
 }
 async function createPeer(callId, role, stream) {
   const peer = new RTCPeerConnection({iceServers:await loadIceServers()});
@@ -372,10 +388,15 @@ async function generateCallIdentity(){
   throw new Error("Не удалось создать уникальный ID звонка. Попробуй ещё раз.");
 }
 function friendlyCallError(error){
-  const code=error?.code||"";
-  if(code==="permission-denied")return "Firebase запретил доступ к звонку. Возможно, правила Firestore ещё не опубликованы или email аккаунта не подтверждён.";
+  const code=error?.code||"",name=error?.name||"";
+  if(code==="permission-denied")return "Firebase запретил доступ к звонку. Проверь публикацию новых правил Firestore.";
   if(code==="unavailable")return "Firebase временно недоступен. Проверь интернет и повтори звонок.";
   if(code==="unauthenticated")return "Сессия закончилась. Войди в FROSS заново.";
+  if(name==="NotAllowedError"||name==="SecurityError")return "Chrome не разрешил доступ к микрофону. Разреши микрофон для сайта FROSS в настройках Chrome и проверь, что доступ к микрофону включён в Android.";
+  if(name==="NotFoundError")return "Chrome не обнаружил микрофон. Проверь, что микрофон подключён и доступен системе.";
+  if(name==="NotReadableError"||name==="AbortError")return "Микрофон занят другим приложением или не отвечает. Закрой другие приложения, использующие микрофон, и попробуй снова.";
+  if(name==="OverconstrainedError"||name==="ConstraintNotSatisfiedError")return "Chrome не поддерживает выбранные параметры микрофона. Попробуй другое устройство ввода.";
+  if(name==="TypeError")return "Не удалось получить доступ к микрофону. Открой FROSS в актуальном Chrome по HTTPS.";
   return error?.message||"Не удалось выполнить действие со звонком.";
 }
 async function startOutgoingCall() {

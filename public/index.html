@@ -580,6 +580,12 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
 .system-message-sender{display:block;margin-bottom:6px;color:#d8b4fe;font-size:11px;font-weight:800;letter-spacing:.02em}
 .system-message time{display:block;margin-top:7px;color:#b6a6c6;font-size:10px;text-align:right}
 
+
+/* Keep chat-list previews inside their row on narrow screens. */
+#list .it{min-width:0;max-width:100%;overflow:hidden}
+#list .it>.t{flex:1 1 0%;min-width:0;width:0;overflow:hidden}
+#list .it>.t>b,#list .it>.t>small{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list .it>.av{flex:0 0 42px}
 </style></head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>

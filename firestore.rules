@@ -266,11 +266,15 @@ service cloud.firestore {
     }
 
     match /calls/{callId} {
+      // Calls require an authenticated account, not a verified email claim.
+      // Both participants must already belong to the chat when the call is created.
       function callParticipant() {
-        return verified()
-          && request.auth.uid in resource.data.participantUids;
+        return signedIn()
+          && request.auth.uid in resource.data.participantUids
+          && exists(/databases/$(database)/documents/chats/$(resource.data.chatId))
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(resource.data.chatId)).data.memberUids;
       }
-      allow create: if verified()
+      allow create: if signedIn()
         && request.resource.data.callerUid == request.auth.uid
         && request.resource.data.calleeUid is string
         && request.resource.data.calleeUid != request.auth.uid
@@ -279,6 +283,7 @@ service cloud.firestore {
         && request.auth.uid in request.resource.data.participantUids
         && request.resource.data.calleeUid in request.resource.data.participantUids
         && request.resource.data.status == "preparing"
+        && request.resource.data.chatId is string
         && exists(/databases/$(database)/documents/chats/$(request.resource.data.chatId))
         && request.auth.uid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
         && request.resource.data.calleeUid in get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.memberUids
@@ -289,11 +294,11 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "chatId", "callId", "callCode", "callerUid", "calleeUid", "participantUids", "status", "createdAt"
         ]);
-      allow get: if verified() && (
+      allow get: if signedIn() && (
         !exists(/databases/$(database)/documents/calls/$(callId))
         || request.auth.uid in resource.data.participantUids
       );
-      allow list: if verified() && resource.data.calleeUid == request.auth.uid;
+      allow list: if signedIn() && resource.data.calleeUid == request.auth.uid;
       allow update: if callParticipant()
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["offer", "answer", "status", "updatedAt", "acceptedAt", "endedAt", "renegotiateOffer", "renegotiateAnswer"])
@@ -311,9 +316,12 @@ service cloud.firestore {
 
       match /{candidateSet}/{candidateId} {
         function isCallParticipant() {
-          return verified()
+          let callData = get(/databases/$(database)/documents/calls/$(callId)).data;
+          return signedIn()
             && exists(/databases/$(database)/documents/calls/$(callId))
-            && request.auth.uid in get(/databases/$(database)/documents/calls/$(callId)).data.participantUids;
+            && request.auth.uid in callData.participantUids
+            && exists(/databases/$(database)/documents/chats/$(callData.chatId))
+            && request.auth.uid in get(/databases/$(database)/documents/chats/$(callData.chatId)).data.memberUids;
         }
         allow get, list: if isCallParticipant()
           && candidateSet in ["callerCandidates", "calleeCandidates"];
