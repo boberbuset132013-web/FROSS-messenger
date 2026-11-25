@@ -35,6 +35,7 @@ let globalAudioPlayer=null, globalAudioSpeed=1;
 const GLOBAL_AUDIO_SPEEDS=[1,1.25,1.5,2];
 let stopChats=null, stopMessages=null, presenceTimer=null, searchTimer=null, W=null, creatingAccount=false, bootedUid=null, reactionStops=[];
 let chatProfileStops=new Map(),messageProfileStops=new Map();
+let peopleSearchSequence=0,reactionSubscriptions=new Map();
 let chatNotificationStops=new Map(),chatNotificationSeen=new Map(),notificationAudioContext=null;
 window.FROSS = {
   get authUser(){return currentUser},get profile(){return me},get chatId(){return cur},get apiOrigin(){return FROSS_API_ORIGIN},
@@ -746,6 +747,13 @@ function item(o,title,sub,online,active,fn) {
   d.innerHTML='<div class="av"></div><div class="t"><b>'+esc(title)+'</b><small>'+esc(sub||"")+'</small></div>';
   avatar(d.firstChild,o,online);d.onclick=fn;return d;
 }
+function showToast(message){
+  let host=document.getElementById("fross-toast-host");
+  if(!host){host=document.createElement("div");host.id="fross-toast-host";host.setAttribute("aria-live","polite");document.body.append(host)}
+  const node=document.createElement("div");node.className="fross-toast";node.textContent=String(message||"");host.append(node);
+  requestAnimationFrame(()=>node.classList.add("visible"));
+  setTimeout(()=>{node.classList.remove("visible");setTimeout(()=>node.remove(),220)},3200);
+}
 function playNotificationBeep(){
   if(!S.notifySound)return;
   try{
@@ -783,9 +791,9 @@ function syncChatNotificationObservers(){
     if(chatNotificationStops.has(chat.id))continue;
     const latestQuery=query(collection(db,"chats",chat.id,"messages"),orderBy("createdAt","desc"),limit(1));
     const stop=onSnapshot(latestQuery,snapshot=>{
-      const latest=snapshot.docs[0];if(!latest)return;
-      const message={id:latest.id,...latest.data()};
-      const previous=chatNotificationSeen.get(chat.id);chatNotificationSeen.set(chat.id,message.id);
+      const latest=snapshot.docs[0],previous=chatNotificationSeen.get(chat.id);
+      if(!latest){if(previous===undefined)chatNotificationSeen.set(chat.id,null);return}
+      const message={id:latest.id,...latest.data()};chatNotificationSeen.set(chat.id,message.id);
       if(previous===undefined||previous===message.id||message.senderUid===me.uid||cur===chat.id)return;
       if((me.mutedChats||[]).includes(chat.id))return;
       const sender=(chat.memberProfiles||[]).find(person=>person.uid===message.senderUid);
@@ -916,7 +924,7 @@ let stopSearch=null;
 async function findPublicProfiles(term,maxResults=20){
   const normalized=String(term||"").trim().toLowerCase().replace(/^@/,"");
   if(normalized.length<2)return [];
-  const matches=new Map();
+  const matches=new Map();let indexedQueryFailed=false;
   const add=docs=>docs.forEach(snapshot=>{
     if(!snapshot.exists())return;
     const data=snapshot.data();
@@ -926,13 +934,12 @@ async function findPublicProfiles(term,maxResults=20){
   });
   const safeQuery=async queryRef=>{
     try{const result=await getDocs(queryRef);add(result.docs)}
-    catch(error){console.warn("FROSS profile search fallback:",error?.code||error?.message||error)}
+    catch(error){indexedQueryFailed=true;console.warn("FROSS profile search fallback:",error?.code||error?.message||error)}
   };
   const profiles=collection(db,"publicUsers");
-  await safeQuery(query(profiles,orderBy("usernameLower"),startAt(normalized),endAt(normalized+"\uf8ff"),limit(maxResults)));
-  if(matches.size<maxResults)
-    await safeQuery(query(profiles,orderBy("username"),startAt(normalized),endAt(normalized+"\uf8ff"),limit(maxResults)));
-  if(matches.size<maxResults){
+  await safeQuery(query(profiles,orderBy("usernameLower"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
+  if(matches.size<maxResults)await safeQuery(query(profiles,orderBy("username"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
+  if(indexedQueryFailed&&matches.size<maxResults){
     try{const scan=await getDocs(query(profiles,limit(1000)));add(scan.docs)}
     catch(error){console.warn("FROSS compatibility profile scan failed:",error?.code||error?.message||error)}
   }
@@ -973,10 +980,13 @@ async function findPublicProfileByUsername(value){
 }
 
 async function searchUsers(term) {
-  const value=term.trim().toLowerCase().replace(/^@/,"");
+  const value=term.trim().toLowerCase().replace(/^@/,""),sequence=++peopleSearchSequence;
   if(value.length<2){found=[];renderList();return}
-  try{found=await findPublicProfiles(value,20);renderList()}
-  catch(error){console.error("FROSS user search failed:",error);found=[];renderList()}
+  try{
+    const results=await findPublicProfiles(value,20);
+    if(sequence!==peopleSearchSequence||$("q").value.trim().toLowerCase().replace(/^@/,"")!==value)return;
+    found=results;renderList();
+  }catch(error){if(sequence!==peopleSearchSequence)return;console.error("FROSS user search failed:",error);found=[];renderList()}
 }
 function startChatList() {
   loadSystemInbox().then(()=>renderList());
@@ -1007,6 +1017,9 @@ function startChatList() {
 }
 function head() {
   const avatarElement=$("hav"),titleElement=$("ht"),subtitleElement=$("hs");
+  const composer=document.querySelector(".comp");
+  if(composer)composer.style.display=cur&&cur!==SYSTEM_CHAT_ID?"flex":"none";
+  if($("inp"))$("inp").disabled=!cur||cur===SYSTEM_CHAT_ID;
   if(cur===SYSTEM_CHAT_ID){
     avatar(avatarElement,{displayName:"FROSS",profileColor:"#a855f7"});
     titleElement.innerHTML='FROSS <span class="verified-mark" title="Официальный системный бот">✓</span>';
@@ -1138,10 +1151,12 @@ async function deleteMessageForAll(message) {
   }catch(e){alert(e?.message||authError(e))}
 }
 function renderMessageReactions(messageId,host) {
-  const reactionRef=collection(db,"chats",cur,"messages",messageId,"reactions");
+  const existing=reactionSubscriptions.get(messageId);
+  if(existing){existing.host=host;return}
+  const reactionRef=collection(db,"chats",cur,"messages",messageId,"reactions"),entry={host,stop:null};
   const stop=onSnapshot(reactionRef,snap=>{
-    if(!host.isConnected)return;
-    host.querySelector(".reaction-bar")?.remove();
+    const target=entry.host;if(!target?.isConnected)return;
+    target.querySelector(".reaction-bar")?.remove();
     const groups=new Map();
     snap.docs.forEach(d=>{const value=d.data(),emoji=value.emoji;if(emoji){const group=groups.get(emoji)||{count:0,mine:false};group.count++;if(d.id===me.uid)group.mine=true;groups.set(emoji,group)}});
     if(!groups.size)return;
@@ -1152,9 +1167,9 @@ function renderMessageReactions(messageId,host) {
       b.onclick=async()=>{try{const ownRef=doc(db,"chats",cur,"messages",messageId,"reactions",me.uid);if(group.mine)await deleteDoc(ownRef);else await setDoc(ownRef,{uid:me.uid,emoji,updatedAt:serverTimestamp()})}catch(e){alert(authError(e))}};
       bar.append(b);
     }
-    host.append(bar);
+    target.append(bar);
   },e=>console.warn("Reaction listener:",e));
-  reactionStops.push(stop);
+  entry.stop=stop;reactionSubscriptions.set(messageId,entry);reactionStops.push(stop);
 }
 let replyTarget=null;
 function setReplyTarget(message){
@@ -1168,7 +1183,7 @@ function setReplyTarget(message){
 function subscribeMessages() {
   if(stopMessages)stopMessages();
   clearProfileObservers(messageProfileStops);
-  reactionStops.forEach(stop=>stop());reactionStops=[];
+  reactionStops.forEach(stop=>stop());reactionStops=[];reactionSubscriptions.clear();
   const box=$("msgs");
   if(!cur){box.innerHTML='<div class="empty">Выберите переписку или создайте новый чат.</div>';return}
   if(cur===SYSTEM_CHAT_ID){stopMessages=null;renderSystemMessages();return}
@@ -1185,15 +1200,18 @@ function subscribeMessages() {
     const anchorId=visibleAnchor?.dataset.messageId||"";
     const anchorOffset=visibleAnchor?visibleAnchor.getBoundingClientRect().top-boxRect.top:0;
     markMessagesRead(snapshot.docs);
-    reactionStops.forEach(stop=>stop());reactionStops=[];
     box.innerHTML="";
     if(snapshot.empty)box.innerHTML='<div class="empty">Пока нет сообщений. Напишите первым!</div>';
+    const activeMessageIds=new Set(snapshot.docs.map(s=>s.id));
+    for(const [id,entry] of reactionSubscriptions){if(!activeMessageIds.has(id)){try{entry.stop?.()}catch{}reactionSubscriptions.delete(id)}}
+    reactionStops=[...reactionSubscriptions.values()].map(entry=>entry.stop).filter(Boolean);
     let previous="";
     snapshot.docs.forEach(s=>{
       const m={id:s.id,...s.data()},mine=m.senderUid===me.uid,r=document.createElement("div");
       r.className="mr"+(mine?" me":"")+(S.avatars&&!mine&&previous===m.senderUid?" nf":"");
       r.dataset.messageId=m.id;r.dataset.senderUid=m.senderUid||"";
       if(m.senderUid)watchMessageProfile(m.senderUid,box);
+      if((m.hiddenFor||[]).includes(me.uid))return;
       if(S.avatars&&!mine&&previous!==m.senderUid){
         const a=document.createElement("button");a.type="button";a.className="av message-avatar";a.setAttribute("aria-label","Открыть профиль "+(m.displayName||"пользователя"));a.title="Открыть профиль";
         avatar(a,{uid:m.senderUid,displayName:m.displayName||m.username,avatarUrl:m.avatarUrl,profileColor:m.profileColor});
@@ -1205,7 +1223,6 @@ function subscribeMessages() {
         n.textContent=m.displayName||m.username||"Пользователь";
         n.onclick=()=>openUserProfile(m.senderUid);b.append(n);
       }
-      if((m.hiddenFor||[]).includes(me.uid)){previous=m.senderUid;return}
       if(m.replyTo){
         const quote=document.createElement("button");quote.type="button";quote.className="reply-quote";
         const qname=document.createElement("b");qname.textContent=m.replyTo.displayName||"Ответ";
@@ -1234,7 +1251,7 @@ function subscribeMessages() {
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
-        if(recipients.length)appendReadReceipt(t,{read:recipients.every(uid=>(m.readBy||[me.uid]).includes(uid))});
+        if(recipients.length)appendReadReceipt(t,{read:recipients.some(uid=>(m.readBy||[me.uid]).includes(uid))});
       }
       b.append(t);
       r.append(b);box.append(r);
@@ -1483,7 +1500,7 @@ async function publishChatMessage(chatId,message,summary) {
 async function send() {
   const input=$("inp"),text=input.value.trim();
   if(cur===SYSTEM_CHAT_ID)return;
-  if(!cur){alert("Сначала выберите личный чат или группу.");return}
+  if(!cur){showToast("Сначала выберите личный чат или группу.");return}
   if(!text&&!replyTarget)return;input.value="";input.style.height="";
   const reply=replyTarget;replyTarget=null;$("reply-preview")?.remove();
   try{
@@ -1965,13 +1982,26 @@ $("gb").onclick=()=>{
   };
 };
 $("me-profile").onclick=()=>{window.FROSS_SETTINGS_START=3;$("gb").click()};
-async function logout(){closeM();document.body.classList.remove("ch");if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);await signOut(auth);}
+async function resetAccountSession(){
+  if(stopChats){stopChats();stopChats=null}if(stopMessages){stopMessages();stopMessages=null}
+  clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();
+  reactionSubscriptions.forEach(entry=>{try{entry.stop?.()}catch{}});reactionSubscriptions.clear();reactionStops=[];
+  if(presenceTimer){clearInterval(presenceTimer);presenceTimer=null}
+  if(systemInboxTimer){clearInterval(systemInboxTimer);systemInboxTimer=null}
+  if(searchTimer){clearTimeout(searchTimer);searchTimer=null}
+  peopleSearchSequence++;found=[];chats=[];cur="";me=null;currentUser=null;bootedUid=null;
+  systemInboxMessages=[];systemInboxLoaded=false;systemInboxError="";systemInboxLoading=null;privateFileUrlCache.clear();
+  if(notificationAudioContext){try{await notificationAudioContext.close()}catch{}notificationAudioContext=null}
+  if(globalAudioPlayer){try{globalAudioPlayer.pause();globalAudioPlayer.removeAttribute("src");globalAudioPlayer.load()}catch{}globalAudioPlayer=null}
+  globalAudioTrackKey="";globalAudioAttachment=null;globalAudioRequest++;
+  document.body.classList.remove("ch");const composer=document.querySelector(".comp");if(composer)composer.style.display="none";
+}
+async function logout(){closeM();await resetAccountSession();await signOut(auth);}
 async function bootFromAuth(user){await boot(user)}
 onAuthStateChanged(auth,async user=>{
   if(user){if(!creatingAccount){if(user.providerData.some(p=>p.providerId==="password")&&!user.emailVerified){const token=await user.getIdTokenResult();if(token.claims.legacyAccount!==true){signOut(auth);return}}bootFromAuth(user)}}
   else{
-    currentUser=null;me=null;bootedUid=null;
-    if(stopChats)stopChats();if(stopMessages)stopMessages();clearProfileObservers(chatProfileStops);clearProfileObservers(messageProfileStops);clearChatNotificationObservers();if(presenceTimer)clearInterval(presenceTimer);
+    await resetAccountSession();
     showLogin();
   }
 });
