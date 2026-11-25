@@ -937,8 +937,8 @@ async function findPublicProfiles(term,maxResults=20){
     catch(error){indexedQueryFailed=true;console.warn("FROSS profile search fallback:",error?.code||error?.message||error)}
   };
   const profiles=collection(db,"publicUsers");
-  await safeQuery(query(profiles,orderBy("usernameLower"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
-  if(matches.size<maxResults)await safeQuery(query(profiles,orderBy("username"),startAt(normalized),endAt(normalized+"\\uf8ff"),limit(maxResults)));
+  await safeQuery(query(profiles,orderBy("usernameLower"),startAt(normalized),endAt(normalized+"\uf8ff"),limit(maxResults)));
+  if(matches.size<maxResults)await safeQuery(query(profiles,orderBy("username"),startAt(normalized),endAt(normalized+"\uf8ff"),limit(maxResults)));
   if(indexedQueryFailed&&matches.size<maxResults){
     try{const scan=await getDocs(query(profiles,limit(1000)));add(scan.docs)}
     catch(error){console.warn("FROSS compatibility profile scan failed:",error?.code||error?.message||error)}
