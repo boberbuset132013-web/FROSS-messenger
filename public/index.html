@@ -180,6 +180,18 @@ body{background:radial-gradient(ellipse at 20% 0%,#251044 0%,transparent 42%),#0
 #auth .card{max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:700px){#auth .card{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}}
 
+/* Reconstructed audit fixes: chat list overflow, toast feedback and mobile viewport */
+#list .it{min-width:0;max-width:100%;overflow:hidden}
+#list .it>.t{flex:1 1 0%;min-width:0;width:0;overflow:hidden}
+#list .it>.t>b,#list .it>.t>small{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list .it>.av{flex:0 0 42px}
+#fross-toast-host{position:fixed;z-index:500;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);display:grid;gap:8px;width:min(420px,calc(100vw - 28px));pointer-events:none}
+.fross-toast{padding:11px 15px;border:1px solid #ffffff22;border-radius:13px;background:color-mix(in srgb,var(--panel) 94%,transparent);color:var(--text);box-shadow:0 12px 34px #0007;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s;font-size:13px}
+.fross-toast.visible{opacity:1;transform:translateY(0)}
+button:disabled{opacity:.48;cursor:not-allowed;filter:saturate(.5)}
+#app{height:100dvh;min-height:0}
+@media(max-width:700px){.side,.main{min-height:0}.comp{padding-bottom:max(8px,env(safe-area-inset-bottom))}.head{padding-top:env(safe-area-inset-top)}}
+@media(prefers-reduced-motion:reduce){.fross-toast{transition:none}}
 /* Supplied FROSS mascot art and consistent interface motion */
 .mascot-image{width:200px;height:160px;right:0;top:0;object-fit:contain;object-position:center;border:0;border-radius:0;transform:none;filter:drop-shadow(0 0 18px #9b37ff66)}
 @media(max-width:700px){.brandbar{height:132px}.mascot-image{width:190px;height:150px;right:0;top:0;object-fit:contain}}
