@@ -316,11 +316,12 @@ service cloud.firestore {
 
       match /{candidateSet}/{candidateId} {
         function isCallParticipant() {
+          let callData = get(/databases/$(database)/documents/calls/$(callId)).data;
           return signedIn()
             && exists(/databases/$(database)/documents/calls/$(callId))
-            && request.auth.uid in get(/databases/$(database)/documents/calls/$(callId)).data.participantUids
-            && exists(/databases/$(database)/documents/chats/$(get(/databases/$(database)/documents/calls/$(callId)).data.chatId))
-            && request.auth.uid in get(/databases/$(database)/documents/chats/$(get(/databases/$(database)/documents/calls/$(callId)).data.chatId)).data.memberUids;
+            && request.auth.uid in callData.participantUids
+            && exists(/databases/$(database)/documents/chats/$(callData.chatId))
+            && request.auth.uid in get(/databases/$(database)/documents/chats/$(callData.chatId)).data.memberUids;
         }
         allow get, list: if isCallParticipant()
           && candidateSet in ["callerCandidates", "calleeCandidates"];
