@@ -1085,7 +1085,8 @@ function openMessageMenu(message,mine,x,y) {
 }
 async function forwardMessage(message) {
   if(!cur||cur===SYSTEM_CHAT_ID)return;
-  if(!message?.text?.trim()){showToast("Пока можно пересылать текстовые сообщения. Пересылка вложений появится отдельно.");return}
+  const sourceText=String(message?.text||"").trim(),sourceAttachment=message?.attachment||null;
+  if(!sourceText&&!sourceAttachment){showToast("Это сообщение нельзя переслать.");return}
   const available=chats.filter(chat=>chat.id!==SYSTEM_CHAT_ID);
   if(!available.length){showToast("Нет чатов, куда можно переслать сообщение.");return}
   openM('<h3 style="margin:0 0 8px">Переслать сообщение</h3><p class="mut">Выбери чат или группу.</p><div id="forward-chat-list" class="existing-chat-picker"></div><div class="row"><button type="button" id="forward-cancel">Отмена</button></div>');
@@ -1097,9 +1098,26 @@ async function forwardMessage(message) {
     button.onclick=async()=>{
       button.disabled=true;button.textContent="Пересылаем…";
       try{
-        const forwardedText=message.text.trim();
-        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:forwardedText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60)}};
-        await publishChatMessage(chat.id,forwarded,"↪ "+forwardedText);
+        let attachment=null;
+        if(sourceAttachment){
+          if(sourceAttachment.external===true){
+            attachment={name:String(sourceAttachment.name||"Ссылка"),type:String(sourceAttachment.type||"application/octet-stream"),size:0,url:String(sourceAttachment.url||""),path:"",external:true};
+          }else{
+            const path=String(sourceAttachment.path||String(sourceAttachment.url||"").replace(/^filebase:/,""));
+            if(!path)throw new Error("У вложения отсутствует путь к файлу.");
+            const token=await currentUser.getIdToken();
+            const response=await fetch(FROSS_API_ORIGIN+"/api/files/download",{method:"POST",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({path,name:sourceAttachment.name||"forwarded-file"})});
+            if(!response.ok){let data={};try{data=await response.json()}catch{};throw new Error(data.error||"Не удалось получить исходный файл для пересылки.")}
+            const blob=await response.blob(),name=String(sourceAttachment.name||"forwarded-file");
+            const file=new File([blob],name,{type:sourceAttachment.type||blob.type||"application/octet-stream"});
+            const uploaded=await uploadChatFile(chat.id,file,token);
+            attachment={name,type:file.type,size:file.size,url:uploaded.url,path:uploaded.path,external:false};
+          }
+        }
+        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:sourceText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60)}};
+        if(attachment)forwarded.attachment=attachment;
+        const preview=sourceText||(attachment?.type?.startsWith("image/")?"Фото":attachment?.type?.startsWith("video/")?"Видео":attachment?.type?.startsWith("audio/")?"Аудио":"Файл");
+        await publishChatMessage(chat.id,forwarded,"↪ "+preview);
         closeM();showToast("Сообщение переслано.");
       }catch(error){button.disabled=false;button.textContent=info.title;alert(authError(error))}
     };
