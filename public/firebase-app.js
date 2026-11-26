@@ -1098,7 +1098,7 @@ async function forwardMessage(message) {
       button.disabled=true;button.textContent="Пересылаем…";
       try{
         const forwardedText=message.text.trim();
-        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:forwardedText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.senderUid||""),displayName:String(message.displayName||message.username||"Пользователь").slice(0,60)}};
+        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:forwardedText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60)}};
         await publishChatMessage(chat.id,forwarded,"↪ "+forwardedText);
         closeM();showToast("Сообщение переслано.");
       }catch(error){button.disabled=false;button.textContent=info.title;alert(authError(error))}
