@@ -230,13 +230,14 @@ function authError(e) {
 function applyS(s) {
   const r=document.documentElement;
   r.dataset.theme=s.theme;
-  r.style.colorScheme=s.theme==="light"?"light":"dark";
+  r.style.colorScheme=s.theme==="light"?"light":s.theme==="auto"?"light dark":"dark";
   r.style.setProperty("--accent",s.accent);
   r.style.setProperty("--fs",s.fs+"px");
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
   r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
-  r.style.setProperty("--bg",s.bgColor||DEF.bgColor);r.style.setProperty("--panel",s.panelColor||DEF.panelColor);r.style.setProperty("--text",s.textColor||DEF.textColor);r.style.setProperty("--incoming",s.incomingColor||DEF.incomingColor);r.style.setProperty("--outgoing",s.outgoingColor||s.accent||DEF.outgoingColor);r.style.setProperty("--profile-accent",s.profileColor||DEF.profileColor);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
+  const bg=s.bgColor||DEF.bgColor,panel=s.panelColor||DEF.panelColor,text=s.textColor||DEF.textColor;
+  r.style.setProperty("--bg",bg);r.style.setProperty("--panel",panel);r.style.setProperty("--text",text);r.style.setProperty("--p2","color-mix(in srgb,"+panel+" 88%,"+text+" 12%)");r.style.setProperty("--line","color-mix(in srgb,"+panel+" 72%,"+text+" 28%)");r.style.setProperty("--incoming",s.incomingColor||DEF.incomingColor);r.style.setProperty("--outgoing",s.outgoingColor||s.accent||DEF.outgoingColor);r.style.setProperty("--profile-accent",s.profileColor||DEF.profileColor);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
   r.classList.toggle("reduce-motion",!!s.reduceMotion);
 }
