@@ -1229,3 +1229,27 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{
 @media(prefers-reduced-motion:reduce){
   .it,.create-btn,.nav-item,.ic,button{transition:none!important}
 }
+
+
+/* FROSS customization: user-selected palette and stable avatar geometry. */
+body{background:var(--bg)!important;color:var(--text)}
+#auth{background:radial-gradient(circle at 20% 10%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 50%),var(--bg)!important}
+.side{background:var(--panel)!important;border-right-color:color-mix(in srgb,var(--text) 12%,transparent)!important}
+.brandbar,.side-bottom{background:color-mix(in srgb,var(--panel) 92%,var(--bg))!important}
+.main{background:var(--bg)!important}
+.head,.comp{background:color-mix(in srgb,var(--panel) 94%,transparent)!important;color:var(--text)}
+.it,.searchbox,.comp #inp{color:var(--text)}
+.it.a{background:color-mix(in srgb,var(--accent) 18%,var(--panel))!important}
+.mr:not(.me) .msg{background:var(--incoming)!important;color:var(--text)!important;border-radius:var(--br)!important}
+.mr.me .msg,.me .msg{background:var(--outgoing)!important;color:#fff!important;border-radius:var(--br)!important}
+.msg{font-size:var(--fs)!important}
+button,input,textarea,select{font-family:var(--font,Inter,system-ui,sans-serif)}
+.comp #inp{font-size:var(--fs)!important}
+.settings-group,.settings-account-card,.settings-info-card{background:color-mix(in srgb,var(--panel) 88%,var(--bg))!important}
+.settings-row,.settings-detail-heading,.settings-topbar{color:var(--text)}
+.settings-row-copy b,.settings-topbar h3,.settings-detail-heading h3{color:var(--text)}
+.forwarded-label{display:block;margin:0 0 5px;color:var(--accent);font-size:11px;font-weight:800}
+.forward-chat-option{display:block;width:100%;margin:5px 0;text-align:left;border-radius:12px}
+.it>.av,.list .av{width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important;max-width:42px!important;max-height:42px!important;aspect-ratio:1/1!important;flex:0 0 42px!important;border-radius:50%!important;background-size:cover!important;background-position:center!important;overflow:hidden}
+.av{aspect-ratio:1/1;flex-shrink:0}
+@media(max-width:700px){.it>.av,.list .av{width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;max-width:44px!important;max-height:44px!important;flex-basis:44px!important}}
