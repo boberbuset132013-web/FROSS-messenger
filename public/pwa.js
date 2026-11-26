@@ -42,6 +42,14 @@ if("serviceWorker" in navigator){
    });
    await registration.update();
    if(registration.waiting)offerRestart(registration.waiting);
+   // Check for a release when the user returns to an already-open app.
+   // The restart control is created only when a newer worker is actually waiting.
+   document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible")registration?.update().catch(error=>console.warn("FROSS background update check:",error));
+   });
+   window.addEventListener("pageshow",()=>{
+    if(document.visibilityState==="visible")registration?.update().catch(error=>console.warn("FROSS page update check:",error));
+   });
   }catch(error){console.warn("FROSS update service unavailable",error)}
  });
 }
