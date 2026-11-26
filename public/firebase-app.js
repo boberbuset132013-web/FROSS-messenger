@@ -1777,7 +1777,7 @@ $("nb").onclick=()=>{
   };
   $("t1").onclick=()=>tab(1);$("t2").onclick=()=>tab(2);tab(1);
 };
-const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
+const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o","settings-mode");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
   const requestedCategory=Number.isInteger(window.FROSS_SETTINGS_START)?window.FROSS_SETTINGS_START:null;
@@ -2064,7 +2064,7 @@ import("./voice-calls.js").catch(error => console.error("Voice calls failed to l
   const chats=document.getElementById("nav-chats");
   if(people)people.onclick=()=>{
     chats?.classList.remove("active");people.classList.add("active");
-    window.FROSS_SETTINGS_START=1;$("gb").click();
+    window.FROSS_SETTINGS_START=null;$("gb").click();
   };
   if(chats)chats.onclick=()=>{
     if($("ov").classList.contains("o")){applyS(S);closeM()}
