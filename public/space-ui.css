@@ -1253,3 +1253,7 @@ button,input,textarea,select{font-family:var(--font,Inter,system-ui,sans-serif)}
 .it>.av,.list .av{width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important;max-width:42px!important;max-height:42px!important;aspect-ratio:1/1!important;flex:0 0 42px!important;border-radius:50%!important;background-size:cover!important;background-position:center!important;overflow:hidden}
 .av{aspect-ratio:1/1;flex-shrink:0}
 @media(max-width:700px){.it>.av,.list .av{width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;max-width:44px!important;max-height:44px!important;flex-basis:44px!important}}
+
+#ov.settings-mode #md{background:var(--panel)!important;border-color:color-mix(in srgb,var(--text) 16%,transparent)!important}
+.card,.md{color:var(--text)}
+input,textarea,select{background:var(--p2);color:var(--text);border-color:var(--line)}
