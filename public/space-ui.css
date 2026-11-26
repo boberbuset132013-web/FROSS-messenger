@@ -1021,3 +1021,211 @@ html,body{background-color:var(--space-user-bg)!important;color:var(--space-user
  .profile-editor-group{padding:12px}
 }
 @media(prefers-reduced-motion:reduce){.settings-profile-card,.profile-editor-screen{animation:none!important}}
+
+
+/* FROSS visual polish — cleaner Telegram-like hierarchy, retaining the cosmic identity. */
+:root{
+  --space-night:var(--bg,#0c0914);
+  --space-glass:var(--panel,#15111e);
+  --space-stroke:color-mix(in srgb,var(--text,#f4effb) 12%,transparent);
+  --space-radius:16px;
+}
+body{
+  background:
+    radial-gradient(ellipse at 12% 0%,color-mix(in srgb,var(--accent,#9b5de5) 9%,transparent),transparent 38%),
+    var(--bg,#0c0914)!important;
+  color:var(--text,#f4effb);
+}
+body::after{opacity:.22}
+#app{background:var(--bg,#0c0914)}
+.side{
+  background:var(--panel,#15111e)!important;
+  border-right:1px solid color-mix(in srgb,var(--text,#f4effb) 10%,transparent);
+  box-shadow:none!important;
+}
+.brandbar{
+  min-height:62px;
+  padding-inline:16px;
+  background:transparent!important;
+  border-bottom:1px solid color-mix(in srgb,var(--text,#f4effb) 9%,transparent);
+}
+.brandmark{letter-spacing:.045em;text-shadow:0 1px 14px color-mix(in srgb,var(--accent,#a855f7) 28%,transparent)}
+.brandmark small{letter-spacing:.12em;opacity:.72}
+.me{
+  padding:12px 14px;
+  background:transparent!important;
+  border-bottom:1px solid color-mix(in srgb,var(--text,#f4effb) 8%,transparent);
+  backdrop-filter:none;
+}
+.me .av{width:42px;height:42px}
+.sb{padding:12px 12px 4px}
+.searchbox{
+  min-height:42px;
+  border-radius:13px;
+  background:color-mix(in srgb,var(--text,#fff) 5%,transparent);
+  border:1px solid color-mix(in srgb,var(--text,#fff) 9%,transparent);
+  box-shadow:none;
+}
+.searchbox:focus-within{
+  border-color:color-mix(in srgb,var(--accent,#a855f7) 65%,transparent);
+  background:color-mix(in srgb,var(--text,#fff) 7%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent,#a855f7) 12%,transparent);
+}
+.list{padding:5px 8px 12px;scrollbar-width:thin}
+.h{padding:13px 10px 6px;font-size:10px;letter-spacing:.09em;opacity:.7}
+.it{
+  min-height:66px;
+  padding:9px 10px;
+  gap:11px;
+  border-radius:13px;
+  border:1px solid transparent;
+  background:transparent;
+  transform:none!important;
+  box-shadow:none!important;
+}
+.it .av{width:46px;height:46px;flex:0 0 46px}
+.it .t{min-width:0;display:grid;gap:4px}
+.it .t b{font-size:14px;font-weight:650;letter-spacing:.005em}
+.it .t small{font-size:12px;line-height:1.35;color:color-mix(in srgb,var(--text,#fff) 58%,transparent)}
+.it:hover{background:color-mix(in srgb,var(--text,#fff) 5%,transparent);border-color:transparent}
+.it.a{
+  background:color-mix(in srgb,var(--accent,#a855f7) 14%,transparent);
+  border-color:color-mix(in srgb,var(--accent,#a855f7) 20%,transparent);
+  box-shadow:none!important;
+}
+.it.a .t b{color:var(--text,#fff)}
+.side-bottom{
+  background:var(--panel,#15111e)!important;
+  border-top:1px solid color-mix(in srgb,var(--text,#fff) 9%,transparent);
+  box-shadow:none;
+}
+.create-btn{
+  min-height:46px;
+  border-radius:13px;
+  background:var(--accent,#9857d8);
+  border-color:color-mix(in srgb,var(--accent,#9857d8) 70%,white 30%);
+  box-shadow:0 5px 16px color-mix(in srgb,var(--accent,#9857d8) 20%,transparent);
+}
+.create-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.nav-item{border-radius:11px;background:transparent}
+.nav-item.active{
+  background:color-mix(in srgb,var(--accent,#a855f7) 14%,transparent);
+  border-color:color-mix(in srgb,var(--accent,#a855f7) 18%,transparent);
+}
+.main{background:var(--bg,#0c0914)!important}
+.main::before{opacity:0!important;background:none!important}
+.head{
+  height:62px;flex-basis:62px;
+  padding-inline:18px;
+  background:var(--panel,#15111e)!important;
+  border-bottom:1px solid color-mix(in srgb,var(--text,#fff) 9%,transparent);
+  box-shadow:none!important;
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.head .av{width:40px;height:40px}
+.head .t b{font-size:15px;font-weight:680}
+.head .t small{font-size:12px;color:color-mix(in srgb,var(--text,#fff) 58%,transparent)}
+.ic{
+  width:40px;height:40px;min-width:40px;
+  border-radius:12px;
+  background:color-mix(in srgb,var(--text,#fff) 5%,transparent);
+  border:1px solid color-mix(in srgb,var(--text,#fff) 8%,transparent);
+  color:var(--text,#fff);
+  transition:background .16s ease,border-color .16s ease,transform .16s ease;
+}
+.ic:hover{background:color-mix(in srgb,var(--accent,#a855f7) 14%,transparent);border-color:color-mix(in srgb,var(--accent,#a855f7) 26%,transparent)}
+.msgs{
+  padding:20px clamp(12px,3vw,32px);
+  gap:6px;
+  background-color:var(--bg,#0c0914)!important;
+  background-image:none!important;
+}
+.mr{max-width:min(78%,760px);gap:8px}
+.mr .av{width:30px;height:30px}
+.mr.nf{margin-left:38px}
+.mr .msg{
+  padding:9px 12px;
+  border-radius:17px!important;
+  border:1px solid color-mix(in srgb,var(--text,#fff) 8%,transparent);
+  line-height:1.48;
+  box-shadow:none!important;
+  backdrop-filter:none;
+}
+.mr:not(.me):not(.system-message) .msg{
+  background:var(--incoming,#211a2a)!important;
+  color:var(--text,#f4effb)!important;
+  border-color:color-mix(in srgb,var(--text,#fff) 8%,transparent)!important;
+}
+.mr.me .msg{
+  background:var(--outgoing,var(--accent,#9857d8))!important;
+  color:#fff!important;
+  border-color:color-mix(in srgb,var(--outgoing,var(--accent,#9857d8)) 78%,white 22%)!important;
+}
+.mr:not(.me) .msg{border-bottom-left-radius:6px!important}
+.mr.me .msg{border-bottom-right-radius:6px!important}
+.msg b,.sender-profile{color:inherit!important;font-weight:700}
+.msg time{opacity:.68}
+.msg .reply-quote,.reply-quote{
+  border-radius:9px!important;
+  background:color-mix(in srgb,var(--accent,#a855f7) 12%,var(--incoming,#211a2a))!important;
+  border-left:3px solid var(--accent,#a855f7)!important;
+  color:inherit!important;
+  box-shadow:none!important;
+}
+.comp{
+  gap:9px;
+  padding:10px 16px max(10px,env(safe-area-inset-bottom));
+  background:var(--panel,#15111e)!important;
+  border-top:1px solid color-mix(in srgb,var(--text,#fff) 9%,transparent);
+  box-shadow:none!important;
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.comp #inp{
+  min-height:44px;
+  padding:11px 15px;
+  border-radius:22px;
+  background:color-mix(in srgb,var(--text,#fff) 5%,transparent);
+  border:1px solid color-mix(in srgb,var(--text,#fff) 10%,transparent);
+}
+.comp #inp:focus{
+  border-color:color-mix(in srgb,var(--accent,#a855f7) 62%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent,#a855f7) 12%,transparent);
+}
+.comp #attach{border-radius:50%;background:transparent;border:0;font-size:22px}
+.comp #send{border-radius:50%;width:44px;height:44px;background:var(--accent,#9857d8);box-shadow:none}
+.ov{background:rgba(4,3,8,.68);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.md{
+  border-radius:22px;
+  background:var(--panel,#15111e)!important;
+  border:1px solid color-mix(in srgb,var(--text,#fff) 12%,transparent);
+  box-shadow:0 22px 70px rgba(0,0,0,.4)!important;
+  backdrop-filter:blur(18px);
+}
+button,input,textarea,select{font-family:var(--font,Inter),Inter,system-ui,sans-serif}
+button{transition:background .16s ease,border-color .16s ease,transform .16s ease,filter .16s ease}
+button:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:2px solid color-mix(in srgb,var(--accent,#a855f7) 78%,white 22%);
+  outline-offset:2px;
+}
+.settings-profile-card,.profile-editor-group{
+  background:color-mix(in srgb,var(--panel,#15111e) 94%,var(--accent,#a855f7) 6%);
+  border-color:color-mix(in srgb,var(--text,#fff) 10%,transparent);
+  box-shadow:none;
+}
+.settings-profile-card{border-radius:20px}
+.profile-editor-group{border-radius:15px}
+@media(max-width:700px){
+  .side{border-right:0}
+  .head{height:58px;flex-basis:58px;padding-inline:12px}
+  .msgs{padding:14px 10px}
+  .mr{max-width:88%}
+  .mr .msg{max-width:calc(100vw - 82px)}
+  .mr.me .msg{max-width:calc(100vw - 30px)}
+  .comp{padding:9px 10px max(9px,env(safe-area-inset-bottom));gap:7px}
+  .comp #attach,.comp #send{width:40px;height:40px;min-width:40px;flex-basis:40px}
+  .comp #inp{min-height:42px;padding:10px 13px}
+  .md{border-radius:18px}
+}
+@media(prefers-reduced-motion:reduce){
+  .it,.create-btn,.nav-item,.ic,button{transition:none!important}
+}
