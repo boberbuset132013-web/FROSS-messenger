@@ -828,3 +828,103 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   .settings-row-copy small{font-size:11px}
   .settings-actions{padding-inline:15px}
 }
+
+
+/* Profile, planet and message surface refinements */
+@keyframes fross-planet-float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-4px)}
+}
+.brand-planet{
+  animation:fross-planet-float 5.8s ease-in-out infinite;
+  filter:drop-shadow(0 0 18px rgba(168,85,247,.42));
+}
+.brand-planet::before{
+  z-index:0;
+  left:-23px;
+  right:-23px;
+  top:22px;
+  height:48px;
+  border:2px solid transparent;
+  border-top-color:#e6d3ff;
+  border-bottom-color:#9b6aff;
+  border-left-color:#bd9cff;
+  border-right-color:#79dfff;
+  border-radius:50%;
+  transform:rotate(-28deg);
+  box-shadow:0 0 12px rgba(177,125,255,.35),inset 0 0 5px rgba(103,217,255,.12);
+}
+.brand-planet::after{
+  z-index:1;
+  inset:8px;
+  border-radius:50%;
+  background:
+    radial-gradient(ellipse at 28% 22%,rgba(255,255,255,.92) 0 1.5%,transparent 9%),
+    radial-gradient(ellipse at 31% 25%,#d9f4ff 0%,#b7c8f5 9%,#9a7bd8 24%,#65449e 48%,#352052 74%,#130d21 100%);
+  box-shadow:inset -15px -11px 24px rgba(5,3,12,.72),inset 5px 4px 13px rgba(255,255,255,.28),0 0 24px rgba(167,107,255,.52);
+}
+.settings-row-copy small{display:none!important}
+.settings-row{min-height:66px;transition:background .22s ease,transform .22s ease}
+.settings-row-icon{transition:transform .22s ease,box-shadow .22s ease}
+.settings-row:hover .settings-row-icon{transform:scale(1.055);box-shadow:0 0 18px rgba(168,85,247,.16)}
+.profile-public-card{
+  border-radius:24px;
+  padding:22px;
+  background:
+    radial-gradient(ellipse at 50% 0%,rgba(168,85,247,.2),transparent 48%),
+    linear-gradient(155deg,rgba(29,18,48,.98),rgba(12,8,22,.99));
+}
+.profile-public-card-top{
+  margin-bottom:20px;
+  color:#f1e5ff;
+  font-size:12px;
+  letter-spacing:.04em;
+}
+.profile-public-card-main{
+  flex-direction:column;
+  justify-content:center;
+  gap:13px;
+  text-align:center;
+}
+.profile-public-card-main .av{
+  width:104px;
+  height:104px;
+  border:3px solid rgba(216,180,254,.42);
+  box-shadow:0 0 0 6px rgba(168,85,247,.09),0 12px 32px rgba(0,0,0,.24),0 0 28px rgba(168,85,247,.22);
+}
+.profile-public-card-identity{text-align:center}
+.profile-public-card-identity h3{font-size:23px;letter-spacing:-.025em}
+.profile-handle-row{justify-content:center}
+.profile-public-bio{
+  margin-top:10px;
+  padding:15px 2px 0;
+  border-top:1px solid rgba(255,255,255,.1);
+  color:#e0d3ed;
+  text-align:center;
+}
+.profile-description-label{text-align:center;margin-top:18px}
+.profile-phone-row{
+  margin-top:18px;
+  padding:13px 14px;
+  border-radius:15px;
+  background:rgba(255,255,255,.045);
+  border-color:rgba(196,151,242,.15);
+}
+.profile-public-actions{margin-top:20px}
+.profile-public-actions button{min-height:44px;border-radius:14px}
+.profile-edit-photo{padding:13px;border:1px solid rgba(196,151,242,.14);border-radius:16px;background:rgba(255,255,255,.035)}
+.profile-edit-photo .av{border:2px solid rgba(216,180,254,.36);box-shadow:0 0 20px rgba(168,85,247,.18)}
+.msg .reply-quote,.msg blockquote,.msg pre,.msg code{
+  background:linear-gradient(135deg,rgba(132,75,173,.2),rgba(58,39,79,.42))!important;
+  border-color:rgba(214,180,255,.2)!important;
+  color:inherit;
+}
+.msg .reply-quote{border-left:3px solid #c084fc!important;border-radius:9px}
+.msg{background-clip:padding-box}
+.mr,.mr .msg{isolation:isolate}
+@media(max-width:700px){
+  .brand-planet{right:18px;top:10px}
+  .profile-public-card{padding:18px}
+  .profile-public-card-main .av{width:96px;height:96px}
+}
+@media(prefers-reduced-motion:reduce){.brand-planet{animation:none}}
