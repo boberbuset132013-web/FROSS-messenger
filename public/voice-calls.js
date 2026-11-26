@@ -400,8 +400,9 @@ function friendlyCallError(error){
   return error?.message||"Не удалось выполнить действие со звонком.";
 }
 function callDisplayName(profile){
-  const username=String(profile?.username||"").trim().replace(/^@/,"");
-  return username ? "@"+username : (profile?.displayName||"Собеседник");
+  // Calls identify accounts by their unique username, never by the editable display nickname.
+  const username=String(profile?.username||profile?.usernameLower||profile?.handle||"").trim().replace(/^@/,"");
+  return username ? "@"+username : "Собеседник";
 }
 async function startOutgoingCall() {
   if (activeCall) {
