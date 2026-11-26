@@ -1,5 +1,5 @@
-const CACHE="fross-shell-v17";
-const SHELL=["/","/index.html","/firebase-app.js","/chat-features.js","/voice-calls.js","/space.js","/manifest.webmanifest","/fross-icon.webp","/fross-mascot.webp"];
+const CACHE="fross-shell-v18";
+const SHELL=["/","/index.html","/firebase-app.js","/chat-features.js","/voice-calls.js","/space-ui.css","/manifest.webmanifest","/fross-icon.webp","/fross-mascot.webp"];
 self.addEventListener("install",event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
  await Promise.all(SHELL.map(async path=>{try{await cache.add(path)}catch(error){console.warn("FROSS cache skipped",path,error)}}));

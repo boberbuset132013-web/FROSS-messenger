@@ -598,7 +598,12 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
 #list .it>.t{flex:1 1 0%;min-width:0;width:0;overflow:hidden}
 #list .it>.t>b,#list .it>.t>small{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #list .it>.av{flex:0 0 42px}
-</style></head><body>
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/space-ui.css">
+</head><body>
 <div id="audio-dock" class="audio-dock" hidden role="region" aria-label="Аудиоплеер">
   <div class="audio-dock-info"><b id="audio-dock-title">Аудиофайл</b><small id="audio-dock-status">Выберите аудио в сообщении</small></div>
   <div class="audio-dock-controls"><button id="audio-dock-toggle" type="button" aria-label="Продолжить">▶</button><button id="audio-dock-speed" type="button" aria-label="Скорость воспроизведения">1×</button><button id="audio-dock-close" type="button" aria-label="Закрыть плеер">×</button></div>
