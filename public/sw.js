@@ -1,4 +1,4 @@
-const CACHE="fross-shell-v18";
+const CACHE="fross-shell-v19";
 const SHELL=["/","/index.html","/firebase-app.js","/chat-features.js","/voice-calls.js","/space-ui.css","/manifest.webmanifest","/fross-icon.webp","/fross-mascot.webp"];
 self.addEventListener("install",event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);

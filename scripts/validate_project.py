@@ -18,7 +18,7 @@ checks = {
     "text messages use the independent message writer": "await publishChatMessage(cur,message,text);" in js,
     "attachment messages use the independent message writer": "await publishChatMessage(chatId,message,summary);" in js,
     "private avatar images refresh stale saved paths": "async function retryAvatarImage" in js and "loadPrivateAvatar(el,nextSource" in js,
-    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v18"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
+    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v19"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
     "chat preview text is clipped inside the chat row": "#list .it>.t{flex:1 1 0%" in html and "text-overflow:ellipsis" in html,
     "people search ignores stale asynchronous responses": "peopleSearchSequence" in js and "sequence!==peopleSearchSequence" in js,
     "legacy profile scan only runs after indexed query failure": "if(indexedQueryFailed&&matches.size<maxResults)" in js,
@@ -107,7 +107,13 @@ checks = {
     "composer flex field cannot force horizontal overflow": ".comp #inp{" in space_css and "flex:1 1 0%" in space_css and "min-width:0" in space_css,
     "modal, call, media and audio layers have explicit stacking order": all(token in space_css for token in [".ov{", "z-index:220", "#call-layer{z-index:600}", ".media-viewer{z-index:700}", ".audio-dock{z-index:500}"]),
     "attachment menu closes on outside click and Escape": 'document.addEventListener("pointerdown"' in js and 'event.key!=="Escape"' in js,
-    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v18"' in service_worker and '"/space-ui.css"' in service_worker,
+    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v19"' in service_worker and '"/space-ui.css"' in service_worker,
+    "settings landing page uses a profile header and grouped row navigation": all(token in js for token in ["settings-account-avatar","settings-group-label","settings-row-copy","settings-detail-back"]),
+    "settings sections open independently and have a return path": "const showSettingsHome=()=>" in js and '$("settings-detail-back").onclick=showSettingsHome' in js,
+    "settings home is the default when the settings tab opens": "FROSS_SETTINGS_START=null" in js and "showSettingsHome();" in js,
+    "settings overlay uses a dedicated full-page layout": "settings-mode" in js and "#ov.settings-mode #md" in space_css and ".settings-shell{" in space_css,
+    "settings list rows use grouped cards with icons and dividers": ".settings-group{" in space_css and ".settings-row-icon svg{" in space_css and ".settings-row+.settings-row{" in space_css,
+    "settings controls remain scrollable with a persistent save footer": ".settings-scroll{" in space_css and ".settings-actions{" in space_css and "settings-actions" in js,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
