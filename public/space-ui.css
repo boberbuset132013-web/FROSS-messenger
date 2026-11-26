@@ -928,3 +928,96 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   .profile-public-card-main .av{width:96px;height:96px}
 }
 @media(prefers-reduced-motion:reduce){.brand-planet{animation:none}}
+
+
+/* FROSS repair pass: make user customization the single source of truth. */
+:root{
+  --space-user-bg:var(--bg,#080611);
+  --space-user-panel:var(--panel,#100b1d);
+  --space-user-text:var(--text,#f7f0ff);
+  --space-user-incoming:var(--incoming,#21152f);
+  --space-user-outgoing:var(--outgoing,var(--accent,#a855f7));
+  --space-user-accent:var(--accent,#a855f7);
+  --space-user-font:var(--font,Inter,system-ui,sans-serif);
+}
+html,body{background-color:var(--space-user-bg)!important;color:var(--space-user-text);font-family:var(--space-user-font)!important;font-size:var(--fs,15px)}
+#app,.main,.side{color:var(--space-user-text)}
+.side,.head,.comp,.settings-shell,.settings-group,.settings-account-card,.settings-detail{
+  background-color:var(--space-user-panel)!important;
+}
+.head,.side{border-color:color-mix(in srgb,var(--space-user-text) 13%,transparent)!important}
+.comp{background:color-mix(in srgb,var(--space-user-panel) 94%,var(--space-user-accent) 6%)!important}
+.msgs{background-color:var(--space-user-bg)!important}
+.msg{
+  font-family:var(--space-user-font)!important;
+  font-size:var(--fs,15px)!important;
+  border-radius:var(--br,16px)!important;
+  box-shadow:none!important;
+}
+.mr:not(.me) .msg{
+  background:linear-gradient(145deg,color-mix(in srgb,var(--space-user-incoming) 96%,var(--space-user-accent) 4%),var(--space-user-incoming))!important;
+  color:var(--space-user-text)!important;
+  border-color:color-mix(in srgb,var(--space-user-text) 12%,transparent)!important;
+}
+.mr.me .msg,.me .msg{
+  background:linear-gradient(130deg,var(--space-user-outgoing),color-mix(in srgb,var(--space-user-outgoing) 78%,#21103d))!important;
+  color:#fff!important;
+  border-color:color-mix(in srgb,var(--space-user-outgoing) 68%,white 32%)!important;
+}
+.msg b,.sender-profile{color:color-mix(in srgb,var(--space-user-text) 76%,#d8aaff)!important}
+.reply-quote,.msg .reply-quote{
+  background:color-mix(in srgb,var(--space-user-incoming) 72%,var(--space-user-accent) 28%)!important;
+  color:var(--space-user-text)!important;
+  border-left-color:var(--space-user-accent)!important;
+  box-shadow:none!important;
+}
+.mr,.mr::before,.mr::after{
+  background:transparent!important;
+  box-shadow:none!important;
+  filter:none!important;
+}
+.mr .msg,.mr .msg::before,.mr .msg::after{
+  box-shadow:none!important;
+  filter:none!important;
+}
+.msg .message-audio-player,.msg .audio-player-top,.msg .attachment-link,.msg .sender-profile{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.settings-profile-card{
+  display:grid;gap:20px;padding:20px;border:1px solid color-mix(in srgb,var(--space-user-accent) 32%,transparent);
+  border-radius:22px;background:radial-gradient(ellipse at 85% 0%,color-mix(in srgb,var(--space-user-accent) 18%,transparent),transparent 48%),color-mix(in srgb,var(--space-user-panel) 92%,#090512);
+}
+.settings-profile-identity{display:flex;align-items:center;gap:16px;min-width:0}
+.settings-profile-identity .av{width:78px;height:78px;flex:0 0 78px;border:2px solid color-mix(in srgb,var(--space-user-accent) 45%,transparent);box-shadow:0 0 22px color-mix(in srgb,var(--space-user-accent) 25%,transparent)}
+.settings-profile-identity>div:last-child{display:grid;gap:5px;min-width:0}
+.settings-profile-identity b{font-size:19px;overflow-wrap:anywhere}
+.settings-profile-identity small,.settings-profile-bio{color:color-mix(in srgb,var(--space-user-text) 72%,transparent)}
+.settings-profile-bio{padding-top:14px;border-top:1px solid color-mix(in srgb,var(--space-user-text) 12%,transparent);white-space:pre-wrap;overflow-wrap:anywhere}
+.settings-profile-actions,.profile-editor-actions{display:flex;gap:10px}
+.settings-profile-actions>* ,.profile-editor-actions>*{flex:1;min-width:0;min-height:46px;border-radius:14px}
+.profile-editor-screen{display:grid;gap:15px;min-width:0}
+.profile-editor-heading{display:flex;align-items:center;gap:15px;padding:4px 0 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+.profile-editor-heading h3{margin:0 0 5px;font-size:20px}
+.profile-editor-heading p{margin:0;color:var(--muted);font-size:12px}
+.profile-editor-avatar{width:76px;height:76px;flex:0 0 76px;border-radius:50%;overflow:hidden}
+.profile-editor-group{display:grid;gap:8px;padding:15px;border:1px solid rgba(196,151,242,.14);border-radius:16px;background:rgba(255,255,255,.025)}
+.profile-editor-group label{margin:0;font-size:13px;font-weight:700}
+.profile-editor-group small{font-size:11px;color:var(--muted)}
+.profile-editor-group input,.profile-editor-group textarea{margin:0!important}
+.profile-editor-handle{display:flex;align-items:center;gap:6px;padding-left:12px;border:1px solid rgba(196,151,242,.2);border-radius:12px;background:rgba(255,255,255,.04)}
+.profile-editor-handle span{color:var(--muted)}
+.profile-editor-handle input{border:0!important;background:transparent!important;box-shadow:none!important}
+.profile-editor-phone{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.profile-editor-phone>div{display:grid;gap:5px}
+.profile-editor-phone small{overflow-wrap:anywhere}
+.profile-editor-phone button,.profile-edit-photo button{padding:9px 12px;border:1px solid color-mix(in srgb,var(--space-user-accent) 38%,transparent);border-radius:11px;background:color-mix(in srgb,var(--space-user-accent) 13%,transparent);color:var(--space-user-text)}
+.profile-edit-photo{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.profile-edit-photo #profile-edit-photo-state{flex-basis:100%}
+.profile-editor-actions{position:sticky;bottom:0;padding-top:12px;background:linear-gradient(180deg,transparent,var(--space-user-panel) 24%)}
+@media(max-width:700px){
+ .settings-profile-card{padding:16px}
+ .settings-profile-identity .av{width:68px;height:68px;flex-basis:68px}
+ .profile-editor-group{padding:12px}
+}
+@media(prefers-reduced-motion:reduce){.settings-profile-card,.profile-editor-screen{animation:none!important}}
