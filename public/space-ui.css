@@ -30,13 +30,9 @@ body::after{
   pointer-events:none;
 }
 body::before{
-  opacity:.25;
-  background-image:
-    radial-gradient(circle,rgba(245,231,255,.92) 0 1px,transparent 1.55px),
-    radial-gradient(circle,rgba(141,214,255,.7) 0 .8px,transparent 1.5px);
-  background-size:97px 97px,151px 151px;
-  background-position:13px 9px,61px 38px;
-  animation:fross-space-drift 85s linear infinite;
+  opacity:0;
+  background:none;
+  animation:none;
 }
 body::after{
   opacity:.75;
@@ -98,10 +94,8 @@ body::after{
   z-index:0;
   inset:0;
   pointer-events:none;
-  opacity:.32;
-  background:
-    radial-gradient(circle,rgba(238,221,255,.75) 0 1px,transparent 1.45px) 12px 17px/83px 83px,
-    radial-gradient(circle,rgba(103,217,255,.65) 0 .8px,transparent 1.4px) 38px 44px/137px 137px;
+  opacity:0;
+  background:none;
 }
 .side>*{position:relative;z-index:1}
 .brandbar{
