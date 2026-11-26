@@ -25,7 +25,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
+const DEF = {allowForwarding:true,theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
 const SYSTEM_CHAT_ID="system:fross";
@@ -230,12 +230,13 @@ function authError(e) {
 function applyS(s) {
   const r=document.documentElement;
   r.dataset.theme=s.theme;
+  r.style.colorScheme=s.theme==="light"?"light":"dark";
   r.style.setProperty("--accent",s.accent);
   r.style.setProperty("--fs",s.fs+"px");
   r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
   r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
   r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
-  r.style.setProperty("--bg",s.bgColor||"#0f1015");r.style.setProperty("--panel",s.panelColor||"#16181f");r.style.setProperty("--text",s.textColor||"#f2f3f7");r.style.setProperty("--incoming",s.incomingColor||"#232632");r.style.setProperty("--outgoing",s.outgoingColor||s.accent);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
+  r.style.setProperty("--bg",s.bgColor||DEF.bgColor);r.style.setProperty("--panel",s.panelColor||DEF.panelColor);r.style.setProperty("--text",s.textColor||DEF.textColor);r.style.setProperty("--incoming",s.incomingColor||DEF.incomingColor);r.style.setProperty("--outgoing",s.outgoingColor||s.accent||DEF.outgoingColor);r.style.setProperty("--profile-accent",s.profileColor||DEF.profileColor);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
   if($("msgs"))$("msgs").dataset.w=s.wall;
   r.classList.toggle("reduce-motion",!!s.reduceMotion);
 }
@@ -1069,7 +1070,7 @@ const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉",
 function openMessageMenu(message,mine,x,y) {
   document.getElementById("message-menu")?.remove();
   const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
-  const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
+  const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["↪ Переслать",()=>{menu.remove();forwardMessage(message)}],["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
   if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
   actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
   if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
@@ -1080,6 +1081,29 @@ function openMessageMenu(message,mine,x,y) {
   menu.style.left=left+"px";menu.style.top=top+"px";
   const close=e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener("pointerdown",close)}};
   setTimeout(()=>document.addEventListener("pointerdown",close),0);
+}
+async function forwardMessage(message) {
+  if(!cur||cur===SYSTEM_CHAT_ID)return;
+  if(!message?.text?.trim()){showToast("Пока можно пересылать текстовые сообщения. Пересылка вложений появится отдельно.");return}
+  const available=chats.filter(chat=>chat.id!==SYSTEM_CHAT_ID);
+  if(!available.length){showToast("Нет чатов, куда можно переслать сообщение.");return}
+  openM('<h3 style="margin:0 0 8px">Переслать сообщение</h3><p class="mut">Выбери чат или группу.</p><div id="forward-chat-list" class="existing-chat-picker"></div><div class="row"><button type="button" id="forward-cancel">Отмена</button></div>');
+  $("forward-cancel").onclick=closeM;
+  const list=$("forward-chat-list");
+  available.forEach(chat=>{
+    const info=chatInfo(chat),button=document.createElement("button");
+    button.type="button";button.className="forward-chat-option";button.textContent=(chat.type==="group"?"▣ ":"● ")+info.title;
+    button.onclick=async()=>{
+      button.disabled=true;button.textContent="Пересылаем…";
+      try{
+        const forwardedText=message.text.trim();
+        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:forwardedText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.senderUid||""),displayName:String(message.displayName||message.username||"Пользователь").slice(0,60)}};
+        await publishChatMessage(chat.id,forwarded,"↪ "+forwardedText);
+        closeM();showToast("Сообщение переслано.");
+      }catch(error){button.disabled=false;button.textContent=info.title;alert(authError(error))}
+    };
+    list.append(button);
+  });
 }
 function showReactionPicker(message,menu) {
   menu.querySelector(".reaction-picker")?.remove();
@@ -1248,6 +1272,7 @@ function subscribeMessages() {
         b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
+      if(m.forwardedFrom){const forwarded=document.createElement("small");forwarded.className="forwarded-label";forwarded.textContent="↪ Переслано от "+(m.forwardedFrom.displayName||"пользователя");b.append(forwarded)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
@@ -1840,7 +1865,7 @@ $("gb").onclick=()=>{
       };
     }
     if(i===1){
-      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<button type="button" id="enable-browser-notifications" style="width:100%;margin-top:10px">Разрешить уведомления браузера</button><small id="browser-notification-status" class="mut"></small><p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
+      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+toggle("allowForwarding","Разрешить другим пересылать мои сообщения","Если выключить, другие не смогут пересылать твои сообщения. Свои сообщения ты сможешь пересылать всегда.")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<button type="button" id="enable-browser-notifications" style="width:100%;margin-top:10px">Разрешить уведомления браузера</button><small id="browser-notification-status" class="mut"></small><p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
       $("browser-notification-status").textContent=("Notification" in window)?"Статус: "+Notification.permission:"Браузер не поддерживает уведомления";
       $("enable-browser-notifications").onclick=async()=>{
