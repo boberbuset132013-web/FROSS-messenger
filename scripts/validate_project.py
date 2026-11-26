@@ -107,7 +107,7 @@ checks = {
     "composer flex field cannot force horizontal overflow": ".comp #inp{" in space_css and "flex:1 1 0%" in space_css and "min-width:0" in space_css,
     "modal, call, media and audio layers have explicit stacking order": all(token in space_css for token in [".ov{", "z-index:220", "#call-layer{z-index:600}", ".media-viewer{z-index:700}", ".audio-dock{z-index:500}"]),
     "attachment menu closes on outside click and Escape": 'document.addEventListener("pointerdown"' in js and 'event.key!=="Escape"' in js,
-    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v18"' in service_worker and '"/space-ui.css"' in service_worker,
+    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v19"' in service_worker and '"/space-ui.css"' in service_worker,
     "settings landing page uses a profile header and grouped row navigation": all(token in js for token in ["settings-account-avatar","settings-group-label","settings-row-copy","settings-detail-back"]),
     "settings sections open independently and have a return path": "const showSettingsHome=()=>" in js and '$("settings-detail-back").onclick=showSettingsHome' in js,
     "settings home is the default when the settings tab opens": "window.FROSS_SETTINGS_START=null;$(\\"gb\\").click();" in js and "if(requestedCategory!==null)show(startCategory);else showSettingsHome();" in js,
