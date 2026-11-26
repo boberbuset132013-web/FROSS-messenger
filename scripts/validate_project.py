@@ -20,7 +20,7 @@ checks = {
     "text messages use the independent message writer": "await publishChatMessage(cur,message,text);" in js,
     "attachment messages use the independent message writer": "await publishChatMessage(chatId,message,summary);" in js,
     "private avatar images refresh stale saved paths": "async function retryAvatarImage" in js and "loadPrivateAvatar(el,nextSource" in js,
-    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v19"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
+    "installed app refreshes JavaScript rather than serving stale cache": 'const CACHE="fross-shell-v20"' in (root / "public/sw.js").read_text(encoding="utf-8") and "const appCode=" in (root / "public/sw.js").read_text(encoding="utf-8"),
     "chat preview text is clipped inside the chat row": "#list .it>.t{flex:1 1 0%" in html and "text-overflow:ellipsis" in html,
     "people search ignores stale asynchronous responses": "peopleSearchSequence" in js and "sequence!==peopleSearchSequence" in js,
     "legacy profile scan only runs after indexed query failure": "if(indexedQueryFailed&&matches.size<maxResults)" in js,
