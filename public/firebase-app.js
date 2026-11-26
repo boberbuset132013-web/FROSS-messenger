@@ -1780,17 +1780,39 @@ $("nb").onclick=()=>{
 const openM=h=>{$("md").innerHTML=h;$("ov").classList.add("o")},closeM=()=>$("ov").classList.remove("o");
 $("ov").onclick=e=>{if(e.target===$("ov")){applyS(S);closeM()}};
 $("gb").onclick=()=>{
-  const startCategory=window.FROSS_SETTINGS_START===3?3:window.FROSS_SETTINGS_START===0?0:1;window.FROSS_SETTINGS_START=null;
+  const requestedCategory=Number.isInteger(window.FROSS_SETTINGS_START)?window.FROSS_SETTINGS_START:null;
+  const startCategory=requestedCategory===3?3:requestedCategory===0?0:1;
+  window.FROSS_SETTINGS_START=null;
   const backup=JSON.parse(JSON.stringify(S)),o={...DEF,...S};
   const P={username:me.username||"",displayName:me.displayName||"",bio:me.bio||"",contactEmail:me.contactEmail||"",avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor,avatarDirty:false};
-  openM('<div class="settings-head"><div><h3>Настройки FROSS</h3><p>Выбери раздел, который хочешь изменить</p></div><button type="button" id="settings-back" class="settings-back">← Чаты</button></div><div class="settings-layout"><nav class="settings-categories" aria-label="Разделы настроек"><button type="button" class="settings-category" data-i="0"><span>🛡️</span><b>Безопасность</b><small>Вход и защита аккаунта</small></button><button type="button" class="settings-category" data-i="1"><span>💬</span><b>Чаты</b><small>Переписки и уведомления</small></button><button type="button" class="settings-category" data-i="2"><span>🖼️</span><b>Медиа</b><small>Фото и файлы</small></button><button type="button" class="settings-category" data-i="3"><span>👤</span><b>Профиль</b><small>Фото и личные данные</small></button><button type="button" class="settings-category" data-i="4"><span>🎨</span><b>Кастомизация</b><small>Цвета и внешний вид</small></button></nav><section id="sc" class="settings-content"></section></div><div class="row settings-actions"><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div>');
+  openM('<div class="settings-shell">  <header class="settings-topbar">    <div><h3>Настройки FROSS</h3><p>Управляй своим пространством</p></div>    <button type="button" id="settings-back" class="settings-back">← Чаты</button>  </header>  <div id="settings-scroll" class="settings-scroll">    <div class="settings-account-card">      <div class="av" id="settings-account-avatar"></div>      <div class="settings-account-copy"><b id="settings-account-name"></b><small id="settings-account-handle"></small></div>      <span class="settings-account-mark" aria-hidden="true">✦</span>    </div>    <section id="settings-home" class="settings-home" aria-label="Все настройки">      <h4 class="settings-group-label">АККАУНТ</h4>      <div class="settings-group">        <button type="button" class="settings-category settings-row" data-i="3" data-title="Профиль" data-description="Фото, имя и личные данные">          <span class="settings-row-icon profile-icon" aria-hidden="true">            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.7-3.7 3.2-5.5 7.5-5.5s6.8 1.8 7.5 5.5"/></svg>          </span><span class="settings-row-copy"><b>Профиль</b><small>Фото и личные данные</small></span><span class="settings-row-chevron">›</span>        </button>        <button type="button" class="settings-category settings-row" data-i="0" data-title="Безопасность" data-description="Подтверждение номера и защита аккаунта">          <span class="settings-row-icon security-icon" aria-hidden="true">            <svg viewBox="0 0 24 24"><path d="M12 2.8 19 5.5v5.2c0 4.6-2.7 8.2-7 10.5-4.3-2.3-7-5.9-7-10.5V5.5z"/><path d="m8.7 11.8 2.1 2.1 4.6-4.8"/></svg>          </span><span class="settings-row-copy"><b>Безопасность</b><small>Вход и защита аккаунта</small></span><span class="settings-row-chevron">›</span>        </button>      </div>      <h4 class="settings-group-label">ОБЩЕНИЕ И МЕДИА</h4>      <div class="settings-group">        <button type="button" class="settings-category settings-row" data-i="1" data-title="Чаты" data-description="Переписки, отображение и уведомления">          <span class="settings-row-icon chats-icon" aria-hidden="true">            <svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6.5A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg>          </span><span class="settings-row-copy"><b>Чаты</b><small>Переписки и уведомления</small></span><span class="settings-row-chevron">›</span>        </button>        <button type="button" class="settings-category settings-row" data-i="2" data-title="Медиа" data-description="Загрузка фотографий и файлов">          <span class="settings-row-icon media-icon" aria-hidden="true">            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 3 3 3-4 5 6"/></svg>          </span><span class="settings-row-copy"><b>Медиа</b><small>Фото, видео и файлы</small></span><span class="settings-row-chevron">›</span>        </button>      </div>      <h4 class="settings-group-label">ВНЕШНИЙ ВИД</h4>      <div class="settings-group">        <button type="button" class="settings-category settings-row" data-i="4" data-title="Кастомизация" data-description="Цвета, шрифт и оформление приложения">          <span class="settings-row-icon appearance-icon" aria-hidden="true">            <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1.2a2 2 0 0 0 1.4-3.4 1.8 1.8 0 0 1 1.3-3.1H18a3 3 0 0 0 3-3c0-4.7-4-8.5-9-8.5Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="11" cy="6.8" r="1"/><circle cx="16" cy="8.5" r="1"/></svg>          </span><span class="settings-row-copy"><b>Кастомизация</b><small>Цвета и внешний вид</small></span><span class="settings-row-chevron">›</span>        </button>      </div>    </section>    <section id="settings-detail" class="settings-detail" hidden>      <button type="button" id="settings-detail-back" class="settings-detail-back">← Все настройки</button>      <div class="settings-detail-heading"><h3 id="settings-detail-title"></h3><p id="settings-detail-description"></p></div>      <section id="sc" class="settings-content"></section>    </section>  </div>  <div class="row settings-actions" id="settings-actions" hidden><button id="sx">Отмена</button><button class="pr" id="ss">Сохранить</button></div></div>');
+  $("ov").classList.add("settings-mode");
+  $("settings-account-name").textContent=P.displayName||P.username||"Пользователь FROSS";
+  $("settings-account-handle").textContent=P.username?"@"+P.username:"Твой профиль";
+  avatar($("settings-account-avatar"),{displayName:P.displayName||P.username,username:P.username,avatarUrl:P.avatarUrl,profileColor:P.profileColor||o.profileColor});
   $("settings-back").onclick=()=>{applyS(S);closeM();document.body.classList.remove("ch");$("nav-chats").classList.add("active");$("nav-people").classList.remove("active")};
   const toggle=(k,label,description)=>'<div class="sw2"><div>'+label+(description?'<br><small class="mut">'+description+'</small>':"")+'</div><input type="checkbox" data-k="'+k+'" '+(o[k]?"checked":"")+'></div>';
   const section=(title,description)=>'<div class="settings-section-title"><h4>'+title+'</h4><p>'+description+'</p></div>';
   let settingsRenderVersion=0;
+  const showSettingsHome=()=>{
+    settingsRenderVersion++;
+    $("settings-home").hidden=false;
+    $("settings-detail").hidden=true;
+    $("settings-actions").hidden=true;
+    document.querySelectorAll(".settings-category").forEach(b=>b.classList.remove("active"));
+    $("settings-scroll").scrollTop=0;
+  };
   const show=async i=>{
     const renderVersion=++settingsRenderVersion;
-    document.querySelectorAll(".settings-category").forEach((b,j)=>b.classList.toggle("active",i===j));
+    const selected=document.querySelector('.settings-category[data-i="'+i+'"]');
+    if(!selected)return;
+    $("settings-home").hidden=true;
+    $("settings-detail").hidden=false;
+    $("settings-actions").hidden=false;
+    $("settings-detail-title").textContent=selected.dataset.title||selected.querySelector("b")?.textContent||"Настройки";
+    $("settings-detail-description").textContent=selected.dataset.description||"Измени параметры раздела.";
+    $("settings-scroll").scrollTop=0;
+    document.querySelectorAll(".settings-category").forEach((b,j)=>b.classList.toggle("active",Number(b.dataset.i)===i));
     const c=$("sc");c.classList.remove("settings-content-enter");void c.offsetWidth;c.classList.add("settings-content-enter");
     if(i===3){
       c.innerHTML=section("Профиль","Настрой личные данные и посмотри, как профиль будет выглядеть для других.")+'<div class="profile-public-preview"><div class="profile-public-preview-head"><b>ПУБЛИЧНЫЙ ПРОФИЛЬ</b><span>Предпросмотр</span></div><div class="profile-public-preview-main"><div class="av" id="pp-avatar"></div><div class="profile-public-preview-name"><b id="pp-name"></b><small id="pp-handle"></small></div></div><p id="pp-bio"></p></div><div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
@@ -1957,7 +1979,8 @@ $("gb").onclick=()=>{
     }
   };
   document.querySelectorAll(".settings-category").forEach(b=>b.onclick=()=>show(Number(b.dataset.i)));
-  show(startCategory);
+  $("settings-detail-back").onclick=showSettingsHome;
+  if(requestedCategory!==null)show(startCategory);else showSettingsHome();
   $("sx").onclick=()=>{S=backup;applyS(S);closeM();document.body.classList.remove("ch");$("nav-chats").classList.add("active");$("nav-people").classList.remove("active")};
   $("ss").onclick=async()=>{
     const saveButton=$("ss"),originalLabel=saveButton.textContent;
