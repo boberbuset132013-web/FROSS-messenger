@@ -2,6 +2,8 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 html = (root / "public/index.html").read_text(encoding="utf-8")
+space_css = (root / "public/space-ui.css").read_text(encoding="utf-8")
+service_worker = (root / "public/sw.js").read_text(encoding="utf-8")
 js = (root / "public/firebase-app.js").read_text(encoding="utf-8")
 worker = (root / "worker.js").read_text(encoding="utf-8")
 rules = (root / "firestore.rules").read_text(encoding="utf-8")
@@ -98,6 +100,14 @@ checks = {
     "WebRTC queues remote ICE candidates until SDP is set": all(x in (root / "public/voice-calls.js").read_text(encoding="utf-8") for x in ["pendingRemoteCandidates", "flushRemoteCandidates", "addRemoteCandidate"]),
     "Worker can issue short-lived Cloudflare TURN credentials": "generate-ice-servers" in worker and "FROSS_TURN_KEY_ID" in worker and "FROSS_TURN_API_TOKEN" in worker,
     "native app call configuration uses the Worker API origin": "get apiOrigin(){return FROSS_API_ORIGIN}" in js and 'window.FROSS?.apiOrigin||""' in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
+    "Figma-inspired Inter font and space stylesheet are loaded": 'family=Inter:wght@400;500;600;700;800;900' in html and 'href="/space-ui.css"' in html,
+    "Fuchsia, Iris and cyan accents are defined": all(token in space_css for token in ["--space-fuchsia:", "--space-iris:", "--space-cyan:"]),
+    "cosmic starfield is decorative and cannot block clicks": "body::before" in space_css and "pointer-events:none" in space_css,
+    "message bubbles stay within the 680px desktop cap": ".mr .msg{" in space_css and "max-width:min(680px" in space_css,
+    "composer flex field cannot force horizontal overflow": ".comp #inp{" in space_css and "flex:1 1 0%" in space_css and "min-width:0" in space_css,
+    "modal, call, media and audio layers have explicit stacking order": all(token in space_css for token in [".ov{", "z-index:220", "#call-layer{z-index:600}", ".media-viewer{z-index:700}", ".audio-dock{z-index:500}"]),
+    "attachment menu closes on outside click and Escape": 'document.addEventListener("pointerdown"' in js and 'event.key!=="Escape"' in js,
+    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v18"' in service_worker and '"/space-ui.css"' in service_worker,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
