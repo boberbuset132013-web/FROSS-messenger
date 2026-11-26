@@ -83,7 +83,7 @@ checks = {
     "duplicate email is not reported as a taken username": 'auth/email-already-in-use":"Этот email уже зарегистрирован' in js,
     "Google users complete a real profile setup": "askGoogleProfile(user)" in js,
     "username can be changed with a Firestore reservation transaction": "username !== oldUsername" in js and "getAfter(/databases/$(database)/documents/usernameIndex/" in rules,
-    "display name is separate from unique username": 'Никнейм — может повторяться' in js,
+    "display name is separate from unique username": 'id="profile-edit-display"' in js and 'id="profile-edit-username"' in js and "displayName:displayName||username" in js,
     "phone verification uses Telegram bot codes only": "/api/phone/start" in js and "/api/phone/confirm" in js and "phoneViaTelegram" in js and "phoneViaMax" not in js and "phoneSend" not in js and "RecaptchaVerifier" not in js and "linkWithPhoneNumber" not in js,
     "voice calling has Firestore signaling": (root / "public/voice-calls.js").exists() and "callerCandidates" in (root / "public/voice-calls.js").read_text(encoding="utf-8"),
     "voice call signaling is limited to chat members": "match /calls/{callId}" in rules and "participantUids" in rules,
