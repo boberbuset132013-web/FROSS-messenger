@@ -4,6 +4,8 @@ root = Path(__file__).resolve().parents[1]
 html = (root / "public/index.html").read_text(encoding="utf-8")
 space_css = (root / "public/space-ui.css").read_text(encoding="utf-8")
 service_worker = (root / "public/sw.js").read_text(encoding="utf-8")
+pwa = (root / "public/pwa.js").read_text(encoding="utf-8")
+voice = (root / "public/voice-calls.js").read_text(encoding="utf-8")
 js = (root / "public/firebase-app.js").read_text(encoding="utf-8")
 worker = (root / "worker.js").read_text(encoding="utf-8")
 rules = (root / "firestore.rules").read_text(encoding="utf-8")
@@ -107,7 +109,12 @@ checks = {
     "composer flex field cannot force horizontal overflow": ".comp #inp{" in space_css and "flex:1 1 0%" in space_css and "min-width:0" in space_css,
     "modal, call, media and audio layers have explicit stacking order": all(token in space_css for token in [".ov{", "z-index:220", "#call-layer{z-index:600}", ".media-viewer{z-index:700}", ".audio-dock{z-index:500}"]),
     "attachment menu closes on outside click and Escape": 'document.addEventListener("pointerdown"' in js and 'event.key!=="Escape"' in js,
-    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v19"' in service_worker and '"/space-ui.css"' in service_worker,
+    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v20"' in service_worker and '"/space-ui.css"' in service_worker,
+    "FROSS home has no decorative star dots": "radial-gradient(circle,rgba(245,231,255" not in space_css and "radial-gradient(circle,rgba(238,221,255" not in space_css,
+    "FROSS brand header uses a CSS planet instead of orbit dots": 'class="brand-planet"' in html and ".brand-planet:after" in html and "brand-orbit" not in html,
+    "calls display the current username before an old display name": "function callDisplayName(profile)" in voice and "callDisplayName(peerProfile)" in voice and "callDisplayName(caller)" in voice,
+    "outgoing calls refresh the peer username from the public profile": 'getDoc(doc(db,"publicUsers",calleeUid))' in voice,
+    "update prompt appears only for a waiting service worker": "beforeinstallprompt" not in pwa and "registration.waiting" in pwa and "Перезапустить" in pwa and "location.reload()" in pwa,
     "settings landing page uses a profile header and grouped row navigation": all(token in js for token in ["settings-account-avatar","settings-group-label","settings-row-copy","settings-detail-back"]),
     "settings sections open independently and have a return path": "const showSettingsHome=()=>" in js and '$("settings-detail-back").onclick=showSettingsHome' in js,
     "settings home is the default when the settings tab opens": "FROSS_SETTINGS_START=null" in js and "showSettingsHome();" in js,
