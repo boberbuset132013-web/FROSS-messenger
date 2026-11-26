@@ -1527,9 +1527,31 @@ async function optimizeChatImage(file) {
 }
 const attachmentMenu=$("attach-menu"),uploadChoice=$("attach-upload"),urlChoice=$("attach-url");
 if(attachmentButton&&attachmentInput){
-  attachmentButton.onclick=()=>{if(attachmentMenu)attachmentMenu.hidden=!attachmentMenu.hidden;else attachmentInput.click()};
-  if(uploadChoice)uploadChoice.onclick=()=>{attachmentMenu.hidden=true;attachmentInput.click()};
-  if(urlChoice)urlChoice.onclick=()=>{attachmentMenu.hidden=true;sendExternalFileLink()};
+  const closeAttachmentMenu=()=>{
+    if(!attachmentMenu)return;
+    attachmentMenu.hidden=true;
+    attachmentButton.setAttribute("aria-expanded","false");
+  };
+  if(attachmentMenu){
+    attachmentButton.setAttribute("aria-controls","attach-menu");
+    attachmentButton.setAttribute("aria-expanded","false");
+    attachmentButton.onclick=()=>{
+      const open=attachmentMenu.hidden;
+      attachmentMenu.hidden=!open;
+      attachmentButton.setAttribute("aria-expanded",String(open));
+    };
+    document.addEventListener("pointerdown",event=>{
+      if(attachmentMenu.hidden||attachmentMenu.contains(event.target)||attachmentButton.contains(event.target))return;
+      closeAttachmentMenu();
+    });
+    document.addEventListener("keydown",event=>{
+      if(event.key!=="Escape"||attachmentMenu.hidden)return;
+      closeAttachmentMenu();
+      attachmentButton.focus();
+    });
+  }else attachmentButton.onclick=()=>attachmentInput.click();
+  if(uploadChoice)uploadChoice.onclick=()=>{closeAttachmentMenu();attachmentInput.click()};
+  if(urlChoice)urlChoice.onclick=()=>{closeAttachmentMenu();sendExternalFileLink()};
   attachmentInput.onchange=async()=>{
     const files=[...(attachmentInput.files||[])];attachmentInput.value="";
     for(const file of files) {
