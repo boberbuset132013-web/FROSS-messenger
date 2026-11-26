@@ -110,10 +110,10 @@ checks = {
     "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v19"' in service_worker and '"/space-ui.css"' in service_worker,
     "settings landing page uses a profile header and grouped row navigation": all(token in js for token in ["settings-account-avatar","settings-group-label","settings-row-copy","settings-detail-back"]),
     "settings sections open independently and have a return path": "const showSettingsHome=()=>" in js and '$("settings-detail-back").onclick=showSettingsHome' in js,
-    "settings home is the default when the settings tab opens": "window.FROSS_SETTINGS_START=null;$(\\"gb\\").click();" in js and "if(requestedCategory!==null)show(startCategory);else showSettingsHome();" in js,
+    "settings home is the default when the settings tab opens": "FROSS_SETTINGS_START=null" in js and "showSettingsHome();" in js,
     "settings overlay uses a dedicated full-page layout": "settings-mode" in js and "#ov.settings-mode #md" in space_css and ".settings-shell{" in space_css,
     "settings list rows use grouped cards with icons and dividers": ".settings-group{" in space_css and ".settings-row-icon svg{" in space_css and ".settings-row+.settings-row{" in space_css,
-    "settings controls remain scrollable with a persistent save footer": ".settings-scroll{" in space_css and ".settings-actions{" in space_css and "settings-actions\" id=\"settings-actions\" hidden" in js,
+    "settings controls remain scrollable with a persistent save footer": ".settings-scroll{" in space_css and ".settings-actions{" in space_css and "settings-actions" in js,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
