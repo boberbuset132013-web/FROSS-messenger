@@ -202,7 +202,9 @@ service cloud.firestore {
               && request.resource.data.forwardedFrom.displayName is string
               && request.resource.data.forwardedFrom.displayName.size() <= 60
               && (request.resource.data.forwardedFrom.senderUid == request.auth.uid
-                || get(/databases/$(database)/documents/users/$(request.resource.data.forwardedFrom.senderUid)).data.settings.allowForwarding != false)))
+                || !("settings" in get(/databases/$(database)/documents/users/$(request.resource.data.forwardedFrom.senderUid)).data)
+              || !("allowForwarding" in get(/databases/$(database)/documents/users/$(request.resource.data.forwardedFrom.senderUid)).data.settings)
+              || get(/databases/$(database)/documents/users/$(request.resource.data.forwardedFrom.senderUid)).data.settings.allowForwarding == true)))
           && (!("replyTo" in request.resource.data)
             || (request.resource.data.replyTo is map
               && request.resource.data.replyTo.keys().hasOnly(["id", "senderUid", "displayName", "text"])
