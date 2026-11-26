@@ -1809,7 +1809,7 @@ $("gb").onclick=()=>{
     if(!selected)return;
     $("settings-home").hidden=true;
     $("settings-detail").hidden=false;
-    $("settings-actions").hidden=false;
+    $("settings-actions").hidden=i===3;
     $("settings-detail-title").textContent=selected.dataset.title||selected.querySelector("b")?.textContent||"Настройки";
     $("settings-detail-description").textContent=selected.dataset.description||"Измени параметры раздела.";
     $("settings-scroll").scrollTop=0;
