@@ -1305,7 +1305,7 @@ async function openOwnProfileEditor(profile){
     avatarDirty:false,
     phoneNumber:me.phoneNumber||""
   };
-  openM('<div class="profile-public-card"><div class="profile-public-card-top"><span>РЕДАКТИРОВАНИЕ ПРОФИЛЯ</span><span class="profile-live online">Мой профиль</span></div><div class="profile-edit-photo"><div class="av big" id="profile-edit-avatar"></div><div><button type="button" id="profile-edit-photo-button">📷 Изменить фото</button><button type="button" id="profile-edit-photo-remove">Убрать фото</button><input id="profile-edit-photo-file" type="file" accept="image/*" hidden><small class="mut" id="profile-edit-photo-state">Фото профиля</small></div></div><label>Имя</label><input id="profile-edit-display" maxlength="40"><label>Username</label><input id="profile-edit-username" maxlength="20"><small class="mut">3–20 символов: латиница, цифры и _.</small><label>Номер телефона</label><div class="profile-phone-row"><span id="profile-edit-phone"></span><button type="button" id="profile-edit-phone-change">Изменить</button></div><small class="mut">Номер меняется после повторного подтверждения через Telegram.</small><label>Описание</label><textarea id="profile-edit-bio" rows="3" maxlength="160" placeholder="Расскажи о себе"></textarea><div class="err" id="profile-edit-error"></div><div class="profile-public-actions"><button type="button" id="profile-edit-cancel">Отмена</button><button type="button" class="pr" id="profile-edit-save">Сохранить</button></div></div>');
+  openM('<div class="profile-editor-screen"><header class="profile-editor-heading"><div class="profile-editor-avatar" id="profile-edit-avatar"></div><div><h3>Редактировать профиль</h3><p>Изменения увидят другие пользователи</p></div></header><section class="profile-editor-group"><label for="profile-edit-display">Имя</label><input id="profile-edit-display" maxlength="40" autocomplete="name"><label for="profile-edit-username">Username</label><div class="profile-editor-handle"><span>@</span><input id="profile-edit-username" maxlength="20" autocomplete="username"></div><small>3–20 символов: латиница, цифры и _.</small></section><section class="profile-editor-group"><label>Фото профиля</label><div class="profile-edit-photo"><button type="button" id="profile-edit-photo-button">Изменить фото</button><button type="button" id="profile-edit-photo-remove">Удалить фото</button><input id="profile-edit-photo-file" type="file" accept="image/*" hidden><small class="mut" id="profile-edit-photo-state">Текущее фото сохранено</small></div></section><section class="profile-editor-group"><label for="profile-edit-bio">О себе</label><textarea id="profile-edit-bio" rows="3" maxlength="160" placeholder="Расскажи о себе"></textarea></section><section class="profile-editor-group profile-editor-phone"><div><b>Номер телефона</b><small id="profile-edit-phone"></small></div><button type="button" id="profile-edit-phone-change">Изменить</button></section><div class="err" id="profile-edit-error"></div><div class="profile-editor-actions"><button type="button" id="profile-edit-cancel">Отмена</button><button type="button" class="pr" id="profile-edit-save">Сохранить</button></div></div>');
   $("profile-edit-display").value=P.displayName;
   $("profile-edit-username").value=P.username;
   $("profile-edit-bio").value=P.bio;
@@ -1816,35 +1816,18 @@ $("gb").onclick=()=>{
     document.querySelectorAll(".settings-category").forEach((b,j)=>b.classList.toggle("active",Number(b.dataset.i)===i));
     const c=$("sc");c.classList.remove("settings-content-enter");void c.offsetWidth;c.classList.add("settings-content-enter");
     if(i===3){
-      c.innerHTML=section("Профиль","Настрой личные данные и посмотри, как профиль будет выглядеть для других.")+'<div class="profile-public-preview"><div class="profile-public-preview-head"><b>ПУБЛИЧНЫЙ ПРОФИЛЬ</b><span>Предпросмотр</span></div><div class="profile-public-preview-main"><div class="av" id="pp-avatar"></div><div class="profile-public-preview-name"><b id="pp-name"></b><small id="pp-handle"></small></div></div><p id="pp-bio"></p></div><div class="profile-photo-editor"><div class="av big" id="pav"></div><div class="profile-photo-actions"><button type="button" id="up">📷 Выбрать фото</button><input type="file" id="fi" accept="image/*" hidden><button type="button" class="ic" id="rm">Убрать фото</button><small id="photo-state" class="photo-state">Текущее фото сохранено.</small></div></div><label>Уникальный username</label><input id="un" maxlength="20" autocomplete="username"><small class="mut">3–20 символов: латиница, цифры и _. Username должен быть свободен.</small><label>Никнейм — может повторяться</label><input id="dn" maxlength="40"><label>О себе</label><textarea id="bio" rows="3" maxlength="160" placeholder="Расскажи немного о себе"></textarea><label>Контактный email</label><input id="em" type="email">';
-      $("un").value=P.username;$("dn").value=P.displayName;$("bio").value=P.bio;$("em").value=P.contactEmail;avatar($("pav"),{displayName:P.displayName,avatarUrl:P.avatarUrl});
-      const refreshProfilePreview=()=>{
-        $("pp-name").textContent=P.displayName||P.username||"Имя пользователя";
-        $("pp-handle").textContent="@"+(P.username||"username");
-        $("pp-bio").textContent=P.bio||"Здесь будет отображаться информация о себе.";
-        avatar($("pp-avatar"),{displayName:P.displayName||P.username,username:P.username,avatarUrl:P.avatarUrl,profileColor:o.profileColor||P.profileColor});
-      };
-      refreshProfilePreview();
-      if(P.avatarDirty){$("photo-state").textContent="Фото уже применено, нажми «Сохранить»."; $("photo-state").classList.add("pending")}
-      $("un").oninput=e=>{P.username=e.target.value.trim().toLowerCase();refreshProfilePreview()};
-      $("dn").oninput=e=>{P.displayName=e.target.value;refreshProfilePreview()};
-      $("bio").oninput=e=>{P.bio=e.target.value;refreshProfilePreview()};
-      $("em").oninput=e=>P.contactEmail=e.target.value;
-      $("up").onclick=()=>$("fi").click();
-      $("fi").onchange=e=>{
-        const file=e.target.files?.[0];e.target.value="";if(!file)return;
-        pickImg(file,dataUrl=>{
-          P.avatarUrl=dataUrl;P.avatarDirty=true;
-          avatar($("pav"),{displayName:P.displayName,avatarUrl:dataUrl});
-          $("photo-state").textContent="Фото применено. Теперь нажми «Сохранить».";
-          $("photo-state").classList.add("pending");refreshProfilePreview();
-        });
-      };
-      $("rm").onclick=()=>{
-        P.avatarUrl="";P.avatarDirty=true;avatar($("pav"),{displayName:P.displayName});
-        $("photo-state").textContent="Фото будет удалено после нажатия «Сохранить».";
-        $("photo-state").classList.add("pending");refreshProfilePreview();
-      };
+      c.innerHTML=section("Профиль","")+
+        '<div class="settings-profile-card">'+
+          '<div class="settings-profile-identity"><div class="av big" id="settings-profile-avatar"></div><div><b id="settings-profile-name"></b><small id="settings-profile-handle"></small></div></div>'+
+          '<div class="settings-profile-bio" id="settings-profile-bio"></div>'+
+          '<div class="settings-profile-actions"><button type="button" id="settings-profile-view">Посмотреть профиль</button><button type="button" class="pr" id="settings-profile-edit">Изменить профиль</button></div>'+
+        '</div>';
+      $("settings-profile-name").textContent=P.displayName||P.username||"Пользователь";
+      $("settings-profile-handle").textContent=P.username?"@"+P.username:"Username не задан";
+      $("settings-profile-bio").textContent=P.bio||"Описание не добавлено";
+      avatar($("settings-profile-avatar"),{...me,displayName:P.displayName,username:P.username,avatarUrl:P.avatarUrl,profileColor:P.profileColor});
+      $("settings-profile-view").onclick=()=>{closeM();openUserProfile({...me})};
+      $("settings-profile-edit").onclick=()=>{closeM();openOwnProfileEditor({...me})};
     }
     if(i===4){
       c.innerHTML=section("Кастомизация","Подстрой внешний вид FROSS под себя.")+'<div class="customization-panel">'+look(o,"s")+'</div><button type="button" id="reset-customization" style="width:100%;margin:14px 0">↺ Сбросить оформление</button><small class="mut">Вернёт цвета, шрифт, размеры и фон к стандартным значениям.</small>';
