@@ -399,6 +399,10 @@ function friendlyCallError(error){
   if(name==="TypeError")return "Не удалось получить доступ к микрофону. Открой FROSS в актуальном Chrome по HTTPS.";
   return error?.message||"Не удалось выполнить действие со звонком.";
 }
+function callDisplayName(profile){
+  const username=String(profile?.username||"").trim().replace(/^@/,"");
+  return username ? "@"+username : (profile?.displayName||"Собеседник");
+}
 async function startOutgoingCall() {
   if (activeCall) {
     $("call-status").textContent = "Сначала завершите текущий звонок.";
@@ -413,9 +417,14 @@ async function startOutgoingCall() {
     const chat = chatSnap.data();
     const calleeUid = (chat.memberUids || []).find(uid => uid !== profile.uid);
     if (!calleeUid) throw new Error("Не удалось определить собеседника.");
-    const peerProfile = (chat.memberProfiles || []).find(item => item.uid === calleeUid) || {};
+    let peerProfile = (chat.memberProfiles || []).find(item => item.uid === calleeUid) || {};
+    try {
+      const latestProfile=await getDoc(doc(db,"publicUsers",calleeUid));
+      if(latestProfile.exists())peerProfile={...peerProfile,...latestProfile.data()};
+    } catch(error) { console.warn("Could not refresh call profile:",error); }
     peerProfile.uid=calleeUid;
-    showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Запрашиваем микрофон…","☎",[
+    const peerLabel=callDisplayName(peerProfile);
+    showCall(peerLabel,"Запрашиваем микрофон…",peerLabel[0]||"☎", [
       {label:"Отменить",danger:true,onClick:()=>finishCall("ended")}
     ],peerProfile);
     const stream = await getMicrophone();
@@ -433,7 +442,7 @@ async function startOutgoingCall() {
       offer:{type:offer.type,sdp:offer.sdp},
       status:"ringing",updatedAt:serverTimestamp()
     });
-    showCall(peerProfile.displayName||peerProfile.username||"Собеседник","Вызов… идут гудки",String(peerProfile.displayName||peerProfile.username||"☎")[0],[
+    showCall(callDisplayName(peerProfile),"Вызов… идут гудки",callDisplayName(peerProfile)[0]||"☎",[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
     ],peerProfile,{id:callId,code:callCode});
     startRingbackTone(false);
@@ -461,7 +470,7 @@ async function showIncomingCall(snapshot) {
   if (activeCall) return;
   caller.uid=data.callerUid;
   window.FROSS?.notifyIncomingCall?.(caller,callId);
-  showCall(caller.displayName||caller.username||"Собеседник","Входящий звонок",String(caller.displayName||caller.username||"☎")[0],[
+  showCall(callDisplayName(caller),"Входящий звонок",callDisplayName(caller)[0]||"☎",[
     {label:"Отклонить",danger:true,onClick:async()=>{
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
       stopRingbackTone();hideCall();
@@ -486,7 +495,7 @@ async function acceptCall(callId, data, caller) {
       answer:{type:answer.type,sdp:answer.sdp},
       status:"accepted",acceptedAt:serverTimestamp(),updatedAt:serverTimestamp()
     });
-    showCall(caller.displayName||caller.username||"Собеседник","Соединяемся…",String(caller.displayName||caller.username||"☎")[0],[
+    showCall(callDisplayName(caller),"Соединяемся…",callDisplayName(caller)[0]||"☎",[
       {label:"Завершить",danger:true,onClick:()=>finishCall("ended")}
     ],caller,{id:data.callId||callId,code:data.callCode||""});
     stopRingbackTone();
