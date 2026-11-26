@@ -43,7 +43,7 @@ window.FROSS = {
   notifyIncomingCall:(profile,callId)=>{
     if(!S.notifyDesktop||!("Notification" in window)||Notification.permission!=="granted")return;
     try{
-      const n=new Notification("Входящий звонок",{body:(profile?.displayName||"Пользователь")+" звонит тебе",icon:"/fross-icon.webp",tag:"fross-call-"+callId,requireInteraction:true});
+      const n=new Notification("Входящий звонок",{body:(profile?.username?("@"+String(profile.username).replace(/^@/,"")):(profile?.displayName||"Пользователь"))+" звонит тебе",icon:"/fross-icon.webp",tag:"fross-call-"+callId,requireInteraction:true});
       n.onclick=()=>{window.focus();n.close()};
     }catch(error){console.warn("FROSS call notification:",error)}
   }
