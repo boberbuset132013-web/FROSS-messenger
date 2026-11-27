@@ -540,8 +540,9 @@ export const deleteGroupForEveryone = onRequest(async(req,res)=>{
     await firestore.recursiveDelete(chatRef);
     return res.status(200).json({ok:true,deleted:true});
   }catch(error){
-    console.error("Delete group for everyone:",error?.message||error);
-    return res.status(400).json({error:error?.message||"Не удалось удалить группу."});
+    console.error("Delete group for everyone:",error?.stack||error?.message||error);
+    const status=error?.code==="permission-denied"?403:error?.code==="not-found"?404:500;
+    return res.status(status).json({error:error?.message||"Не удалось удалить группу.",code:error?.code||"internal"});
   }
 });
 
