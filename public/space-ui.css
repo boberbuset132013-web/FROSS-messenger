@@ -1362,3 +1362,9 @@ button,input,textarea,select{font-family:var(--font,Inter,system-ui,sans-serif)!
 .call-actions button[data-action="answer"]{background:#2f9d6b!important;color:#fff!important}
 .call-actions button[data-action="hangup"]{background:#d83d5d!important;color:#fff!important}
 .call-actions button[data-action="video"]{background:transparent!important;color:#d83d5d!important}
+
+/* Forwarded message attribution: always show the original sender and avatar clearly. */
+.msg .forwarded-label{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:8px!important;width:100%!important;min-width:0!important;min-height:30px!important;margin:0 0 8px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:var(--accent)!important;text-align:left!important;font:600 12px/1.35 var(--font,Inter,system-ui,sans-serif)!important;box-shadow:none!important;overflow:visible!important}
+.msg .forwarded-avatar{display:block!important;position:relative!important;width:28px!important;height:28px!important;min-width:28px!important;min-height:28px!important;max-width:28px!important;max-height:28px!important;flex:0 0 28px!important;aspect-ratio:1/1!important;border-radius:50%!important;overflow:hidden!important;background-size:cover!important;background-position:center!important;object-fit:cover!important}
+.msg .forwarded-caption{display:block!important;flex:1 1 auto!important;min-width:0!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;color:inherit!important;opacity:1!important;visibility:visible!important}
+.msg .forwarded-label:disabled{opacity:.9!important;cursor:default!important}
