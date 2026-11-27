@@ -1292,7 +1292,7 @@ function subscribeMessages() {
         b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
-      if(m.forwardedFrom){const forwarded=document.createElement("button");forwarded.type="button";forwarded.className="forwarded-label";forwarded.innerHTML='<span class="av forwarded-avatar"></span><span class="forwarded-caption"></span>';forwarded.querySelector(".forwarded-caption").textContent="↪ "+(m.forwardedFrom.displayName||"пользователя");avatar(forwarded.querySelector(".forwarded-avatar"),{uid:m.forwardedFrom.senderUid,displayName:m.forwardedFrom.displayName,avatarUrl:m.forwardedFrom.avatarUrl||""});if(m.forwardedFrom.profileAllowed!==false){forwarded.classList.add("is-link");forwarded.title="Открыть профиль";forwarded.onclick=async()=>{try{openUserProfile(await loadChatProfile(m.forwardedFrom.senderUid))}catch(error){showToast("Профиль недоступен.")}}}else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}b.append(forwarded)}
+      if(m.forwardedFrom){const forwarded=document.createElement("button");forwarded.type="button";forwarded.className="forwarded-label";forwarded.innerHTML='<span class="av forwarded-avatar"></span><span class="forwarded-caption"></span>';forwarded.querySelector(".forwarded-caption").textContent="↪ "+(m.forwardedFrom.displayName||"пользователя");avatar(forwarded.querySelector(".forwarded-avatar"),{uid:m.forwardedFrom.senderUid,displayName:m.forwardedFrom.displayName,avatarUrl:m.forwardedFrom.avatarUrl||""});if(m.forwardedFrom.profileAllowed!==false){forwarded.classList.add("is-link");forwarded.title="Открыть профиль";forwarded.onclick=async()=>{try{const profile=await loadChatProfile(m.forwardedFrom.senderUid);if(profile.allowProfileFromForward===false){showToast("Автор запретил переход в свой профиль из пересылок.");return}openUserProfile(profile)}catch(error){showToast("Профиль недоступен.")}}}else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}b.append(forwarded)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
@@ -2037,11 +2037,11 @@ $("gb").onclick=()=>{
           tx.set(newIndex,{uid:me.uid,username,usernameLower:username,createdAt:serverTimestamp()});
           tx.update(publicRef,{
             username,usernameLower:username,
-            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,lastSeenAt:serverTimestamp()
+            displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,allowProfileFromForward:o.allowProfileFromForward!==false,lastSeenAt:serverTimestamp()
           });
         });
       } else {
-        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor},{merge:true});
+        await setDoc(publicRef,{username,usernameLower:username,displayName:P.displayName||username,bio:P.bio||"",avatarUrl,profileColor:o.profileColor||P.profileColor||DEF.profileColor,allowProfileFromForward:o.allowProfileFromForward!==false},{merge:true});
       }
       const privateRef=doc(db,"users",me.uid);
       await setDoc(privateRef,{contactEmail:P.contactEmail||"",settings:o,updatedAt:serverTimestamp()},{merge:true});
