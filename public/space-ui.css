@@ -1483,3 +1483,8 @@ html[data-theme="light"] .call-actions button[data-action="video"]{color:#d83d5d
  .custom-section{padding:13px;border-radius:14px}
  .call-actions{width:min(86%,570px)!important}
 }
+
+/* The official FROSS conversation uses the same selected message palette. */
+.mr.system-message:not(.me) .msg{background:var(--incoming)!important;color:var(--text)!important;border-color:var(--line)!important}
+.system-message-sender{color:var(--accent)!important}
+.system-message time{color:var(--muted-text)!important}
