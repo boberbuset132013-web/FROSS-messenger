@@ -505,8 +505,9 @@ async function showIncomingCall(snapshot) {
   window.FROSS?.notifyIncomingCall?.(caller,callId);
   showCall(callDisplayName(caller),"Входящий звонок",callDisplayName(caller)[0]||"☎",[
     {label:"Отклонить",danger:true,onClick:async()=>{
+      playCallEndTone(callId);
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
-      playCallEndTone(callId);stopRingbackTone();hideCall();
+      stopRingbackTone();hideCall();
     }},
     {label:"Ответить",primary:true,onClick:()=>{stopRingbackTone();acceptCall(callId,data,caller)}}
   ],caller,{id:data.callId||callId,code:data.callCode||""});
