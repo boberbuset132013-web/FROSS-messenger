@@ -614,20 +614,26 @@ async function uploadAvatar(uid,dataUrl) {
 }
 const swatches=(id,selected)=>'<div class="sw" id="'+id+'">'+ACC.map(c=>'<span data-c="'+c+'" style="background:'+c+'" class="'+(c===selected?"s":"")+'"></span>').join("")+'</div>';
 function look(o,pre) {
-  const color=(key,label)=>'<label>'+label+'</label><input type="color" id="'+pre+key+'" value="'+(o[key]||"#9181ff")+'" style="height:42px;padding:4px">';
-  return '<label>Тема приложения</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select>'+
-  '<label>Акцентный цвет</label>'+swatches(pre+"ac",o.accent)+color("custom","Свой акцент")+color("bgColor","Фон приложения")+color("panelColor","Панели и меню")+color("textColor","Основной текст")+color("incomingColor","Входящие сообщения")+color("outgoingColor","Мои сообщения")+color("profileColor","Публичный цвет профиля")+
-  '<label>Размер текста</label><input id="'+pre+'fs" type="range" min="13" max="22" value="'+o.fs+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="pill">Овальные</option><option value="square">Квадратные</option></select>'+
-  '<label>Шрифт</label><select id="'+pre+'font"><option value="system">Современный системный</option><option value="rounded">Мягкий округлый</option><option value="humanist">Чёткий гуманистический</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select>'+
-  '<label>Плотность</label><select id="'+pre+'density"><option value="comfortable">Просторная</option><option value="normal">Обычная</option><option value="compact">Компактная</option></select><label>Фон переписки</label><select id="'+pre+'wall"><option value="none">Чистый</option><option value="dots">Точки</option><option value="grad">Градиент</option><option value="grid">Сетка</option></select>';
+  const color=(key,label)=>'<label class="custom-color-field"><span>'+label+'</span><input type="color" id="'+pre+key+'" value="'+(o[key]||DEF[key]||"#9181ff")+'"></label>';
+  return '<div class="custom-section"><h4>Тема приложения</h4><p>Выбери светлый, тёмный режим или оформление устройства.</p><label for="'+pre+'th">Режим</label><select id="'+pre+'th"><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="auto">Как в системе</option></select></div>'+
+  '<div class="custom-section"><h4>Цветовая палитра</h4><p>Цвета применяются к меню, перепискам, карточкам и настройкам.</p><label>Акцентный цвет</label>'+swatches(pre+"ac",o.accent)+color("custom","Свой акцент")+
+  color("bgColor","Фон приложения")+color("panelColor","Панели и меню")+color("textColor","Основной текст")+color("incomingColor","Входящие сообщения")+color("outgoingColor","Мои сообщения")+color("profileColor","Публичный цвет профиля")+'</div>'+
+  '<div class="custom-section"><h4>Текст и сообщения</h4><label>Размер текста · <span id="'+pre+'fs-value">'+(Number(o.fs)||DEF.fs)+' px</span></label><input id="'+pre+'fs" type="range" min="13" max="22" value="'+(Number(o.fs)||DEF.fs)+'"><label>Форма сообщений</label><select id="'+pre+'sh"><option value="round">Скруглённые</option><option value="pill">Овальные</option><option value="square">Квадратные</option></select><label>Шрифт</label><select id="'+pre+'font"><option value="system">Современный системный</option><option value="rounded">Мягкий округлый</option><option value="humanist">Чёткий гуманистический</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select><label>Плотность интерфейса</label><select id="'+pre+'density"><option value="comfortable">Просторная</option><option value="normal">Обычная</option><option value="compact">Компактная</option></select></div>'+
+  '<div class="custom-section"><h4>Фон переписки</h4><p>Обои чата независимы от общей темы приложения.</p><select id="'+pre+'wall"><option value="none">Однотонный</option><option value="dots">Мягкие точки</option><option value="grad">Мягкий градиент</option><option value="grid">Тонкая сетка</option></select></div>';
 }
 function bindLook(o,pre) {
+  const syncAccent=()=>{[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===(o.accent||DEF.accent)))};
   $(pre+"custom").value=o.accent||DEF.accent;
-  $(pre+"th").value=o.theme;$(pre+"sh").value=o.shape;$(pre+"font").value=o.font||"system";$(pre+"density").value=o.density||"normal";$(pre+"wall").value=o.wall||"none";
+  $(pre+"th").value=o.theme||"dark";$(pre+"sh").value=o.shape||"round";$(pre+"font").value=o.font||"system";$(pre+"density").value=o.density||"normal";$(pre+"wall").value=o.wall||"none";
+  $(pre+"fs").value=Number(o.fs)||DEF.fs;
   ["bgColor","panelColor","textColor","incomingColor","outgoingColor","profileColor"].forEach(k=>{$(pre+k).value=o[k]||DEF[k];$(pre+k).oninput=e=>{o[k]=e.target.value;applyS(o)}});
   $(pre+"font").onchange=e=>{o.font=e.target.value;applyS(o)};$(pre+"density").onchange=e=>{o.density=e.target.value;applyS(o)};$(pre+"wall").onchange=e=>{o.wall=e.target.value;applyS(o)};
-  $(pre+"custom").oninput=e=>{o.accent=e.target.value;applyS(o)};$(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};$(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};$(pre+"fs").oninput=e=>{o.fs=+e.target.value;applyS(o)};
-  $(pre+"ac").onclick=e=>{const color=e.target.dataset.c;if(!color)return;o.accent=color;applyS(o);[...$(pre+"ac").children].forEach(x=>x.classList.toggle("s",x.dataset.c===color))};
+  $(pre+"custom").oninput=e=>{o.accent=e.target.value;applyS(o);syncAccent()};
+  $(pre+"th").onchange=e=>{o.theme=e.target.value;applyS(o)};
+  $(pre+"sh").onchange=e=>{o.shape=e.target.value;applyS(o)};
+  $(pre+"fs").oninput=e=>{o.fs=+e.target.value;const label=$(pre+"fs-value");if(label)label.textContent=o.fs+" px";applyS(o)};
+  $(pre+"ac").onclick=e=>{const color=e.target.dataset.c;if(!color)return;o.accent=color;$(pre+"custom").value=color;applyS(o);syncAccent()};
+  syncAccent();
 }
 
 /* Four-step registration wizard */
