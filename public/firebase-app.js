@@ -228,17 +228,33 @@ function authError(e) {
   return map[code] || e?.message || "Неизвестная ошибка FROSS.";
 }
 function applyS(s) {
- const root=document.documentElement,theme=s.theme||"dark",systemLight=theme==="auto"&&window.matchMedia?.("(prefers-color-scheme: light)").matches,light=theme==="light"||systemLight;
- const defaults={bgColor:light?"#f2f4f8":DEF.bgColor,panelColor:light?"#ffffff":DEF.panelColor,textColor:light?"#202331":DEF.textColor,incomingColor:light?"#e7eaf1":DEF.incomingColor,outgoingColor:light?"#7b35c7":DEF.outgoingColor};
- const pick=k=>s[k]===DEF[k]||!s[k]?defaults[k]:s[k],bg=pick("bgColor"),panel=pick("panelColor"),text=pick("textColor"),accent=s.accent||DEF.accent;
- root.dataset.theme=light?"light":"dark";root.style.colorScheme=light?"light":"dark";
- root.style.setProperty("--accent",accent);root.style.setProperty("--fs",(Number(s.fs)||DEF.fs)+"px");root.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
- root.style.setProperty("--pad",s.density==="compact"?"5px":s.density==="comfortable"?"13px":"10px");
- root.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
- root.style.setProperty("--bg",bg);root.style.setProperty("--panel",panel);root.style.setProperty("--text",text);root.style.setProperty("--p2","color-mix(in srgb,"+panel+" 88%,"+text+" 12%)");root.style.setProperty("--line","color-mix(in srgb,"+panel+" 72%,"+text+" 28%)");
- root.style.setProperty("--incoming",pick("incomingColor"));root.style.setProperty("--outgoing",s.outgoingColor===DEF.outgoingColor||!s.outgoingColor?(light?"#7b35c7":accent):s.outgoingColor);
- root.style.setProperty("--profile-accent",s.profileColor||accent);root.style.setProperty("--space-night",bg);root.style.setProperty("--space-glass",panel);root.style.setProperty("--space-stroke","color-mix(in srgb,"+text+" 15%,transparent)");root.style.setProperty("--space-shadow",light?"0 18px 48px rgba(30,35,55,.12)":"0 18px 48px rgba(0,0,0,.28)");root.style.setProperty("--surface",panel);root.style.setProperty("--surface-raised","color-mix(in srgb,"+panel+" 92%,"+text+" 8%)");root.style.setProperty("--muted-text","color-mix(in srgb,"+text+" 64%,transparent)");
- if($("msgs"))$("msgs").dataset.w=s.wall;root.classList.toggle("reduce-motion",!!s.reduceMotion);
+ const root=document.documentElement,theme=s.theme||"dark";
+ const autoLight=theme==="auto"&&window.matchMedia?.("(prefers-color-scheme: light)").matches;
+ const light=theme==="light"||autoLight;
+ const base=light?{bg:"#f2f4f8",panel:"#ffffff",text:"#202331",incoming:"#e8ebf2",outgoing:"#7b35c7",muted:"#687083",line:"#dfe3ec"}:{bg:"#080611",panel:"#110b1d",text:"#f7f0ff",incoming:"#21152f",outgoing:s.accent||"#b45cff",muted:"#a99ab9",line:"#302044"};
+ const defaultMap={bgColor:DEF.bgColor,panelColor:DEF.panelColor,textColor:DEF.textColor,incomingColor:DEF.incomingColor,outgoingColor:DEF.outgoingColor};
+ const use=(key,fallback)=>!s[key]||s[key]===defaultMap[key]?fallback:s[key];
+ const bg=use("bgColor",base.bg),panel=use("panelColor",base.panel),text=use("textColor",base.text),accent=s.accent||DEF.accent;
+ const incoming=use("incomingColor",base.incoming),outgoing=use("outgoingColor",light?base.outgoing:accent);
+ const font=s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif";
+ root.dataset.theme=light?"light":"dark";root.dataset.themeMode=theme;root.style.colorScheme=light?"light":"dark";
+ const vars={"--bg":bg,"--panel":panel,"--text":text,"--accent":accent,"--incoming":incoming,"--outgoing":outgoing,
+  "--muted":base.muted,"--muted-text":"color-mix(in srgb,"+text+" 62%,transparent)","--p2":"color-mix(in srgb,"+panel+" 90%,"+text+" 10%)",
+  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
+  "--space-night":bg,"--space-glass":panel,"--space-stroke":"color-mix(in srgb,"+text+" 14%,transparent)",
+  "--space-shadow":light?"0 16px 40px rgba(30,38,58,.10)":"0 18px 48px rgba(0,0,0,.28)",
+  "--profile-accent":s.profileColor||accent,"--fs":(Number(s.fs)||DEF.fs)+"px","--br":s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px",
+  "--pad":s.density==="compact"?"5px":s.density==="comfortable"?"13px":"10px","--font":font,"--app-muted":base.muted,"--app-border":base.line};
+ for(const [key,value] of Object.entries(vars))root.style.setProperty(key,value);
+ if($("msgs"))$("msgs").dataset.w=s.wall||"none";
+ root.classList.toggle("reduce-motion",!!s.reduceMotion);
+ const themeMeta=document.querySelector('meta[name="theme-color"]');
+ if(themeMeta)themeMeta.setAttribute("content",light?bg:"#080611");
+ if(theme==="auto"&&!root.dataset.autoThemeListener&&window.matchMedia){
+  const media=window.matchMedia("(prefers-color-scheme: light)"),listener=()=>{if(S?.theme==="auto")applyS(S)};
+  if(media.addEventListener)media.addEventListener("change",listener);else media.addListener?.(listener);
+  root.dataset.autoThemeListener="1";
+ }
 }
 function hue(s) {
   let h=0; for(const c of String(s||"#"))h=(h*31+c.charCodeAt(0))%360;
