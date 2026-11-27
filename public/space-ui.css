@@ -1257,3 +1257,32 @@ button,input,textarea,select{font-family:var(--font,Inter,system-ui,sans-serif)}
 #ov.settings-mode #md{background:var(--panel)!important;border-color:color-mix(in srgb,var(--text) 16%,transparent)!important}
 .card,.md{color:var(--text)}
 input,textarea,select{background:var(--p2);color:var(--text);border-color:var(--line)}
+
+
+/* Theme colors drive the full interface, not just CSS variables. */
+html,body{background:var(--bg)!important;color:var(--text)!important}
+body{background:radial-gradient(ellipse at 18% 0%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--bg)!important}
+body::after{opacity:.12!important}
+#auth,#app,.main{background:var(--bg)!important;color:var(--text)!important}
+.side,.brandbar,.side-bottom,.me,.head,.comp,.settings-shell,.settings-topbar,.settings-group,.settings-account-card,.settings-info-card,.settings-profile-card,.md,.card{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
+.brandbar,.head,.comp,.settings-topbar{background:var(--surface-raised)!important}
+.it,.it .t,.it .t b,.it .t small,.settings-row,.settings-row-copy b,.settings-topbar h3,.settings-topbar p,.settings-section-title h4,.settings-section-title p{color:var(--text)!important}
+.it.a{background:color-mix(in srgb,var(--accent) 18%,var(--panel))!important}
+input,textarea,select,.searchbox,.comp #inp{background:var(--surface-raised)!important;color:var(--text)!important;border-color:var(--line)!important}
+.mr:not(.me) .msg{background:var(--incoming)!important;color:var(--text)!important;border-radius:var(--br)!important}
+.mr.me .msg,.me .msg{background:var(--outgoing)!important;color:#fff!important;border-radius:var(--br)!important}
+.msg{font-size:var(--fs)!important}
+.forwarded-label{display:flex;align-items:center;gap:8px;width:100%;padding:0;margin:0 0 7px;border:0;background:transparent;color:var(--accent)!important;text-align:left;font-size:12px;font-weight:750}
+.forwarded-label.is-link{cursor:pointer}.forwarded-label:disabled{opacity:.82;cursor:default}
+.forwarded-avatar{display:inline-flex;width:27px!important;height:27px!important;min-width:27px!important;min-height:27px!important;flex:0 0 27px!important;border-radius:50%!important;overflow:hidden}
+.forwarded-caption{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.forward-chat-option{display:flex!important;align-items:center;gap:12px;width:100%;text-align:left}
+.forward-destination-avatar{width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important;flex:0 0 38px!important;border-radius:50%!important;overflow:hidden}
+.forward-destination-title{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.chat-settings-heading{display:flex;align-items:center;gap:12px;margin:-4px 0 16px;padding:2px 0 12px;border-bottom:1px solid var(--line)}
+.chat-settings-heading>div{min-width:0;flex:1}.chat-settings-heading h3{margin:0;color:var(--text)}.chat-settings-heading p{margin:4px 0 0}
+.chat-settings-heading>button{min-width:40px;min-height:40px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);color:var(--text)}
+.group-avatar-editor{display:flex;align-items:center;gap:14px;margin:0 0 16px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface-raised)}
+.group-avatar-preview{width:76px!important;height:76px!important;min-width:76px!important;min-height:76px!important;flex:0 0 76px!important;border-radius:50%!important;overflow:hidden}
+.group-avatar-editor .row{flex-wrap:wrap;margin-top:8px}
+[data-theme="light"] .msg time,[data-theme="light"] .mut{color:color-mix(in srgb,var(--text) 65%,transparent)!important}
