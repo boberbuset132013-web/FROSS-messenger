@@ -132,6 +132,12 @@ checks = {
     "settings overlay uses a dedicated full-page layout": "settings-mode" in js and "#ov.settings-mode #md" in space_css and ".settings-shell{" in space_css,
     "settings list rows use grouped cards with icons and dividers": ".settings-group{" in space_css and ".settings-row-icon svg{" in space_css and ".settings-row+.settings-row{" in space_css,
     "settings controls remain scrollable with a persistent save footer": ".settings-scroll{" in space_css and ".settings-actions{" in space_css and "settings-actions" in js,
+    "call credentials are never shown in the call overlay": 'codeElement.hidden=true;codeElement.textContent=""' in voice and "#call-code{display:none!important}" in space_css,
+    "call completion plays a short tone for local and remote hangups": "function playCallEndTone(callId" in voice and "playCallEndTone(call.id)" in voice and "playCallEndTone(callId)" in voice,
+    "call screen supports a light palette": 'html[data-theme="light"] #call-layer' in space_css and 'html[data-theme="light"] .call-universe' in space_css,
+    "theme variables reach app, settings and call surfaces": all(token in space_css for token in ["FROSS unified design tokens", ".settings-topbar h3", ".settings-content .sw2", ".call-actions"]),
+    "customization controls are grouped and show live text size": "custom-section" in js and 'id="'+pre+'fs-value"' in js and 'label.textContent=o.fs+" px"' in js,
+    "FROSS wordmark contrast follows the selected text color": ".brandmark{color:var(--text)!important" in space_css,
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + "  " + name)
