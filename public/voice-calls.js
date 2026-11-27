@@ -112,6 +112,22 @@ function stopRingbackTone(){
   ringOscillators=[];ringGain=null;
   if(ringAudioContext){const context=ringAudioContext;ringAudioContext=null;context.close().catch(()=>{})}
 }
+let lastEndToneCallId="";
+function playCallEndTone(callId="") {
+  if(callId&&lastEndToneCallId===callId)return;
+  if(callId)lastEndToneCallId=callId;
+  try{
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(!AudioContextClass)return;
+    const context=new AudioContextClass(),gain=context.createGain();gain.gain.value=0;gain.connect(context.destination);
+    context.resume().then(()=>{
+      const now=context.currentTime;
+      [[480,0],[360,.22]].forEach(([frequency,offset])=>{const oscillator=context.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;oscillator.connect(gain);oscillator.start(now+offset);oscillator.stop(now+offset+.13)});
+      gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.055,now+.025);gain.gain.setValueAtTime(.055,now+.12);gain.gain.linearRampToValueAtTime(0,now+.18);
+      gain.gain.setValueAtTime(0,now+.22);gain.gain.linearRampToValueAtTime(.05,now+.245);gain.gain.setValueAtTime(.05,now+.34);gain.gain.linearRampToValueAtTime(0,now+.37);
+      setTimeout(()=>context.close().catch(()=>{}),650);
+    }).catch(error=>{console.warn("FROSS call end tone unavailable:",error?.message||error);context.close().catch(()=>{})});
+  }catch(error){console.warn("FROSS call end tone unavailable:",error?.message||error)}
+}
 function startRingbackTone(incoming=false){
   stopRingbackTone();
   try{
@@ -149,7 +165,7 @@ function showCall(title, status, avatarText, actions, profile, callInfo) {
   $("call-title").textContent=title;
   $("call-status").textContent=status||"";
   const codeElement=$("call-code");
-  if(codeElement){if(callInfo?.id&&callInfo?.code){codeElement.hidden=false;codeElement.textContent="ID "+callInfo.id+" · КОД "+callInfo.code}else codeElement.hidden=true}
+  if(codeElement){codeElement.hidden=true;codeElement.textContent=""}
   const avatarElement=$("call-avatar");
   if(profile&&window.FROSS?.renderAvatar)window.FROSS.renderAvatar(avatarElement,profile);
   else{avatarElement.style.backgroundImage="none";avatarElement.style.background="#6f3296";avatarElement.textContent=avatarText||"☎"}
@@ -205,6 +221,7 @@ function stopMedia() {
 async function finishCall(status = "ended") {
   const call = activeCall;
   if (!call) return;
+  playCallEndTone(call.id);
   try {
     await updateDoc(call.ref,{status,endedAt:serverTimestamp(),updatedAt:serverTimestamp()});
   } catch (e) {
@@ -304,12 +321,14 @@ function watchCallDocument(callId) {
       try{await call.peer.setRemoteDescription(new RTCSessionDescription(data.renegotiateAnswer));call.pendingRenegotiation=null}catch(e){console.warn("Renegotiation answer:",e)}
     }
     if (data.status === "declined") {
+      playCallEndTone(callId);
       stopRingbackTone();
       $("call-status").textContent = "Собеседник отклонил звонок.";
       setTimeout(() => { if (activeCall?.id === callId) stopMedia(); },1200);
       return;
     }
     if (data.status === "ended") {
+      playCallEndTone(callId);
       stopRingbackTone();
       $("call-status").textContent = "Звонок завершён.";
       setTimeout(() => { if (activeCall?.id === callId) stopMedia(); },700);
@@ -487,7 +506,7 @@ async function showIncomingCall(snapshot) {
   showCall(callDisplayName(caller),"Входящий звонок",callDisplayName(caller)[0]||"☎",[
     {label:"Отклонить",danger:true,onClick:async()=>{
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
-      stopRingbackTone();hideCall();
+      playCallEndTone(callId);stopRingbackTone();hideCall();
     }},
     {label:"Ответить",primary:true,onClick:()=>{stopRingbackTone();acceptCall(callId,data,caller)}}
   ],caller,{id:data.callId||callId,code:data.callCode||""});
