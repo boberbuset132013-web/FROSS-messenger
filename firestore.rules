@@ -79,7 +79,7 @@ service cloud.firestore {
       allow update: if own(uid)
         && (!("allowProfileFromForward" in request.resource.data) || request.resource.data.allowProfileFromForward is bool)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic", "phoneStatus"])
+          .hasOnly(["username", "usernameLower", "displayName", "bio", "avatarUrl", "profileColor", "lastSeenAt", "phonePublic", "phoneStatus", "allowProfileFromForward"])
         && (
           (request.resource.data.username == resource.data.username
             && request.resource.data.usernameLower == resource.data.usernameLower)
