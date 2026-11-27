@@ -1488,3 +1488,9 @@ html[data-theme="light"] .call-actions button[data-action="video"]{color:#d83d5d
 .mr.system-message:not(.me) .msg{background:var(--incoming)!important;color:var(--text)!important;border-color:var(--line)!important}
 .system-message-sender{color:var(--accent)!important}
 .system-message time{color:var(--muted-text)!important}
+
+/* Density and profile accent are real settings, not decorative-only controls. */
+#list .it{padding:var(--pad,10px) 12px!important}
+.settings-row{padding-block:var(--pad,10px)!important}
+.profile-public-card,.settings-profile-card{border-color:color-mix(in srgb,var(--profile-accent,var(--accent)) 26%,var(--line))!important}
+.profile-description-label,.profile-public-card-top{color:var(--profile-accent,var(--accent))!important}
