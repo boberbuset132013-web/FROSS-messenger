@@ -25,7 +25,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const DEF = {allowForwarding:true,theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
+const DEF = {allowForwarding:true,allowProfileFromForward:true,theme:"dark",accent:"#b45cff",fs:15,shape:"round",density:"normal",font:"system",enter:true,h24:true,wall:"dots",avatars:true,bgColor:"#080611",panelColor:"#110b1d",textColor:"#f7f0ff",incomingColor:"#21152f",outgoingColor:"#8429c8",profileColor:"#b45cff",notifyDesktop:true,notifySound:true,readReceipts:true,showOnline:true,autoDownload:false,compressImages:true,autoPlayMedia:false,reduceMotion:false};
 const ACC = ["#9181ff","#3b82f6","#10b981","#f59e0b","#ef4444","#ec4899","#06b6d4"];
 let currentUser=null, me=null, S={...DEF}, cur="", chats=[], found=[];
 const SYSTEM_CHAT_ID="system:fross";
@@ -228,18 +228,17 @@ function authError(e) {
   return map[code] || e?.message || "Неизвестная ошибка FROSS.";
 }
 function applyS(s) {
-  const r=document.documentElement;
-  r.dataset.theme=s.theme;
-  r.style.colorScheme=s.theme==="light"?"light":s.theme==="auto"?"light dark":"dark";
-  r.style.setProperty("--accent",s.accent);
-  r.style.setProperty("--fs",s.fs+"px");
-  r.style.setProperty("--br",s.shape==="round"?"16px":"4px");
-  r.style.setProperty("--pad",s.density==="compact"?"5px":"10px");
-  r.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
-  const bg=s.bgColor||DEF.bgColor,panel=s.panelColor||DEF.panelColor,text=s.textColor||DEF.textColor;
-  r.style.setProperty("--bg",bg);r.style.setProperty("--panel",panel);r.style.setProperty("--text",text);r.style.setProperty("--p2","color-mix(in srgb,"+panel+" 88%,"+text+" 12%)");r.style.setProperty("--line","color-mix(in srgb,"+panel+" 72%,"+text+" 28%)");r.style.setProperty("--incoming",s.incomingColor||DEF.incomingColor);r.style.setProperty("--outgoing",s.outgoingColor||s.accent||DEF.outgoingColor);r.style.setProperty("--profile-accent",s.profileColor||DEF.profileColor);r.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
-  if($("msgs"))$("msgs").dataset.w=s.wall;
-  r.classList.toggle("reduce-motion",!!s.reduceMotion);
+ const root=document.documentElement,theme=s.theme||"dark",systemLight=theme==="auto"&&window.matchMedia?.("(prefers-color-scheme: light)").matches,light=theme==="light"||systemLight;
+ const defaults={bgColor:light?"#f2f4f8":DEF.bgColor,panelColor:light?"#ffffff":DEF.panelColor,textColor:light?"#202331":DEF.textColor,incomingColor:light?"#e7eaf1":DEF.incomingColor,outgoingColor:light?"#7b35c7":DEF.outgoingColor};
+ const pick=k=>s[k]===DEF[k]||!s[k]?defaults[k]:s[k],bg=pick("bgColor"),panel=pick("panelColor"),text=pick("textColor"),accent=s.accent||DEF.accent;
+ root.dataset.theme=light?"light":"dark";root.style.colorScheme=light?"light":"dark";
+ root.style.setProperty("--accent",accent);root.style.setProperty("--fs",(Number(s.fs)||DEF.fs)+"px");root.style.setProperty("--br",s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px");
+ root.style.setProperty("--pad",s.density==="compact"?"5px":s.density==="comfortable"?"13px":"10px");
+ root.style.setProperty("--font",s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif");
+ root.style.setProperty("--bg",bg);root.style.setProperty("--panel",panel);root.style.setProperty("--text",text);root.style.setProperty("--p2","color-mix(in srgb,"+panel+" 88%,"+text+" 12%)");root.style.setProperty("--line","color-mix(in srgb,"+panel+" 72%,"+text+" 28%)");
+ root.style.setProperty("--incoming",pick("incomingColor"));root.style.setProperty("--outgoing",s.outgoingColor===DEF.outgoingColor||!s.outgoingColor?(light?"#7b35c7":accent):s.outgoingColor);
+ root.style.setProperty("--profile-accent",s.profileColor||accent);root.style.setProperty("--space-night",bg);root.style.setProperty("--space-glass",panel);root.style.setProperty("--space-stroke","color-mix(in srgb,"+text+" 15%,transparent)");root.style.setProperty("--space-shadow",light?"0 18px 48px rgba(30,35,55,.12)":"0 18px 48px rgba(0,0,0,.28)");root.style.setProperty("--surface",panel);root.style.setProperty("--surface-raised","color-mix(in srgb,"+panel+" 92%,"+text+" 8%)");root.style.setProperty("--muted-text","color-mix(in srgb,"+text+" 64%,transparent)");
+ if($("msgs"))$("msgs").dataset.w=s.wall;root.classList.toggle("reduce-motion",!!s.reduceMotion);
 }
 function hue(s) {
   let h=0; for(const c of String(s||"#"))h=(h*31+c.charCodeAt(0))%360;
@@ -742,7 +741,7 @@ function chatInfo(c) {
     if(other.deleted)return{title:"Аккаунт удалён",avatar:{...other,displayName:"Аккаунт удалён"},sub:"Пользователь удалил аккаунт"};
     return{title:other.displayName||other.username||"Личный чат",avatar:other,sub:isOnline(other)?"В сети":presenceLabel(other)};
   }
-  return{title:c.title||"Группа",avatar:{title:c.title||"G"},sub:(c.memberUids||[]).length+" участн."};
+  return{title:c.title||"Группа",avatar:{uid:me.uid,title:c.title||"G",displayName:c.title||"Группа",avatarUrl:c.groupAvatarUrl||"",profileColor:c.groupAvatarColor||"#8b5cf6"},sub:(c.memberUids||[]).length+" участн."};
 }
 function item(o,title,sub,online,active,fn) {
   const d=document.createElement("div");d.className="it"+(active?" a":"");
@@ -1094,7 +1093,9 @@ async function forwardMessage(message) {
   const list=$("forward-chat-list");
   available.forEach(chat=>{
     const info=chatInfo(chat),button=document.createElement("button");
-    button.type="button";button.className="forward-chat-option";button.textContent=(chat.type==="group"?"▣ ":"● ")+info.title;
+    button.type="button";button.className="forward-chat-option";button.innerHTML='<span class="av forward-destination-avatar"></span><span class="forward-destination-title"></span>';
+    avatar(button.querySelector(".forward-destination-avatar"),info.avatar,isOnline(info.avatar));
+    button.querySelector(".forward-destination-title").textContent=info.title;
     button.onclick=async()=>{
       button.disabled=true;button.textContent="Пересылаем…";
       try{
@@ -1114,12 +1115,12 @@ async function forwardMessage(message) {
             attachment={name,type:file.type,size:file.size,url:uploaded.url,path:uploaded.path,external:false};
           }
         }
-        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:sourceText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60)}};
+        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:sourceText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60),avatarUrl:String(message.forwardedFrom?.avatarUrl||message.avatarUrl||""),profileAllowed:message.forwardedFrom?message.forwardedFrom.profileAllowed!==false:message.profileForwardAllowed!==false}};
         if(attachment)forwarded.attachment=attachment;
         const preview=sourceText||(attachment?.type?.startsWith("image/")?"Фото":attachment?.type?.startsWith("video/")?"Видео":attachment?.type?.startsWith("audio/")?"Аудио":"Файл");
         await publishChatMessage(chat.id,forwarded,"↪ "+preview);
         closeM();showToast("Сообщение переслано.");
-      }catch(error){button.disabled=false;button.textContent=info.title;alert(authError(error))}
+      }catch(error){button.disabled=false;button.querySelector(".forward-destination-title").textContent=info.title;alert(authError(error))}
     };
     list.append(button);
   });
@@ -1291,7 +1292,7 @@ function subscribeMessages() {
         b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
-      if(m.forwardedFrom){const forwarded=document.createElement("small");forwarded.className="forwarded-label";forwarded.textContent="↪ Переслано от "+(m.forwardedFrom.displayName||"пользователя");b.append(forwarded)}
+      if(m.forwardedFrom){const forwarded=document.createElement("button");forwarded.type="button";forwarded.className="forwarded-label";forwarded.innerHTML='<span class="av forwarded-avatar"></span><span class="forwarded-caption"></span>';forwarded.querySelector(".forwarded-caption").textContent="↪ "+(m.forwardedFrom.displayName||"пользователя");avatar(forwarded.querySelector(".forwarded-avatar"),{uid:m.forwardedFrom.senderUid,displayName:m.forwardedFrom.displayName,avatarUrl:m.forwardedFrom.avatarUrl||""});if(m.forwardedFrom.profileAllowed!==false){forwarded.classList.add("is-link");forwarded.title="Открыть профиль";forwarded.onclick=async()=>{try{openUserProfile(await loadChatProfile(m.forwardedFrom.senderUid))}catch(error){showToast("Профиль недоступен.")}}}else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}b.append(forwarded)}
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
@@ -1516,8 +1517,9 @@ async function boot(user) {
   }catch(e){bootedUid=null;console.error(e);alert("Не удалось открыть мессенджер: "+authError(e));await signOut(auth)}
 }
 async function publishChatMessage(chatId,message,summary) {
+  const payload={...message,profileForwardAllowed:S.allowProfileFromForward!==false};
   const messageRef=doc(collection(db,"chats",chatId,"messages"));
-  await setDoc(messageRef,message);
+  await setDoc(messageRef,payload);
 
   const chatRef=doc(db,"chats",chatId),preview=String(summary||"").slice(0,120);
   try {
@@ -1655,13 +1657,16 @@ async function openChatSettings(){
   let editor="";
   if(isGroup){
     editor=isOwner
-      ? '<div class="group-settings-editor"><label>Название группы</label><input id="group-title" maxlength="40"><label>Описание</label><textarea id="group-description" rows="3" maxlength="300" placeholder="Кратко расскажи о группе"></textarea><h4>Участники</h4><div id="group-members" class="group-settings-members"></div><h4>Добавить из личных чатов</h4><div id="group-candidates" class="group-settings-members"></div><div class="err" id="group-settings-error"></div><button class="pr" id="save-group-settings" style="width:100%">Сохранить настройки группы</button><button class="dg" id="delete-group-everyone" style="width:100%;margin-top:8px">Удалить группу у всех участников</button></div>'
+      ? '<div class="group-settings-editor"><div class="group-avatar-editor"><div class="av group-avatar-preview" id="group-avatar-preview"></div><div><b>Фото группы</b><div class="row"><button type="button" id="group-avatar-change">Изменить фото</button><button type="button" id="group-avatar-remove">Убрать</button></div><input id="group-avatar-file" type="file" accept="image/*" hidden></div></div><label>Название группы</label><input id="group-title" maxlength="40"><label>Описание</label><textarea id="group-description" rows="3" maxlength="300" placeholder="Кратко расскажи о группе"></textarea><h4>Участники</h4><div id="group-members" class="group-settings-members"></div><h4>Добавить из личных чатов</h4><div id="group-candidates" class="group-settings-members"></div><div class="err" id="group-settings-error"></div><button class="pr" id="save-group-settings" style="width:100%">Сохранить настройки группы</button><button class="dg" id="delete-group-everyone" style="width:100%;margin-top:8px">Удалить группу у всех участников</button></div>'
       : '<p class="mut">Настраивать группу может только её создатель.</p><b>Участники</b><div id="group-members" class="group-settings-members"></div>';
   }
-  openM('<h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button type="button" id="toggle-chat-mute" style="width:100%;margin-bottom:8px">'+((me.mutedChats||[]).includes(cur)?'Включить уведомления':'Отключить уведомления')+'</button><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  openM('<div class="chat-settings-heading"><button type="button" id="chat-settings-back" aria-label="Назад">←</button><div><h3>'+(isGroup?'Настройки группы':'Настройки чата')+'</h3><p class="mut">'+esc(title)+'</p></div><button type="button" id="chat-settings-cancel">Отмена</button></div>'+editor+'<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><button type="button" id="toggle-chat-mute" style="width:100%;margin-bottom:8px">'+((me.mutedChats||[]).includes(cur)?'Включить уведомления':'Отключить уведомления')+'</button><button id="clear-chat" style="width:100%">Очистить переписку у себя</button><button id="delete-chat" class="dg" style="width:100%;margin-top:8px">Удалить чат из моего списка</button><div class="err" id="chat-settings-error"></div>');
+  $("chat-settings-back").onclick=closeM;$("chat-settings-cancel").onclick=closeM;
   if(isGroup){
     const currentMemberIds=new Set(chat.memberUids||[]);
     const profiles=new Map((chat.memberProfiles||[]).filter(person=>currentMemberIds.has(person.uid)).map(person=>[person.uid,{...person}]));
+    let pendingGroupAvatar=null,removeGroupAvatar=false;
+    if(isOwner){const preview=$("group-avatar-preview");avatar(preview,{uid:me.uid,title:chat.title||"G",displayName:chat.title||"Группа",avatarUrl:chat.groupAvatarUrl||"",profileColor:chat.groupAvatarColor||"#8b5cf6"});$("group-avatar-change").onclick=()=>$("group-avatar-file").click();$("group-avatar-file").onchange=()=>{const file=$("group-avatar-file").files?.[0];if(!file)return;pickImg(file,dataUrl=>{pendingGroupAvatar=dataUrl;removeGroupAvatar=false;avatar(preview,{displayName:chat.title||"Группа",avatarUrl:dataUrl,profileColor:chat.groupAvatarColor||"#8b5cf6"})},()=>{$("group-avatar-file").value=""})};$("group-avatar-remove").onclick=()=>{pendingGroupAvatar=null;removeGroupAvatar=true;avatar(preview,{displayName:chat.title||"Группа",profileColor:chat.groupAvatarColor||"#8b5cf6"})};}
     const contacts=new Map();
     for(const memberUid of (chat.memberUids||[])){
       if(!profiles.has(memberUid)){
@@ -1728,8 +1733,9 @@ async function openChatSettings(){
         const memberProfiles=memberUids.map(uid=>{const person=profiles.get(uid)||{};return {uid,username:person.username||"user",displayName:person.displayName||person.username||"Участник",avatarUrl:person.avatarUrl||""}});
         const button=$("save-group-settings");button.disabled=true;button.textContent="Сохраняем…";
         try{
-          await updateDoc(doc(db,"chats",cur),{title:nextTitle,description:nextDescription,memberUids,memberProfiles,updatedAt:serverTimestamp()});
-          Object.assign(chat,{title:nextTitle,description:nextDescription,memberUids,memberProfiles});
+          let groupAvatarUrl=chat.groupAvatarUrl||"";if(pendingGroupAvatar){const blob=await (await fetch(pendingGroupAvatar)).blob();const file=new File([blob],"group-avatar.jpg",{type:blob.type||"image/jpeg"});const token=await currentUser.getIdToken();const uploaded=await uploadChatFile(cur,file,token);groupAvatarUrl="filebase:"+uploaded.path;}if(removeGroupAvatar)groupAvatarUrl="";
+          await updateDoc(doc(db,"chats",cur),{title:nextTitle,description:nextDescription,memberUids,memberProfiles,groupAvatarUrl,groupAvatarColor:chat.groupAvatarColor||"#8b5cf6",updatedAt:serverTimestamp()});
+          Object.assign(chat,{title:nextTitle,description:nextDescription,memberUids,memberProfiles,groupAvatarUrl});
           const stored=chats.find(item=>item.id===cur);if(stored)Object.assign(stored,{title:nextTitle,description:nextDescription,memberUids,memberProfiles});
           closeM();head();renderList();
         }catch(error){currentError.textContent=authError(error);button.disabled=false;button.textContent="Сохранить настройки группы"}
@@ -1884,7 +1890,7 @@ $("gb").onclick=()=>{
       };
     }
     if(i===1){
-      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+toggle("allowForwarding","Разрешить другим пересылать мои сообщения","Если выключить, другие не смогут пересылать твои сообщения. Свои сообщения ты сможешь пересылать всегда.")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<button type="button" id="enable-browser-notifications" style="width:100%;margin-top:10px">Разрешить уведомления браузера</button><small id="browser-notification-status" class="mut"></small><p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
+      c.innerHTML=section("Чаты","Настрой переписки, отображение и уведомления.")+'<h4>Отображение</h4>'+toggle("avatars","Показывать аватары")+toggle("h24","24-часовой формат времени")+toggle("enter","Отправлять по Enter","Если выключено — Ctrl+Enter")+toggle("reduceMotion","Уменьшить анимации")+'<h4>Приватность</h4>'+toggle("showOnline","Показывать статус «в сети»")+toggle("readReceipts","Разрешить отметки о прочтении")+toggle("allowForwarding","Разрешить другим пересылать мои сообщения","Если выключить, другие не смогут пересылать твои сообщения. Свои сообщения ты сможешь пересылать всегда.")+toggle("allowProfileFromForward","Разрешить переход в мой профиль из пересланных сообщений","Если выключить, имя и аватар останутся видны, но открыть профиль по пересылке будет нельзя.")+'<h4>Уведомления</h4>'+toggle("notifyDesktop","Уведомления на рабочем столе")+toggle("notifySound","Звуковые уведомления")+'<button type="button" id="enable-browser-notifications" style="width:100%;margin-top:10px">Разрешить уведомления браузера</button><small id="browser-notification-status" class="mut"></small><p class="mut settings-footnote">Изменения сохраняются в аккаунте и синхронизируются между устройствами.</p>';
       c.querySelectorAll("[data-k]").forEach(x=>x.onchange=()=>o[x.dataset.k]=x.checked);
       $("browser-notification-status").textContent=("Notification" in window)?"Статус: "+Notification.permission:"Браузер не поддерживает уведомления";
       $("enable-browser-notifications").onclick=async()=>{
