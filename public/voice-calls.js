@@ -156,7 +156,7 @@ function showCall(title, status, avatarText, actions, profile, callInfo) {
   $("call-actions").replaceChildren();
   const callControls=[];
   if(activeCall?.peer){
-    callControls.push({label:"Выключить звук",onClick:toggleRemoteAudio});
+    callControls.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});
     callControls.push({label:"Выключить микрофон",onClick:toggleMicrophone});
     callControls.push({label:"Камера недоступна",disabled:true,video:true});
   }
