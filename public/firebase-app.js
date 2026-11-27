@@ -1116,7 +1116,15 @@ async function forwardMessage(message) {
             attachment={name,type:file.type,size:file.size,url:uploaded.url,path:uploaded.path,external:false};
           }
         }
-        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:sourceText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:String(message.forwardedFrom?.senderUid||message.senderUid||""),displayName:String(message.forwardedFrom?.displayName||message.displayName||message.username||"Пользователь").slice(0,60),avatarUrl:String(message.forwardedFrom?.avatarUrl||message.avatarUrl||""),profileAllowed:message.forwardedFrom?message.forwardedFrom.profileAllowed!==false:message.profileForwardAllowed!==false}};
+        const originalUid=String(message.forwardedFrom?.senderUid||message.senderUid||"");
+        let originalProfile={};
+        if(!message.forwardedFrom&&originalUid){
+          try{const profileSnap=await getDoc(doc(db,"publicUsers",originalUid));if(profileSnap.exists())originalProfile=profileSnap.data()||{}}catch(error){console.warn("FROSS forward profile lookup:",error)}
+        }
+        const originalName=String(message.forwardedFrom?.displayName||originalProfile.displayName||message.displayName||message.username||originalProfile.username||"Пользователь").slice(0,60);
+        const originalUsername=String(message.forwardedFrom?.username||originalProfile.username||message.username||"").replace(/^@/,"").slice(0,20);
+        const originalAvatar=String(message.forwardedFrom?.avatarUrl||originalProfile.avatarUrl||message.avatarUrl||"");
+        const forwarded={senderUid:me.uid,username:me.username,displayName:me.displayName||me.username,avatarUrl:me.avatarUrl||"",profileColor:me.profileColor||S.profileColor||"",text:sourceText,readBy:[me.uid],createdAt:serverTimestamp(),forwardedFrom:{senderUid:originalUid,displayName:originalName,username:originalUsername,avatarUrl:originalAvatar,profileColor:String(message.forwardedFrom?.profileColor||originalProfile.profileColor||message.profileColor||""),profileAllowed:message.forwardedFrom?message.forwardedFrom.profileAllowed!==false:message.profileForwardAllowed!==false}};
         if(attachment)forwarded.attachment=attachment;
         const preview=sourceText||(attachment?.type?.startsWith("image/")?"Фото":attachment?.type?.startsWith("video/")?"Видео":attachment?.type?.startsWith("audio/")?"Аудио":"Файл");
         await publishChatMessage(chat.id,forwarded,"↪ "+preview);
@@ -1293,7 +1301,20 @@ function subscribeMessages() {
         b.append(link);
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
-      if(m.forwardedFrom){const forwarded=document.createElement("button");forwarded.type="button";forwarded.className="forwarded-label";forwarded.innerHTML='<span class="av forwarded-avatar"></span><span class="forwarded-caption"></span>';forwarded.querySelector(".forwarded-caption").textContent="↪ "+(m.forwardedFrom.displayName||"пользователя");avatar(forwarded.querySelector(".forwarded-avatar"),{uid:m.forwardedFrom.senderUid,displayName:m.forwardedFrom.displayName,avatarUrl:m.forwardedFrom.avatarUrl||""});if(m.forwardedFrom.profileAllowed!==false){forwarded.classList.add("is-link");forwarded.title="Открыть профиль";forwarded.onclick=async()=>{try{const profile=await loadChatProfile(m.forwardedFrom.senderUid);if(profile.allowProfileFromForward===false){showToast("Автор запретил переход в свой профиль из пересылок.");return}openUserProfile(profile)}catch(error){showToast("Профиль недоступен.")}}}else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}b.append(forwarded)}
+      if(m.forwardedFrom){
+        const origin=m.forwardedFrom,forwarded=document.createElement("button");
+        forwarded.type="button";forwarded.className="forwarded-label";
+        forwarded.innerHTML='<span class="av forwarded-avatar"></span><span class="forwarded-caption"></span>';
+        const originName=String(origin.displayName||origin.username||"Пользователь");
+        const caption=forwarded.querySelector(".forwarded-caption");
+        caption.textContent="Переслано от "+originName+(origin.username&&origin.username.toLowerCase()!==originName.toLowerCase()?" · @"+String(origin.username).replace(/^@/,""):"");
+        avatar(forwarded.querySelector(".forwarded-avatar"),{uid:origin.senderUid,displayName:originName,avatarUrl:origin.avatarUrl||"",profileColor:origin.profileColor||""});
+        if(origin.profileAllowed!==false&&origin.senderUid){
+          forwarded.classList.add("is-link");forwarded.title="Открыть профиль автора исходного сообщения";
+          forwarded.onclick=async()=>{try{const profile=await loadChatProfile(origin.senderUid);if(profile.allowProfileFromForward===false){showToast("Автор запретил переход в свой профиль из пересылок.");return}openUserProfile(profile)}catch(error){showToast("Профиль недоступен.")}};
+        }else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}
+        b.append(forwarded);
+      }
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
         const chat=chats.find(item=>item.id===cur),recipients=(chat?.memberUids||[]).filter(uid=>uid!==me.uid);
