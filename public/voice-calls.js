@@ -75,12 +75,12 @@ function toggleRemoteAudio(){
   audioElement.muted=!audioElement.muted;
   $("call-status").textContent=audioElement.muted?"Звук собеседника выключен.":"Звук собеседника включён.";
   const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="output");
-  if(b)b.textContent=audioElement.muted?"Включить звук":"Выключить звук";
+  if(b){b.setAttribute("aria-pressed",String(audioElement.muted));b.setAttribute("aria-label",audioElement.muted?"Включить звук":"Выключить звук")}
 }
 async function toggleMicrophone(){
   const track=activeCall?.stream?.getAudioTracks()[0];if(!track)return;
   track.enabled=!track.enabled;$("call-status").textContent=track.enabled?"Микрофон включён.":"Микрофон выключен.";
-  const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="mute");if(b)b.textContent=track.enabled?"Выключить микрофон":"Включить микрофон";
+  const b=[...$("call-actions").querySelectorAll("button")].find(x=>x.dataset.action==="mute");if(b){b.setAttribute("aria-pressed",String(!track.enabled));b.setAttribute("aria-label",track.enabled?"Выключить микрофон":"Включить микрофон")}
 }
 async function negotiateScreenShare(){
   const call=activeCall;if(!call?.peer)return;
@@ -136,29 +136,41 @@ function startRingbackTone(incoming=false){
   }catch(error){console.warn("FROSS call tone unavailable:",error?.message||error)}
 }
 
+function callIcon(action){
+  const label=String(action.label||"").toLowerCase();
+  if(label.includes("ответить"))return '<svg class="call-action-icon" viewBox="0 0 24 24"><path d="M4 5c0 8.3 6.7 15 15 15h1a1 1 0 0 0 1-1v-3.5a1 1 0 0 0-.8-1l-4-.8a1 1 0 0 0-1 .4l-1.7 2.1a13 13 0 0 1-5.7-5.7L9.9 8.8a1 1 0 0 0 .4-1l-.8-4a1 1 0 0 0-1-.8H5a1 1 0 0 0-1 1z"/></svg>';
+  if(label.includes("отклонить")||label.includes("завершить")||label.includes("закрыть"))return '<svg class="call-action-icon" viewBox="0 0 24 24"><path d="M3 14c4.8-4.2 13.2-4.2 18 0l-2.2 3.2a1.5 1.5 0 0 1-1.8.5l-2.5-1.1a1.5 1.5 0 0 1-.9-1.4v-1.1a17 17 0 0 0-3.2 0v1.1a1.5 1.5 0 0 1-.9 1.4L7 17.7a1.5 1.5 0 0 1-1.8-.5z"/></svg>';
+  if(label.includes("микрофон"))return '<svg class="call-action-icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-4 0h8"/></svg>';
+  if(label.includes("звук"))return '<svg class="call-action-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9z"/><path d="M16 9a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12"/></svg>';
+  if(label.includes("экран"))return '<svg class="call-action-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4m-5-9 3-3 2 2 4-4"/></svg>';
+  return '<svg class="call-action-icon" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.2A10.8 10.8 0 0 1 21 12a11 11 0 0 1-2.4 3.3M6.2 6.2A11 11 0 0 0 3 12a11 11 0 0 0 18 0M9 9a4 4 0 0 0 6 6"/></svg>';
+}
 function showCall(title, status, avatarText, actions, profile, callInfo) {
-  $("call-title").textContent = title;
-  $("call-status").textContent = status || "";
+  $("call-title").textContent=title;
+  $("call-status").textContent=status||"";
   const codeElement=$("call-code");
-  if(codeElement){
-    if(callInfo?.id&&callInfo?.code){
-      codeElement.hidden=false;
-      codeElement.textContent="ID "+callInfo.id+" · КОД "+callInfo.code;
-    }else codeElement.hidden=true;
-  }
+  if(codeElement){if(callInfo?.id&&callInfo?.code){codeElement.hidden=false;codeElement.textContent="ID "+callInfo.id+" · КОД "+callInfo.code}else codeElement.hidden=true}
   const avatarElement=$("call-avatar");
   if(profile&&window.FROSS?.renderAvatar)window.FROSS.renderAvatar(avatarElement,profile);
   else{avatarElement.style.backgroundImage="none";avatarElement.style.background="#6f3296";avatarElement.textContent=avatarText||"☎"}
   $("call-actions").replaceChildren();
   const visibleActions=[...(actions||[])];
-  if(activeCall?.peer){visibleActions.push({label:activeCall.stream?.getAudioTracks()[0]?.enabled===false?"Включить микрофон":"Выключить микрофон",onClick:toggleMicrophone});visibleActions.push({label:"Показать экран",onClick:startScreenShare});visibleActions.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});}
-  for (const action of visibleActions) {
-    const button = document.createElement("button");
-    button.textContent = action.label;
-    button.className = action.danger ? "dg" : action.primary ? "pr" : "";
-    if(action.label.includes("микрофон"))button.dataset.action="mute";
-    if(action.label.includes("звук"))button.dataset.action="output";
-    button.onclick = action.onClick;
+  if(activeCall?.peer){
+    visibleActions.push({label:"Выключить микрофон",onClick:toggleMicrophone});
+    visibleActions.push({label:"Камера недоступна",disabled:true,video:true});
+    visibleActions.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});
+  }
+  for(const action of visibleActions){
+    const button=document.createElement("button");
+    const label=String(action.label||"Действие");
+    button.type="button";button.className=action.danger?"dg":action.primary?"pr":"";
+    button.dataset.action=action.video?"video":label.includes("микрофон")?"mute":label.includes("звук")?"output":label.includes("экран")?"screen":label.includes("Ответить")?"answer":label.includes("Отклонить")||label.includes("Завершить")?"hangup":"other";
+    button.disabled=!!action.disabled;
+    button.setAttribute("aria-label",label);button.title=label;
+    button.setAttribute("aria-pressed",String(label==="Выключить микрофон"||label==="Выключить звук"));
+    button.innerHTML=callIcon(action)+'<span class="call-action-label"></span>';
+    button.querySelector(".call-action-label").textContent=label;
+    if(action.onClick)button.onclick=action.onClick;
     $("call-actions").append(button);
   }
   $("call-layer").classList.add("open");
