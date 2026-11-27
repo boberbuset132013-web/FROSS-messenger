@@ -70,3 +70,16 @@ jobs:
             --arg telegram_token "$TELEGRAM_BOT_TOKEN" --arg telegram_secret "$WEBHOOK_SECRET" \
             '{FILEBASE_ACCESS_KEY: $access, FILEBASE_SECRET_KEY: $secret} + (if $turn_urls != "" and $turn_user != "" and $turn_credential != "" then {FROSS_TURN_URLS: $turn_urls, FROSS_TURN_USERNAME: $turn_user, FROSS_TURN_CREDENTIAL: $turn_credential} else {} end) + (if $cf_turn_key_id != "" and $cf_turn_api_token != "" then {FROSS_TURN_KEY_ID: $cf_turn_key_id, FROSS_TURN_API_TOKEN: $cf_turn_api_token} else {} end) + (if $telegram_token != "" and $telegram_secret != "" then {TELEGRAM_BOT_TOKEN: $telegram_token, TELEGRAM_WEBHOOK_SECRET: $telegram_secret} else {} end)' > "$SECRETS_FILE"
           CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" npx wrangler deploy --config ./wrangler.toml --assets ./public/ --secrets-file "$SECRETS_FILE"
+      - name: Deploy Firebase group deletion and Firestore rules when credentials are configured
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_FROSS_CA5D6 }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice::Firebase deploy skipped. Configure FIREBASE_SERVICE_ACCOUNT_FROSS_CA5D6 to publish Firestore rules and deleteGroupForEveryone."
+            exit 0
+          fi
+          umask 077
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/fross-firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/fross-firebase-service-account.json"
+          npm install --prefix functions --no-audit --no-fund
+          npx --yes firebase-tools deploy --only firestore:rules,functions:deleteGroupForEveryone --project fross-ca5d6 --non-interactive
