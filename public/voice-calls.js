@@ -154,12 +154,13 @@ function showCall(title, status, avatarText, actions, profile, callInfo) {
   if(profile&&window.FROSS?.renderAvatar)window.FROSS.renderAvatar(avatarElement,profile);
   else{avatarElement.style.backgroundImage="none";avatarElement.style.background="#6f3296";avatarElement.textContent=avatarText||"☎"}
   $("call-actions").replaceChildren();
-  const visibleActions=[...(actions||[])];
+  const callControls=[];
   if(activeCall?.peer){
-    visibleActions.push({label:"Выключить микрофон",onClick:toggleMicrophone});
-    visibleActions.push({label:"Камера недоступна",disabled:true,video:true});
-    visibleActions.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});
+    callControls.push({label:"Выключить звук",onClick:toggleRemoteAudio});
+    callControls.push({label:"Выключить микрофон",onClick:toggleMicrophone});
+    callControls.push({label:"Камера недоступна",disabled:true,video:true});
   }
+  const visibleActions=activeCall?.peer?[...callControls,...(actions||[])]:[...(actions||[])];
   for(const action of visibleActions){
     const button=document.createElement("button");
     const label=String(action.label||"Действие");
