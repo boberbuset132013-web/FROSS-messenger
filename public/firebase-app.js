@@ -1314,6 +1314,16 @@ function subscribeMessages() {
           forwarded.onclick=async()=>{try{const profile=await loadChatProfile(origin.senderUid);if(profile.allowProfileFromForward===false){showToast("Автор запретил переход в свой профиль из пересылок.");return}openUserProfile(profile)}catch(error){showToast("Профиль недоступен.")}};
         }else{forwarded.disabled=true;forwarded.title="Переход в профиль отключён автором"}
         b.append(forwarded);
+        if(origin.senderUid&&(!origin.displayName||!origin.avatarUrl||!origin.username)){
+          getDoc(doc(db,"publicUsers",origin.senderUid)).then(profileSnap=>{
+            if(!profileSnap.exists()||!forwarded.isConnected)return;
+            const profile=profileSnap.data()||{},resolvedName=String(origin.displayName||profile.displayName||profile.username||"Пользователь");
+            caption.textContent="Переслано от "+resolvedName+(origin.username||profile.username?" · @"+String(origin.username||profile.username).replace(/^@/,""):"");
+            if(!origin.avatarUrl&&profile.avatarUrl)avatar(forwarded.querySelector(".forwarded-avatar"),{uid:origin.senderUid,displayName:resolvedName,avatarUrl:profile.avatarUrl,profileColor:profile.profileColor||origin.profileColor||""});
+            if(!origin.displayName&&profile.displayName)origin.displayName=profile.displayName;
+            if(!origin.username&&profile.username)origin.username=profile.username;
+          }).catch(error=>console.warn("FROSS forwarded author profile:",error));
+        }
       }
       if(m.text){const body=document.createElement("div");appendMentionText(body,m.text,resolveMention);b.append(body)}
       const t=document.createElement("time");const date=m.createdAt?.toDate?m.createdAt.toDate():new Date();t.textContent=date.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",hour12:!S.h24})+(m.editedAt?" · изменено":"");if(mine&&cur) {
