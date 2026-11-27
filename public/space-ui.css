@@ -1357,3 +1357,8 @@ button,input,textarea,select{font-family:var(--font,Inter,system-ui,sans-serif)!
  .call-actions button.dg{width:78px!important;height:78px!important;min-height:78px!important;flex-basis:78px!important}
  .call-avatar-wrap{width:min(54vw,360px)!important;height:min(54vw,360px)!important}
 }
+
+.main::before,.side::before{display:none!important}
+.call-actions button[data-action="answer"]{background:#2f9d6b!important;color:#fff!important}
+.call-actions button[data-action="hangup"]{background:#d83d5d!important;color:#fff!important}
+.call-actions button[data-action="video"]{background:transparent!important;color:#d83d5d!important}
