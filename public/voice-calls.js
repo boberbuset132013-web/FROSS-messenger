@@ -372,7 +372,7 @@ function watchCallDocument(callId) {
       try {
         await call.peer.setRemoteDescription(new RTCSessionDescription(data.answer));
         await flushRemoteCandidates(call);
-        $("call-status").textContent = "Соединение установлено. Говорите!";
+        $("call-status").textContent = "Собеседник ответил. Проверяем аудиосоединение…";
       } catch (e) {
         $("call-status").textContent = "Не удалось принять ответ: " + e.message;
       }
