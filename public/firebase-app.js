@@ -227,17 +227,33 @@ function authError(e) {
   };
   return map[code] || e?.message || "Неизвестная ошибка FROSS.";
 }
-function readableTextOnColor(value){
+function colorRgb(value){
  const match=String(value||"").trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
- if(!match)return "#ffffff";
+ if(!match)return null;
  let hex=match[1];if(hex.length===3)hex=hex.split("").map(char=>char+char).join("");
- const channels=[0,2,4].map(index=>{
-   const channel=parseInt(hex.slice(index,index+2),16)/255;
-   return channel<=.04045?channel/12.92:Math.pow((channel+.055)/1.055,2.4);
- });
- const luminance=.2126*channels[0]+.7152*channels[1]+.0722*channels[2];
+ return [0,2,4].map(index=>parseInt(hex.slice(index,index+2),16));
+}
+function colorLuminance(rgb){
+ if(!rgb)return 0;
+ const channels=rgb.map(channel=>{const value=channel/255;return value<=.04045?value/12.92:Math.pow((value+.055)/1.055,2.4)});
+ return .2126*channels[0]+.7152*channels[1]+.0722*channels[2];
+}
+function readableTextOnColor(value){
+ const luminance=colorLuminance(colorRgb(value));
  const white=1.05/(luminance+.05),black=(luminance+.05)/.05;
  return white>=black?"#ffffff":"#17131f";
+}
+function readableAccentOnSurface(accent,surface){
+ const source=colorRgb(accent),background=colorLuminance(colorRgb(surface));
+ if(!source)return readableTextOnColor(surface);
+ const contrast=rgb=>{const light=colorLuminance(rgb),high=Math.max(light,background),low=Math.min(light,background);return(high+.05)/(low+.05)};
+ if(contrast(source)>=4.5)return accent;
+ const target=colorRgb(readableTextOnColor(surface))||[255,255,255];
+ for(let step=1;step<=20;step++){
+   const amount=step/20,candidate=source.map((channel,index)=>Math.round(channel*(1-amount)+target[index]*amount));
+   if(contrast(candidate)>=4.5)return "#"+candidate.map(channel=>channel.toString(16).padStart(2,"0")).join("");
+ }
+ return readableTextOnColor(surface);
 }
 function applyS(s) {
  const root=document.documentElement,theme=s.theme||"dark";
@@ -252,7 +268,7 @@ function applyS(s) {
  root.dataset.theme=light?"light":"dark";root.dataset.themeMode=theme;root.style.colorScheme=light?"light":"dark";
  const vars={"--bg":bg,"--panel":panel,"--text":text,"--accent":accent,"--incoming":incoming,"--outgoing":outgoing,
   "--muted":base.muted,"--muted-text":"color-mix(in srgb,"+text+" 62%,transparent)","--p2":"color-mix(in srgb,"+panel+" 90%,"+text+" 10%)",
-  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--accent-contrast":accentContrast,"--outgoing-contrast":outgoingContrast,"--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
+  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--accent-contrast":accentContrast,"--accent-readable":readableAccentOnSurface(accent,panel),"--outgoing-contrast":outgoingContrast,"--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
   "--space-night":bg,"--space-glass":panel,"--space-stroke":"color-mix(in srgb,"+text+" 14%,transparent)",
   "--space-shadow":light?"0 16px 40px rgba(30,38,58,.10)":"0 18px 48px rgba(0,0,0,.28)",
   "--profile-accent":s.profileColor||accent,"--fs":(Number(s.fs)||DEF.fs)+"px","--br":s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px",
