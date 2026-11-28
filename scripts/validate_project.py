@@ -138,7 +138,7 @@ checks = {
     "update prompt appears only for a waiting service worker": "beforeinstallprompt" not in pwa and "registration.waiting" in pwa and "Перезапустить" in pwa and "location.reload()" in pwa,
     "settings landing page uses a profile header and grouped row navigation": all(token in js for token in ["settings-account-avatar","settings-group-label","settings-row-copy","settings-detail-back"]),
     "settings sections open independently and have a return path": "const showSettingsHome=()=>" in js and '$("settings-detail-back").onclick=showSettingsHome' in js,
-    "settings detail does not paint a square background behind rounded cards": ".settings-detail{\\n  background:transparent!important" in space_css and "#ov.settings-mode #md .settings-profile-card" in space_css and "overflow:hidden!important" in space_css,
+    "settings detail does not paint a square background behind rounded cards": "background:transparent!important" in space_css and "#ov.settings-mode #md .settings-profile-card" in space_css and "overflow:hidden!important" in space_css,
     "audio play buttons contrast against incoming and outgoing bubbles": "function contrastingControlColor(accent,surface)" in js and "--audio-incoming" in js and "--audio-outgoing" in js and ".mr.me .msg .audio-play-button" in space_css,
     "settings home is the default when the settings tab opens": "FROSS_SETTINGS_START=null" in js and "showSettingsHome();" in js,
     "settings overlay uses a dedicated full-page layout": "settings-mode" in js and "#ov.settings-mode #md" in space_css and ".settings-shell{" in space_css,
