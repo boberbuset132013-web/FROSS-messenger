@@ -1518,3 +1518,171 @@ html[data-theme="light"] .call-actions button[data-action="video"]{color:#d83d5d
 .brandmark small{color:var(--accent)!important;-webkit-text-fill-color:var(--accent)!important}
 html[data-theme="light"] .call-avatar-glow{opacity:.56!important}
 html[data-theme="light"] .call-actions{box-shadow:0 12px 32px rgba(28,35,55,.12)!important}
+
+
+/* Final accessibility and media-size corrections: keep the chosen accent readable. */
+.create-btn,.pr,.comp #send,.settings-actions #ss,.msg .audio-play-button{
+  color:var(--accent-contrast,#fff)!important;
+}
+.nav-item.active,.settings-row-icon,.settings-detail-back,.settings-topbar .settings-back,
+.brandmark small,.profile-description-label,.profile-public-card-top{
+  color:var(--accent-readable,var(--accent))!important;
+  -webkit-text-fill-color:var(--accent-readable,var(--accent))!important;
+}
+.mr.me .msg,.mr.me .msg *{color:var(--outgoing-contrast,#fff)!important}
+.mr:not(.me) .msg .sender-profile,.mr:not(.me) .msg .attachment-link,
+.mr:not(.me) .msg .forwarded-label{color:var(--accent-readable,var(--accent))!important}
+.mr.me .msg .sender-profile,.mr.me .msg .attachment-link,
+.mr.me .msg .forwarded-label{color:var(--outgoing-contrast,#fff)!important}
+.settings-row-icon{background:color-mix(in srgb,var(--accent) 10%,var(--panel))!important}
+button.pr,.create-btn,.settings-actions #ss{background:var(--accent)!important}
+button:disabled{opacity:.58}
+
+/* Video attachments stay compact in the conversation; downloading lives in the message menu. */
+.msg .message-video{
+  display:block!important;
+  width:auto!important;
+  max-width:min(250px,100%)!important;
+  max-height:168px!important;
+  height:auto!important;
+  margin:3px 0 1px!important;
+  border:1px solid color-mix(in srgb,var(--text) 12%,transparent)!important;
+  border-radius:12px!important;
+  background:#08080c!important;
+  object-fit:contain!important;
+}
+.msg .attachment-link{display:inline-flex!important;max-width:100%;overflow-wrap:anywhere}
+
+/* Incoming and active calls: simple full-screen layout matching the supplied phone screenshot. */
+#call-layer{
+  position:fixed!important;inset:0!important;z-index:900!important;
+  display:none!important;place-items:stretch!important;padding:0!important;overflow:hidden!important;
+  background:var(--bg)!important;color:var(--text)!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+}
+#call-layer.open{display:grid!important}
+.call-universe{
+  position:relative!important;width:100%!important;height:100dvh!important;min-height:100dvh!important;max-height:100dvh!important;
+  overflow:hidden!important;border:0!important;border-radius:0!important;
+  background:radial-gradient(ellipse at 50% 48%,color-mix(in srgb,var(--accent) 9%,var(--bg)),var(--bg) 62%)!important;
+}
+.call-card{
+  position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;
+  display:block!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:var(--text)!important;box-shadow:none!important;backdrop-filter:none!important;
+}
+.call-identity{
+  position:absolute!important;top:19.5%!important;left:18px!important;right:18px!important;
+  display:flex!important;flex-direction:column!important;align-items:center!important;gap:10px!important;
+  text-align:center!important;z-index:2!important;
+}
+.call-card h3{
+  position:static!important;top:auto!important;left:auto!important;right:auto!important;
+  margin:0!important;max-width:100%!important;color:var(--text)!important;
+  font-size:clamp(27px,6vw,38px)!important;line-height:1.18!important;font-weight:700!important;
+  letter-spacing:-.02em!important;overflow-wrap:anywhere!important;text-align:center!important;
+}
+.call-status{
+  position:static!important;top:auto!important;left:auto!important;right:auto!important;
+  min-height:0!important;margin:0!important;padding:0 10px!important;
+  color:var(--muted-text)!important;font-size:16px!important;line-height:1.4!important;text-align:center!important;
+}
+.call-avatar-wrap{
+  position:absolute!important;left:50%!important;top:49%!important;
+  transform:translate(-50%,-50%)!important;width:clamp(220px,54vw,360px)!important;
+  height:clamp(220px,54vw,360px)!important;margin:0!important;display:grid!important;place-items:center!important;
+}
+.call-avatar-glow{
+  position:absolute!important;inset:-18%!important;border-radius:50%!important;
+  background:radial-gradient(circle,color-mix(in srgb,var(--accent) 23%,transparent),transparent 70%)!important;
+  filter:blur(22px)!important;animation:call-avatar-pulse 3s ease-in-out infinite!important;
+}
+.call-avatar-wrap:before,.call-avatar-wrap:after{display:none!important}
+.call-card .av#call-avatar{
+  position:relative!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;
+  border:0!important;border-radius:50%!important;box-shadow:none!important;object-fit:cover!important;
+  background-color:color-mix(in srgb,var(--accent) 35%,var(--panel))!important;
+}
+#call-code{display:none!important;visibility:hidden!important}
+.call-tools{display:none!important}
+#remote-screen{
+  position:absolute!important;z-index:3!important;left:4%!important;top:8%!important;
+  width:92%!important;height:70%!important;max-width:92%!important;max-height:70%!important;
+  margin:0!important;border-radius:16px!important;background:#050507!important;object-fit:contain!important;
+}
+.call-actions{
+  position:absolute!important;z-index:5!important;left:50%!important;
+  bottom:max(7.5%,calc(env(safe-area-inset-bottom) + 28px))!important;
+  transform:translateX(-50%)!important;width:min(86%,570px)!important;min-height:118px!important;
+  display:flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:space-evenly!important;
+  gap:clamp(12px,5vw,34px)!important;margin:0!important;padding:14px 22px!important;
+  border:1px solid var(--line)!important;border-radius:80px!important;
+  background:color-mix(in srgb,var(--panel) 93%,var(--accent) 7%)!important;
+  box-shadow:0 12px 34px color-mix(in srgb,var(--bg) 25%,transparent)!important;
+}
+.call-actions button{
+  position:relative!important;display:grid!important;place-items:center!important;
+  flex:0 1 70px!important;width:70px!important;min-width:58px!important;height:70px!important;min-height:70px!important;
+  padding:0!important;border:0!important;border-radius:50%!important;background:var(--surface-raised)!important;
+  color:var(--text)!important;font-size:0!important;box-shadow:none!important;
+}
+.call-actions button .call-action-icon{
+  display:block!important;width:30px!important;height:30px!important;fill:none!important;
+  stroke:currentColor!important;stroke-width:2.4!important;stroke-linecap:round!important;stroke-linejoin:round!important;
+}
+.call-actions button .call-action-label{
+  position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;
+  clip:rect(0,0,0,0)!important;white-space:nowrap!important;
+}
+.call-actions button.dg,.call-actions button[data-action="hangup"]{
+  flex:0 0 104px!important;width:104px!important;height:104px!important;min-width:104px!important;min-height:104px!important;
+  background:#d83d5d!important;color:#fff!important;
+}
+.call-actions button[data-action="hangup"] .call-action-icon{width:36px!important;height:36px!important}
+.call-actions button.pr,.call-actions button[data-action="answer"]{
+  flex:0 0 88px!important;width:88px!important;height:88px!important;min-width:88px!important;min-height:88px!important;
+  background:#209b69!important;color:#fff!important;
+}
+.call-actions button[data-action="mute"][aria-pressed="true"],
+.call-actions button[data-action="output"][aria-pressed="true"]{
+  background:color-mix(in srgb,var(--accent) 19%,var(--panel))!important;color:var(--text)!important;
+}
+#call-layer[data-call-phase="caller"] .call-actions,
+#call-layer[data-call-phase="callee"] .call-actions{
+  min-height:94px!important;gap:clamp(7px,3vw,18px)!important;padding:10px 14px!important;
+}
+#call-layer[data-call-phase="caller"] .call-actions button,
+#call-layer[data-call-phase="callee"] .call-actions button{
+  flex:0 1 64px!important;width:64px!important;height:64px!important;min-width:54px!important;min-height:64px!important;
+}
+#call-layer[data-call-phase="caller"] .call-actions button[data-action="hangup"],
+#call-layer[data-call-phase="callee"] .call-actions button[data-action="hangup"]{
+  flex:0 0 76px!important;width:76px!important;height:76px!important;min-width:76px!important;min-height:76px!important;
+}
+@media(max-width:520px){
+  .call-identity{top:20.5%!important;gap:9px!important}
+  .call-card h3{font-size:clamp(27px,7vw,36px)!important}
+  .call-status{font-size:15px!important}
+  .call-avatar-wrap{width:clamp(210px,54vw,350px)!important;height:clamp(210px,54vw,350px)!important}
+  .call-actions{
+    width:86%!important;min-height:116px!important;bottom:max(7%,calc(env(safe-area-inset-bottom) + 24px))!important;
+    gap:clamp(14px,6vw,28px)!important;padding:12px 14px!important;
+  }
+  .call-actions button.dg,.call-actions button[data-action="hangup"]{
+    width:100px!important;height:100px!important;min-width:100px!important;min-height:100px!important;flex-basis:100px!important;
+  }
+  .call-actions button.pr,.call-actions button[data-action="answer"]{
+    width:86px!important;height:86px!important;min-width:86px!important;min-height:86px!important;flex-basis:86px!important;
+  }
+  #call-layer[data-call-phase="caller"] .call-actions,
+  #call-layer[data-call-phase="callee"] .call-actions{min-height:88px!important;padding:8px 10px!important}
+  #call-layer[data-call-phase="caller"] .call-actions button,
+  #call-layer[data-call-phase="callee"] .call-actions button{
+    width:58px!important;height:58px!important;min-width:48px!important;min-height:58px!important;flex-basis:58px!important;
+  }
+  #call-layer[data-call-phase="caller"] .call-actions button[data-action="hangup"],
+  #call-layer[data-call-phase="callee"] .call-actions button[data-action="hangup"]{
+    width:70px!important;height:70px!important;min-width:70px!important;min-height:70px!important;flex-basis:70px!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){.call-avatar-glow{animation:none!important}}
