@@ -392,7 +392,7 @@ function openVideoViewer(value,path,name) {
   closeButton.addEventListener("click",close);
   overlay.addEventListener("click",event=>{if(event.target===overlay||event.target===stage)close()});
   download.addEventListener("click",async()=>{const original=download.textContent;download.disabled=true;download.textContent="Скачиваем…";try{await downloadStoredFile(value,path,name||"video")}catch(error){alert(error.message)}finally{download.disabled=false;download.textContent=original}});
-  document.addEventListener("keydown",onKey);document.body.style.overflow="hidden";document.body.append(overlay);video.play().catch(()=>{});closeButton.focus();
+  document.addEventListener("keydown",onKey);document.body.style.overflow="hidden";document.body.append(overlay);video.addEventListener("canplay",()=>video.play().catch(()=>{}),{once:true});if(video.readyState>=2)video.play().catch(()=>{});closeButton.focus();
 }
 function mediaTime(seconds) {
   if(!Number.isFinite(seconds)||seconds<0)return "0:00";
