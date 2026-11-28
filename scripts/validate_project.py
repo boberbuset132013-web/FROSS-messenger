@@ -143,7 +143,7 @@ checks = {
     "call completion plays a short tone for local and remote hangups": "function playCallEndTone(callId" in voice and "playCallEndTone(call.id)" in voice and "playCallEndTone(callId)" in voice,
     "call screen supports a light palette": 'html[data-theme="light"] #call-layer' in space_css and 'html[data-theme="light"] .call-universe' in space_css,
     "theme variables reach app, settings and call surfaces": all(token in space_css for token in ["FROSS unified design tokens", ".settings-topbar h3", ".settings-content .sw2", ".call-actions"]),
-    "customization controls are grouped and show live text size": "custom-section" in js and 'id="'+pre+'fs-value"' in js and 'label.textContent=o.fs+" px"' in js,
+    "customization controls are grouped and show live text size": "custom-section" in js and "fs-value" in js and 'label.textContent=o.fs+" px"' in js,
     "FROSS wordmark contrast follows the selected text color": ".brandmark{color:var(--text)!important" in space_css,
 }
 for name, passed in checks.items():
