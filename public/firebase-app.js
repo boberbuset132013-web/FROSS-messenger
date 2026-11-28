@@ -373,6 +373,27 @@ function openImageViewer(value,path,name) {
   document.body.append(overlay);
   closeButton.focus();
 }
+function openVideoViewer(value,path,name) {
+  const overlay=document.createElement("div");
+  overlay.className="media-viewer video-media-viewer";
+  overlay.setAttribute("role","dialog");overlay.setAttribute("aria-modal","true");overlay.setAttribute("aria-label","Просмотр видео");
+  const toolbar=document.createElement("div");toolbar.className="media-viewer-toolbar";
+  const title=document.createElement("div");title.className="media-viewer-title";title.textContent=name||"Видео";
+  const actions=document.createElement("div");actions.className="media-viewer-actions";
+  const download=document.createElement("button");download.type="button";download.className="media-viewer-btn media-viewer-download";download.textContent="↓ Скачать";
+  const closeButton=document.createElement("button");closeButton.type="button";closeButton.className="media-viewer-btn media-viewer-close";closeButton.textContent="×";closeButton.setAttribute("aria-label","Закрыть просмотр");
+  const stage=document.createElement("div");stage.className="media-viewer-stage";
+  const video=document.createElement("video");video.className="media-viewer-video";video.controls=true;video.playsInline=true;video.autoplay=true;video.preload="auto";
+  setPrivateMediaSource(video,value,path);
+  actions.append(download,closeButton);toolbar.append(title,actions);stage.append(video);overlay.append(toolbar,stage);
+  const oldOverflow=document.body.style.overflow;
+  const close=()=>{document.removeEventListener("keydown",onKey);video.pause();video.removeAttribute("src");video.load();document.body.style.overflow=oldOverflow;overlay.remove()};
+  const onKey=event=>{if(event.key==="Escape")close()};
+  closeButton.addEventListener("click",close);
+  overlay.addEventListener("click",event=>{if(event.target===overlay||event.target===stage)close()});
+  download.addEventListener("click",async()=>{const original=download.textContent;download.disabled=true;download.textContent="Скачиваем…";try{await downloadStoredFile(value,path,name||"video")}catch(error){alert(error.message)}finally{download.disabled=false;download.textContent=original}});
+  document.addEventListener("keydown",onKey);document.body.style.overflow="hidden";document.body.append(overlay);video.play().catch(()=>{});closeButton.focus();
+}
 function mediaTime(seconds) {
   if(!Number.isFinite(seconds)||seconds<0)return "0:00";
   const value=Math.floor(seconds),minutes=Math.floor(value/60),remaining=String(value%60).padStart(2,"0");
@@ -1366,7 +1387,9 @@ function subscribeMessages() {
         }
         if(a.type?.startsWith("audio/"))b.append(createAudioMessagePlayer(a));
         if(a.type?.startsWith("video/")){
-          const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video);
+          const preview=document.createElement("button");preview.type="button";preview.className="message-video-preview";preview.setAttribute("aria-label","Открыть видео на весь экран");
+          const video=document.createElement("video");video.controls=false;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.muted=true;video.className="message-video";video.tabIndex=-1;setPrivateMediaSource(video,a.url,a.path);
+          const play=document.createElement("span");play.className="message-video-play";play.setAttribute("aria-hidden","true");play.textContent="▶";preview.append(video,play);preview.addEventListener("click",()=>openVideoViewer(a.url,a.path,a.name||"Видео"));b.append(preview);
         }
         if(!a.type?.startsWith("audio/")&&!a.type?.startsWith("video/")){
           const link=document.createElement("a");link.href=a.external?a.url:"#";link.textContent=a.external?"↗ Открыть внешний файл: "+(a.name||"файл"):"↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
