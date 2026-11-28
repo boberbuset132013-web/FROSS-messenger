@@ -227,6 +227,18 @@ function authError(e) {
   };
   return map[code] || e?.message || "Неизвестная ошибка FROSS.";
 }
+function readableTextOnColor(value){
+ const match=String(value||"").trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+ if(!match)return "#ffffff";
+ let hex=match[1];if(hex.length===3)hex=hex.split("").map(char=>char+char).join("");
+ const channels=[0,2,4].map(index=>{
+   const channel=parseInt(hex.slice(index,index+2),16)/255;
+   return channel<=.04045?channel/12.92:Math.pow((channel+.055)/1.055,2.4);
+ });
+ const luminance=.2126*channels[0]+.7152*channels[1]+.0722*channels[2];
+ const white=1.05/(luminance+.05),black=(luminance+.05)/.05;
+ return white>=black?"#ffffff":"#17131f";
+}
 function applyS(s) {
  const root=document.documentElement,theme=s.theme||"dark";
  const autoLight=theme==="auto"&&window.matchMedia?.("(prefers-color-scheme: light)").matches;
@@ -235,12 +247,12 @@ function applyS(s) {
  const defaultMap={bgColor:DEF.bgColor,panelColor:DEF.panelColor,textColor:DEF.textColor,incomingColor:DEF.incomingColor,outgoingColor:DEF.outgoingColor};
  const use=(key,fallback)=>!s[key]||s[key]===defaultMap[key]?fallback:s[key];
  const bg=use("bgColor",base.bg),panel=use("panelColor",base.panel),text=use("textColor",base.text),accent=s.accent||DEF.accent;
- const incoming=use("incomingColor",base.incoming),outgoing=use("outgoingColor",light?base.outgoing:accent);
+ const incoming=use("incomingColor",base.incoming),outgoing=use("outgoingColor",light?base.outgoing:accent),accentContrast=readableTextOnColor(accent),outgoingContrast=readableTextOnColor(outgoing);
  const font=s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif";
  root.dataset.theme=light?"light":"dark";root.dataset.themeMode=theme;root.style.colorScheme=light?"light":"dark";
  const vars={"--bg":bg,"--panel":panel,"--text":text,"--accent":accent,"--incoming":incoming,"--outgoing":outgoing,
   "--muted":base.muted,"--muted-text":"color-mix(in srgb,"+text+" 62%,transparent)","--p2":"color-mix(in srgb,"+panel+" 90%,"+text+" 10%)",
-  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
+  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--accent-contrast":accentContrast,"--outgoing-contrast":outgoingContrast,"--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
   "--space-night":bg,"--space-glass":panel,"--space-stroke":"color-mix(in srgb,"+text+" 14%,transparent)",
   "--space-shadow":light?"0 16px 40px rgba(30,38,58,.10)":"0 18px 48px rgba(0,0,0,.28)",
   "--profile-accent":s.profileColor||accent,"--fs":(Number(s.fs)||DEF.fs)+"px","--br":s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px",
@@ -1115,7 +1127,7 @@ function openMessageMenu(message,mine,x,y) {
   document.getElementById("message-menu")?.remove();
   const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
   const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["↪ Переслать",()=>{menu.remove();forwardMessage(message)}],["😊 Реакция",()=>showReactionPicker(message,menu)]];
-  if(message.attachment)actions.push(["↓ Скачать "+(message.attachment.type?.startsWith("audio/")?"аудио":"файл"),()=>{menu.remove();downloadMessageAttachment(message)}]);
+  if(message.attachment)actions.push(["↓ Скачать "+(message.attachment.type?.startsWith("audio/")?"аудио":message.attachment.type?.startsWith("video/")?"видео":"файл"),()=>{menu.remove();downloadMessageAttachment(message)}]);
   actions.push(["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]);
   if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
   actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
@@ -1340,7 +1352,7 @@ function subscribeMessages() {
         if(a.type?.startsWith("video/")){
           const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video);
         }
-        if(!a.type?.startsWith("audio/")){
+        if(!a.type?.startsWith("audio/")&&!a.type?.startsWith("video/")){
           const link=document.createElement("a");link.href=a.external?a.url:"#";link.textContent=a.external?"↗ Открыть внешний файл: "+(a.name||"файл"):"↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
           if(a.external){link.target="_blank";link.rel="noopener noreferrer"}
           else link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
@@ -1637,6 +1649,73 @@ async function send() {
 }
 $("send").onclick=send;
 const attachmentButton=$("attach"),attachmentInput=$("attachment-input");
+async function optimizeChatVideo(file) {
+  if(!file?.type?.startsWith("video/")||file.size<1400*1024||typeof MediaRecorder==="undefined"||typeof HTMLCanvasElement.prototype.captureStream!=="function")return file;
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return file;
+  let sourceUrl="",video=null,audioContext=null,audioSource=null,audioDestination=null,canvasStream=null,combinedStream=null,recorder=null,animationFrame=0,timeoutId=0;
+  try{
+    sourceUrl=URL.createObjectURL(file);
+    video=document.createElement("video");
+    video.preload="auto";video.playsInline=true;video.muted=false;video.volume=1;
+    video.style.cssText="position:fixed;left:-10000px;top:0;width:2px;height:2px;opacity:.01;pointer-events:none";
+    document.body.append(video);
+    await new Promise((resolve,reject)=>{
+      video.onloadedmetadata=resolve;
+      video.onerror=()=>reject(new Error("Не удалось прочитать видео."));
+      video.src=sourceUrl;video.load();
+    });
+    if(!Number.isFinite(video.duration)||video.duration<=0||video.duration>120||!video.videoWidth||!video.videoHeight)return file;
+    const scale=Math.min(1,1280/Math.max(video.videoWidth,video.videoHeight));
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.max(2,Math.round(video.videoWidth*scale/2)*2);
+    canvas.height=Math.max(2,Math.round(video.videoHeight*scale/2)*2);
+    const context=canvas.getContext("2d",{alpha:false});
+    if(!context)return file;
+    canvasStream=canvas.captureStream(24);
+    audioContext=new AudioContextClass();
+    audioSource=audioContext.createMediaElementSource(video);
+    audioDestination=audioContext.createMediaStreamDestination();
+    audioSource.connect(audioDestination);
+    combinedStream=new MediaStream([...canvasStream.getVideoTracks(),...audioDestination.stream.getAudioTracks()]);
+    const mimeCandidates=["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm","video/mp4"];
+    const mimeType=mimeCandidates.find(type=>MediaRecorder.isTypeSupported?.(type))||"";
+    recorder=new MediaRecorder(combinedStream,{...(mimeType?{mimeType}:{}),videoBitsPerSecond:850000,audioBitsPerSecond:96000});
+    const chunks=[];
+    const recorded=new Promise((resolve,reject)=>{
+      recorder.ondataavailable=event=>{if(event.data?.size)chunks.push(event.data)};
+      recorder.onerror=event=>reject(event.error||new Error("Ошибка перекодирования видео."));
+      recorder.onstop=()=>resolve(new Blob(chunks,{type:recorder.mimeType||mimeType||"video/webm"}));
+    });
+    const draw=()=>{
+      if(video.readyState>=2&&!video.ended)context.drawImage(video,0,0,canvas.width,canvas.height);
+      if(!video.ended&&!video.paused)animationFrame=requestAnimationFrame(draw);
+    };
+    video.addEventListener("play",draw,{once:true});
+    video.addEventListener("ended",()=>{if(recorder?.state==="recording")recorder.stop()},{once:true});
+    timeoutId=setTimeout(()=>{if(recorder?.state==="recording")recorder.stop()},Math.ceil(video.duration*1000)+12000);
+    await audioContext.resume();
+    recorder.start(1000);
+    await video.play();
+    const blob=await recorded;
+    if(!blob.size||blob.size>=file.size*.92)return file;
+    const isMp4=blob.type.includes("mp4"),extension=isMp4?".mp4":".webm";
+    const baseName=file.name.replace(/\.[^.]+$/,"")||"video";
+    return new File([blob],baseName+extension,{type:blob.type||"video/webm",lastModified:file.lastModified||Date.now()});
+  }catch(error){
+    console.warn("FROSS video compression skipped:",error?.message||error);
+    return file;
+  }finally{
+    if(timeoutId)clearTimeout(timeoutId);
+    if(animationFrame)cancelAnimationFrame(animationFrame);
+    try{if(recorder?.state==="recording")recorder.stop()}catch{}
+    try{video?.pause();if(video){video.removeAttribute("src");video.load();video.remove()}}catch{}
+    for(const track of [...(combinedStream?.getTracks()||[]),...(canvasStream?.getTracks()||[])]){try{track.stop()}catch{}}
+    try{audioSource?.disconnect()}catch{}
+    try{await audioContext?.close()}catch{}
+    if(sourceUrl)URL.revokeObjectURL(sourceUrl);
+  }
+}
 async function optimizeChatImage(file) {
   if(!S.compressImages || !file.type?.startsWith("image/") || file.type==="image/gif" || file.size<700*1024 || typeof createImageBitmap!=="function")return file;
   try{
@@ -1682,7 +1761,7 @@ if(attachmentButton&&attachmentInput){
     const files=[...(attachmentInput.files||[])];attachmentInput.value="";
     for(const file of files) {
       let uploadFile=file;
-      try{uploadFile=await optimizeChatImage(file)}catch{}
+      try{uploadFile=await optimizeChatImage(file);if(uploadFile.type?.startsWith("video/"))uploadFile=await optimizeChatVideo(uploadFile)}catch(error){console.warn("FROSS attachment optimization skipped:",error?.message||error)}
       if(uploadFile.size>=20*1024*1024){alert("Файл «"+file.name+"» больше лимита 20 МБ.");continue}
       const chatId=cur;
       if(!chatId){alert("Сначала выберите личный чат или группу.");continue}
