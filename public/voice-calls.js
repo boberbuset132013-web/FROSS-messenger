@@ -316,7 +316,7 @@ async function flushRemoteCandidates(call){
       try{await call.peer.addIceCandidate(new RTCIceCandidate(candidate))}
       catch(error){
         console.warn("Queued ICE candidate rejected:",error?.message||error);
-        if(error?.name==="InvalidStateError")call.pendingRemoteCandidates.push(candidate);
+        if(error?.name==="InvalidStateError"){call.pendingRemoteCandidates.unshift(candidate);return}
       }
     }
     if(call.pendingRemoteCandidates?.length&&call.peer.signalingState==="closed")break;
