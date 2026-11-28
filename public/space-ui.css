@@ -1494,3 +1494,27 @@ html[data-theme="light"] .call-actions button[data-action="video"]{color:#d83d5d
 .settings-row{padding-block:var(--pad,10px)!important}
 .profile-public-card,.settings-profile-card{border-color:color-mix(in srgb,var(--profile-accent,var(--accent)) 26%,var(--line))!important}
 .profile-description-label,.profile-public-card-top{color:var(--profile-accent,var(--accent))!important}
+
+/* Music messages: circular play/pause control and readable title. */
+.msg .message-audio-player{display:block!important;width:min(100%,420px)!important;max-width:100%!important;margin:8px 0 3px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+.msg .audio-player-top{display:flex!important;align-items:center!important;gap:12px!important;min-width:0!important;background:transparent!important}
+.msg .audio-play-button{display:grid!important;place-items:center!important;width:46px!important;height:46px!important;min-width:46px!important;max-width:46px!important;min-height:46px!important;flex:0 0 46px!important;padding:0!important;border:0!important;border-radius:50%!important;background:var(--accent)!important;color:#fff!important;box-shadow:0 3px 12px color-mix(in srgb,var(--accent) 28%,transparent)!important}
+.msg .audio-play-button svg{display:block!important;width:22px!important;height:22px!important;fill:currentColor!important}
+.msg .audio-play-button:disabled{opacity:.65!important}
+.msg .audio-player-meta{display:flex!important;flex-direction:column!important;justify-content:center!important;gap:3px!important;min-width:0!important;flex:1 1 auto!important}
+.msg .audio-player-name{display:block!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;color:inherit!important;font-size:14px!important;font-weight:750!important;line-height:1.3!important}
+.msg .audio-player-hint{display:block!important;margin:0!important;color:var(--muted-text)!important;font-size:11px!important;line-height:1.3!important}
+
+/* Calls and the FROSS wordmark follow the same theme variables. */
+#call-layer{background:var(--bg)!important;color:var(--text)!important}
+.call-universe{background:radial-gradient(ellipse at 50% 45%,color-mix(in srgb,var(--accent) 10%,var(--bg)),var(--bg) 72%)!important}
+.call-card{color:var(--text)!important;background:transparent!important}
+.call-card h3{color:var(--text)!important}.call-status{color:var(--muted-text)!important}
+.call-actions{background:var(--surface-raised)!important;border-color:var(--line)!important;color:var(--text)!important}
+.call-actions button:not(.dg):not([data-action="hangup"]){color:var(--text)!important}
+.call-actions button.dg,.call-actions button[data-action="hangup"]{background:#d83d5d!important;color:#fff!important}
+#call-code{display:none!important;visibility:hidden!important}
+.brandmark{color:var(--text)!important;-webkit-text-fill-color:var(--text)!important;text-shadow:none!important}
+.brandmark small{color:var(--accent)!important;-webkit-text-fill-color:var(--accent)!important}
+html[data-theme="light"] .call-avatar-glow{opacity:.56!important}
+html[data-theme="light"] .call-actions{box-shadow:0 12px 32px rgba(28,35,55,.12)!important}
