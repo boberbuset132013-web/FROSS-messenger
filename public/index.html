@@ -619,16 +619,19 @@ body.audio-dock-on #app{padding-top:calc(72px + env(safe-area-inset-top))}
 <div class="ov" id="ov"><div class="md" id="md"></div></div>
 <div id="call-layer" aria-live="polite">
   <div class="call-universe">
-    <div class="call-starfield"></div><div class="call-planet"></div><div class="call-orbit call-orbit-a"></div><div class="call-orbit call-orbit-b"></div>
     <section class="call-card">
-      <div class="call-kicker"><span></span> FROSS VOICE</div>
-      <div class="call-avatar-wrap"><div class="call-avatar-glow"></div><div class="av big" id="call-avatar">☎</div></div>
-      <h3 id="call-title">Звонок</h3>
-      <div class="call-status" id="call-status"></div><div class="call-code" id="call-code" hidden></div>
+      <div class="call-identity">
+        <h3 id="call-title">Звонок</h3>
+        <div class="call-status" id="call-status"></div>
+      </div>
+      <div class="call-avatar-wrap">
+        <div class="call-avatar-glow"></div>
+        <div class="av big" id="call-avatar">☎</div>
+      </div>
+      <div class="call-code" id="call-code" hidden></div>
       <video id="remote-screen" autoplay playsinline></video>
       <div class="call-tools"><label>Микрофон<select id="mic-device"></select></label><label>Вывод звука<select id="audio-device"></select></label></div>
       <div class="call-actions" id="call-actions"></div>
-      <div class="call-footer">СОЕДИНЕНИЕ ЗАЩИЩЕНО · FROSS</div>
     </section>
   </div>
 </div>
