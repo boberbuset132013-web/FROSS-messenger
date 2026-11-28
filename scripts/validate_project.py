@@ -52,7 +52,7 @@ checks = {
     "incoming call overlay matches the clean full-screen reference": 'class="call-identity"' in html and 'id="call-avatar"' in html and 'class="call-planet"' not in html and "startRingbackTone" in voice,
     "phone profile card shows hidden and unverified states": "profile-card-presence" in js and "profile.phoneStatus" in js and "phonePublic" in rules and '"phoneStatus"' in rules,
     "custom theme controls apply light and dark palettes": 'root.dataset.theme=light?"light":"dark"' in js and "background:var(--panel)!important" in space_css and "background:var(--bg)!important" in space_css,
-    "forwarded messages show original avatar and privacy-aware profile link": "forwarded-avatar" in js and "loadChatProfile(m.forwardedFrom.senderUid)" in js and "allowProfileFromForward" in js,
+    "forwarded messages show original avatar and privacy-aware profile link": "forwarded-avatar" in js and "loadChatProfile(origin.senderUid)" in js and "profileAllowed!==false" in js and "allowProfileFromForward" in js,
     "forward destination picker shows chat avatars": "forward-destination-avatar" in js,
     "group settings include back and cancel controls": "chat-settings-back" in js and "chat-settings-cancel" in js,
     "group avatar upload is wired to group document": "group-avatar-preview" in js and "groupAvatarUrl" in js and "groupAvatarUrl" in rules,
