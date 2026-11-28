@@ -127,7 +127,7 @@ checks = {
     "composer flex field cannot force horizontal overflow": ".comp #inp{" in space_css and "flex:1 1 0%" in space_css and "min-width:0" in space_css,
     "modal, call, media and audio layers have explicit stacking order": all(token in space_css for token in [".ov{", "z-index:220", "#call-layer{z-index:600}", ".media-viewer{z-index:700}", ".audio-dock{z-index:500}"]),
     "attachment menu closes on outside click and Escape": 'document.addEventListener("pointerdown"' in js and 'event.key!=="Escape"' in js,
-    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v33"' in service_worker and '"/space-ui.css"' in service_worker,
+    "service worker caches the latest cosmic stylesheet": 'const CACHE="fross-shell-v34"' in service_worker and '"/space-ui.css"' in service_worker,
     "FROSS home has no decorative star dots": "radial-gradient(circle,rgba(245,231,255" not in space_css and "radial-gradient(circle,rgba(238,221,255" not in space_css,
     "FROSS brand header uses a CSS planet instead of orbit dots": 'class="brand-planet"' in html and ".brand-planet:after" in html and "brand-orbit" not in html,
     "calls display the current username before an old display name": "function callDisplayName(profile)" in voice and "callDisplayName(peerProfile)" in voice and "callDisplayName(caller)" in voice,
