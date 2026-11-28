@@ -51,6 +51,11 @@ jobs:
             echo "$ACCOUNT_RESPONSE" | jq -r '.errors[]?.message // empty' | sed 's/.*/Cloudflare API: &/'
             exit 1
           fi
+          if [ -n "$FROSS_TURN_KEY_ID" ] && [ -n "$FROSS_TURN_API_TOKEN" ]; then
+            echo "::notice::Cloudflare TURN key ID and API token are both configured."
+          else
+            echo "::warning::Cloudflare TURN is NOT configured. Add FROSS_TURN_KEY_ID and FROSS_TURN_API_TOKEN GitHub Actions secrets. TURN API token requires Calls Write / Realtime permissions."
+          fi
           if [ -z "$FILEBASE_ACCESS_KEY" ] || [ -z "$FILEBASE_SECRET_KEY" ]; then
             echo "::error::Configure FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY in GitHub repository secrets."
             exit 1
