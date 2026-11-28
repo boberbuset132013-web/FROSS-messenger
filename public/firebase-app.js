@@ -370,9 +370,12 @@ function updateGlobalAudioDock() {
   }
   document.querySelectorAll('.audio-play-button').forEach(button=>{
     const active=button.dataset.audioKey===globalAudioTrackKey;
-    button.textContent=active&&!audio.paused?"Ⅱ Пауза":"▶ Слушать";
+    const playing=active&&!audio.paused;
+    button.innerHTML=audioMessageIcon(playing);
+    button.setAttribute("aria-label",playing?"Пауза":"Воспроизвести аудио");
+    button.title=playing?"Пауза":"Воспроизвести";
     const hint=button.closest('.message-audio-player')?.querySelector('.audio-player-hint');
-    if(hint)hint.textContent=active?(audio.paused?"На паузе · управление сверху":"Сейчас воспроизводится · управление сверху"):"Управление появится в верхнем плеере";
+    if(hint)hint.textContent=active?(audio.paused?"На паузе":"Сейчас воспроизводится"):"Аудио";
   });
 }
 
@@ -454,14 +457,21 @@ async function startGlobalAudio(attachment) {
   updateGlobalAudioDock();
 }
 
+function audioMessageIcon(playing) {
+  return playing
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.7c0-.8.9-1.3 1.6-.9l9.1 6.3a1.1 1.1 0 0 1 0 1.8l-9.1 6.3c-.7.5-1.6-.1-1.6-.9z"/></svg>';
+}
 function createAudioMessagePlayer(attachment) {
   const key=String(attachment.path||attachment.url||attachment.name||"audio");
   const player=document.createElement('div');player.className='message-audio-player';
   const top=document.createElement('div');top.className='audio-player-top';
-  const button=document.createElement('button');button.type='button';button.className='audio-play-button';button.dataset.audioKey=key;button.textContent='▶ Слушать';
+  const button=document.createElement('button');button.type='button';button.className='audio-play-button';button.dataset.audioKey=key;
+  button.setAttribute('aria-label','Воспроизвести аудио');button.title='Воспроизвести';button.innerHTML=audioMessageIcon(false);
   const meta=document.createElement('div');meta.className='audio-player-meta';
-  const name=document.createElement('div');name.className='audio-player-name';name.textContent=attachment.name||'Аудиофайл';
-  const hint=document.createElement('div');hint.className='audio-player-hint';hint.textContent='Управление появится в верхнем плеере';
+  const name=document.createElement('div');name.className='audio-player-name';
+  name.textContent=String(attachment.name||'Аудиофайл').replace(/\\.(mp3|m4a|ogg|wav|flac|aac|opus)$/i,'').replace(/[_]+/g,' ');
+  const hint=document.createElement('div');hint.className='audio-player-hint';hint.textContent='Аудио';
   meta.append(name,hint);top.append(button,meta);player.append(top);
   button.addEventListener('click',async()=>{
     const audio=globalAudioPlayer||$('global-audio');
@@ -1090,10 +1100,23 @@ function openChat(id) {
   }
 }
 const MESSAGE_EMOJIS=["❤️","😂","👍","🔥","😮","😢","🙏","🎉","💯","👀","😍","🥰","😘","🤔","👏","🙌","🤝","💔","😭","😎","🥳","🤩","🤗","😡","🤯","💀","✨","🚀","☕","💖"];
+async function downloadMessageAttachment(message) {
+  const attachment=message?.attachment;
+  if(!attachment?.url){showToast("У этого сообщения нет доступного файла.");return}
+  try{
+    if(attachment.external){
+      try{await downloadStoredFile(attachment.url,attachment.path,attachment.name||"download")}
+      catch(error){const opened=window.open(attachment.url,"_blank","noopener,noreferrer");if(!opened)throw error}
+    }else await downloadStoredFile(attachment.url,attachment.path,attachment.name||"download");
+    showToast("Загрузка файла началась.");
+  }catch(error){showToast(error?.message||"Не удалось скачать файл.")}
+}
 function openMessageMenu(message,mine,x,y) {
   document.getElementById("message-menu")?.remove();
   const menu=document.createElement("div");menu.id="message-menu";menu.className="message-menu";
-  const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["↪ Переслать",()=>{menu.remove();forwardMessage(message)}],["😊 Реакция",()=>showReactionPicker(message,menu)],["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]];
+  const actions=[["↩ Ответить",()=>{setReplyTarget(message);menu.remove()}],["↪ Переслать",()=>{menu.remove();forwardMessage(message)}],["😊 Реакция",()=>showReactionPicker(message,menu)]];
+  if(message.attachment)actions.push(["↓ Скачать "+(message.attachment.type?.startsWith("audio/")?"аудио":"файл"),()=>{menu.remove();downloadMessageAttachment(message)}]);
+  actions.push(["📋 Копировать",()=>{navigator.clipboard?.writeText(message.text||message.attachment?.name||"").catch(()=>{});menu.remove()}]);
   if(mine&&message.text)actions.push(["✏️ Изменить",()=>editMessage(message)]);
   actions.push(["🗑 Удалить у себя",()=>hideMessageForMe(message)]);
   if(mine)actions.push(["🗑 Удалить у всех",()=>deleteMessageForAll(message)]);
@@ -1317,10 +1340,12 @@ function subscribeMessages() {
         if(a.type?.startsWith("video/")){
           const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload=S.autoDownload?"auto":"metadata";video.autoplay=!!S.autoPlayMedia;video.className="message-video";setPrivateMediaSource(video,a.url,a.path);b.append(video);
         }
-        const link=document.createElement("a");link.href=a.external?a.url:"#";link.textContent=a.external?"↗ Открыть внешний файл: "+(a.name||"файл"):"↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
-        if(a.external){link.target="_blank";link.rel="noopener noreferrer"}
-        else link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
-        b.append(link);
+        if(!a.type?.startsWith("audio/")){
+          const link=document.createElement("a");link.href=a.external?a.url:"#";link.textContent=a.external?"↗ Открыть внешний файл: "+(a.name||"файл"):"↓ Скачать "+(a.name||"файл")+" ("+Math.max(1,Math.round((a.size||0)/1024))+" КБ)";link.className="attachment-link";
+          if(a.external){link.target="_blank";link.rel="noopener noreferrer"}
+          else link.addEventListener("click",async event=>{event.preventDefault();try{await downloadStoredFile(a.url,a.path,a.name||"download")}catch(error){alert(error.message)}});
+          b.append(link);
+        }
       }
       if(m.accountDeletedNotice){b.classList.add("deleted-account-notice");const tag=document.createElement("small");tag.textContent="АККАУНТ УДАЛЁН";tag.style.cssText="display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700;margin-bottom:4px";b.append(tag)}
       if(m.forwardedFrom){
