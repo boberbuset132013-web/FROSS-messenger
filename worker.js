@@ -173,7 +173,7 @@ async function callIceConfiguration(request,env){
     {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
     {urls:["stun:stun.cloudflare.com:3478"]}
   ];
-  let turnConfigured=false,turnProvider="";
+  let turnConfigured=false,turnProvider="",turnError="";
   if(env.FROSS_TURN_KEY_ID&&env.FROSS_TURN_API_TOKEN){
     try{
       const response=await fetch("https://rtc.live.cloudflare.com/v1/turn/keys/"+encodeURIComponent(env.FROSS_TURN_KEY_ID)+"/credentials/generate-ice-servers",{
@@ -182,7 +182,7 @@ async function callIceConfiguration(request,env){
         body:JSON.stringify({ttl:86400})
       });
       const result=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(String(result?.error||result?.message||"Cloudflare TURN HTTP "+response.status).slice(0,240));
+      if(!response.ok)throw new Error(String(result?.errors?.[0]?.message||result?.error||result?.message||"Cloudflare TURN HTTP "+response.status).slice(0,240));
       const issued=Array.isArray(result.iceServers)?result.iceServers:[];
       for(const server of issued){
         const urls=(Array.isArray(server.urls)?server.urls:[server.urls]).filter(Boolean)
@@ -196,7 +196,7 @@ async function callIceConfiguration(request,env){
         }
       }
     }catch(error){
-      console.warn("Cloudflare Realtime TURN credentials unavailable:",error?.message||error);
+      turnError=String(error?.message||"Cloudflare TURN credential generation failed").slice(0,220);console.warn("Cloudflare Realtime TURN credentials unavailable:",turnError);
     }
   }
   if(!turnConfigured){
@@ -205,7 +205,7 @@ async function callIceConfiguration(request,env){
     const username=String(env.FROSS_TURN_USERNAME||"").trim(),credential=String(env.FROSS_TURN_CREDENTIAL||"");
     if(urls.length&&username&&credential){iceServers.push({urls,username,credential});turnConfigured=true;turnProvider="custom"}
   }
-  return json({iceServers,turnConfigured,turnProvider,turnSetupRequired:!turnConfigured});
+  return json({iceServers,turnConfigured,turnProvider,turnSetupRequired:!turnConfigured,turnError:turnError||(!env.FROSS_TURN_KEY_ID||!env.FROSS_TURN_API_TOKEN?"Добавь FROSS_TURN_KEY_ID и FROSS_TURN_API_TOKEN в секреты Cloudflare Worker.":"TURN не выдал действительные ICE-реквизиты.")});
 }
 
 function phoneBotConfig(env){
