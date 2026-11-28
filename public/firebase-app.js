@@ -470,7 +470,7 @@ function createAudioMessagePlayer(attachment) {
   button.setAttribute('aria-label','Воспроизвести аудио');button.title='Воспроизвести';button.innerHTML=audioMessageIcon(false);
   const meta=document.createElement('div');meta.className='audio-player-meta';
   const name=document.createElement('div');name.className='audio-player-name';
-  name.textContent=String(attachment.name||'Аудиофайл').replace(/\\.(mp3|m4a|ogg|wav|flac|aac|opus)$/i,'').replace(/[_]+/g,' ');
+  name.textContent=String(attachment.name||'Аудиофайл').replace(/\.(mp3|m4a|ogg|wav|flac|aac|opus)$/i,'').replace(/[_]+/g,' ');
   const hint=document.createElement('div');hint.className='audio-player-hint';hint.textContent='Аудио';
   meta.append(name,hint);top.append(button,meta);player.append(top);
   button.addEventListener('click',async()=>{
