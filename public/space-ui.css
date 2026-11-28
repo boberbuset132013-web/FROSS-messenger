@@ -1686,3 +1686,19 @@ button:disabled{opacity:.58}
   }
 }
 @media(prefers-reduced-motion:reduce){.call-avatar-glow{animation:none!important}}
+
+
+/* Keep legacy accent-colored labels readable too, including the sign-in screen. */
+.logo{
+  background:none!important;background-image:none!important;background-clip:border-box!important;
+  color:var(--accent-readable,var(--accent))!important;
+  -webkit-text-fill-color:var(--accent-readable,var(--accent))!important;
+  animation:none!important;
+}
+#call,#avatar-zoom-value,.settings-category.active,.settings-category.active *{
+  color:var(--accent-readable,var(--accent))!important;
+  -webkit-text-fill-color:var(--accent-readable,var(--accent))!important;
+}
+.system-message-sender{color:var(--accent-readable,var(--accent))!important}
+.mr:not(.me) .msg b,.mr:not(.me) .msg strong{color:var(--accent-readable,var(--accent))!important}
+.mr.me .msg b,.mr.me .msg strong{color:var(--outgoing-contrast,#fff)!important}
