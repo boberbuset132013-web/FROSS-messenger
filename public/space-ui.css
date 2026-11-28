@@ -1723,3 +1723,50 @@ button:disabled{opacity:.58}
 .video-media-viewer .media-viewer-stage{overflow:hidden!important}
 .media-viewer-video{display:block!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;background:#000!important;border-radius:10px!important}
 .video-media-viewer .media-viewer-title{color:var(--text)!important}
+
+
+/* Fix the square slab visible behind settings detail/profile cards. */
+#ov.settings-mode #md .settings-detail{
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  padding:0!important;
+  overflow:visible!important;
+}
+#ov.settings-mode #md .settings-content{
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+#ov.settings-mode #md .settings-profile-card{
+  position:relative!important;
+  width:100%!important;
+  max-width:100%!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+  border-radius:22px!important;
+}
+#ov.settings-mode #md .settings-profile-card>*{min-width:0}
+#ov.settings-mode #md .settings-detail-back{margin-bottom:12px!important}
+#ov.settings-mode #md .settings-detail-heading{margin-bottom:14px!important}
+#ov.settings-mode #md .settings-content-enter{background:transparent!important}
+
+/* The audio control is a contrasting accent tint, not the same color as its bubble. */
+.msg .audio-play-button{
+  background:var(--audio-incoming,var(--accent))!important;
+  color:var(--audio-incoming-text,#fff)!important;
+  border:1px solid color-mix(in srgb,var(--audio-incoming-text,#fff) 18%,transparent)!important;
+  box-shadow:0 2px 10px color-mix(in srgb,var(--audio-incoming) 30%,transparent)!important;
+}
+.mr.me .msg .audio-play-button{
+  background:var(--audio-outgoing,var(--accent))!important;
+  color:var(--audio-outgoing-text,#fff)!important;
+  border-color:color-mix(in srgb,var(--audio-outgoing-text,#fff) 18%,transparent)!important;
+  box-shadow:0 2px 10px color-mix(in srgb,var(--audio-outgoing) 30%,transparent)!important;
+}
+.mr:not(.me) .msg .audio-play-button{
+  background:var(--audio-incoming,var(--accent))!important;
+  color:var(--audio-incoming-text,#fff)!important;
+}
