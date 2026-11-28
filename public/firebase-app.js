@@ -255,6 +255,18 @@ function readableAccentOnSurface(accent,surface){
  }
  return readableTextOnColor(surface);
 }
+function contrastingControlColor(accent,surface){
+ const source=colorRgb(accent),background=colorLuminance(colorRgb(surface));
+ if(!source)return "#ffffff";
+ const contrast=rgb=>{const value=colorLuminance(rgb),high=Math.max(value,background),low=Math.min(value,background);return(high+.05)/(low+.05)};
+ const white=[255,255,255],black=[23,19,31],target=contrast(white)>=contrast(black)?white:black;
+ if(contrast(source)>=3)return accent;
+ for(let step=1;step<=20;step++){
+  const amount=step/20,candidate=source.map((channel,index)=>Math.round(channel*(1-amount)+target[index]*amount));
+  if(contrast(candidate)>=3)return "#"+candidate.map(channel=>channel.toString(16).padStart(2,"0")).join("");
+ }
+ return target===white?"#ffffff":"#17131f";
+}
 function applyS(s) {
  const root=document.documentElement,theme=s.theme||"dark";
  const autoLight=theme==="auto"&&window.matchMedia?.("(prefers-color-scheme: light)").matches;
@@ -264,11 +276,12 @@ function applyS(s) {
  const use=(key,fallback)=>!s[key]||s[key]===defaultMap[key]?fallback:s[key];
  const bg=use("bgColor",base.bg),panel=use("panelColor",base.panel),text=use("textColor",base.text),accent=s.accent||DEF.accent;
  const incoming=use("incomingColor",base.incoming),outgoing=use("outgoingColor",light?base.outgoing:accent),accentContrast=readableTextOnColor(accent),outgoingContrast=readableTextOnColor(outgoing);
+ const audioIncoming=contrastingControlColor(accent,incoming),audioOutgoing=contrastingControlColor(accent,outgoing);
  const font=s.font==="rounded"?"Trebuchet MS,Arial,sans-serif":s.font==="mono"?"ui-monospace,SFMono-Regular,monospace":s.font==="serif"?"Georgia,serif":s.font==="humanist"?"Verdana,Arial,sans-serif":"Inter,system-ui,sans-serif";
  root.dataset.theme=light?"light":"dark";root.dataset.themeMode=theme;root.style.colorScheme=light?"light":"dark";
  const vars={"--bg":bg,"--panel":panel,"--text":text,"--accent":accent,"--incoming":incoming,"--outgoing":outgoing,
   "--muted":base.muted,"--muted-text":"color-mix(in srgb,"+text+" 62%,transparent)","--p2":"color-mix(in srgb,"+panel+" 90%,"+text+" 10%)",
-  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--accent-contrast":accentContrast,"--accent-readable":readableAccentOnSurface(accent,panel),"--outgoing-contrast":outgoingContrast,"--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
+  "--line":"color-mix(in srgb,"+panel+" 78%,"+text+" 22%)","--accent-contrast":accentContrast,"--accent-readable":readableAccentOnSurface(accent,panel),"--outgoing-contrast":outgoingContrast,"--audio-incoming":audioIncoming,"--audio-incoming-text":readableTextOnColor(audioIncoming),"--audio-outgoing":audioOutgoing,"--audio-outgoing-text":readableTextOnColor(audioOutgoing),"--surface":panel,"--surface-raised":"color-mix(in srgb,"+panel+" 92%,"+text+" 8%)",
   "--space-night":bg,"--space-glass":panel,"--space-stroke":"color-mix(in srgb,"+text+" 14%,transparent)",
   "--space-shadow":light?"0 16px 40px rgba(30,38,58,.10)":"0 18px 48px rgba(0,0,0,.28)",
   "--profile-accent":s.profileColor||accent,"--fs":(Number(s.fs)||DEF.fs)+"px","--br":s.shape==="pill"?"24px":s.shape==="square"?"5px":"16px",
