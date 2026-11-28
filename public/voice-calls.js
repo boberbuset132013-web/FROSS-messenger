@@ -15,7 +15,7 @@ const FALLBACK_ICE_SERVERS = [
   {urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]},
   {urls:["stun:stun.cloudflare.com:3478"]}
 ];
-let iceServersCache=null,iceServersCacheAt=0;
+let iceServersCache=null,iceServersCacheAt=0,iceTurnConfigured=null;
 async function loadIceServers(){
   if(iceServersCache&&Date.now()-iceServersCacheAt<6*60*60*1000)return iceServersCache;
   try{
@@ -25,6 +25,7 @@ async function loadIceServers(){
     const response=await fetch(apiOrigin+"/api/calls/ice",{headers:{Authorization:"Bearer "+token}});
     if(!response.ok)throw new Error("ICE config HTTP "+response.status);
     const result=await response.json();
+    iceTurnConfigured=result.turnConfigured===true;
     if(Array.isArray(result.iceServers)&&result.iceServers.length){iceServersCache=result.iceServers;iceServersCacheAt=Date.now();}
   }catch(error){console.warn("FROSS TURN config unavailable; using STUN fallback:",error?.message||error)}
   return iceServersCache||FALLBACK_ICE_SERVERS;
@@ -102,53 +103,77 @@ if(micSelect)micSelect.onchange=()=>changeMicrophone(micSelect.value);
 if(outputSelect)outputSelect.onchange=()=>changeAudioOutput(outputSelect.value);
 if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener("devicechange",refreshCallDevices);
 
-let ringAudioContext=null,ringOscillators=[],ringGain=null,ringTimer=null;
+let callAudioContext=null,ringOscillators=[],ringGain=null,ringTimer=null;
+function getCallAudioContext(){
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return null;
+  if(!callAudioContext)callAudioContext=new AudioContextClass();
+  return callAudioContext;
+}
+function unlockCallAudio(){
+  try{const context=getCallAudioContext();if(context&&context.state!=="running")void context.resume().catch(()=>{})}
+  catch(error){console.warn("FROSS audio unlock failed:",error?.message||error)}
+}
+document.addEventListener("pointerdown",unlockCallAudio,{once:true,capture:true,passive:true});
+document.addEventListener("keydown",unlockCallAudio,{once:true,capture:true});
 function stopRingbackTone(){
   if(ringTimer){clearInterval(ringTimer);ringTimer=null}
-  if(ringGain&&ringAudioContext){
-    try{ringGain.gain.cancelScheduledValues(ringAudioContext.currentTime);ringGain.gain.setTargetAtTime(0,ringAudioContext.currentTime,.04)}catch{}
+  if(ringGain&&callAudioContext){
+    try{ringGain.gain.cancelScheduledValues(callAudioContext.currentTime);ringGain.gain.setTargetAtTime(0,callAudioContext.currentTime,.035)}catch{}
+    try{ringGain.disconnect()}catch{}
   }
-  if(ringOscillators.length)ringOscillators.forEach(oscillator=>{try{oscillator.stop()}catch{}});
-  ringOscillators=[];ringGain=null;
-  if(ringAudioContext){const context=ringAudioContext;ringAudioContext=null;context.close().catch(()=>{})}
+  ringGain=null;
+  ringOscillators.forEach(oscillator=>{try{oscillator.stop();oscillator.disconnect()}catch{}});
+  ringOscillators=[];
 }
 let lastEndToneCallId="";
-function playCallEndTone(callId="") {
+function playCallEndTone(callId=""){
   if(callId&&lastEndToneCallId===callId)return;
   if(callId)lastEndToneCallId=callId;
   try{
-    const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(!AudioContextClass)return;
-    const context=new AudioContextClass(),gain=context.createGain();gain.gain.value=0;gain.connect(context.destination);
-    context.resume().then(()=>{
+    const context=getCallAudioContext();if(!context)return;
+    const play=()=>{
+      const gain=context.createGain();gain.gain.value=0;gain.connect(context.destination);
       const now=context.currentTime;
-      [[480,0],[360,.22]].forEach(([frequency,offset])=>{const oscillator=context.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;oscillator.connect(gain);oscillator.start(now+offset);oscillator.stop(now+offset+.13)});
-      gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.055,now+.025);gain.gain.setValueAtTime(.055,now+.12);gain.gain.linearRampToValueAtTime(0,now+.18);
-      gain.gain.setValueAtTime(0,now+.22);gain.gain.linearRampToValueAtTime(.05,now+.245);gain.gain.setValueAtTime(.05,now+.34);gain.gain.linearRampToValueAtTime(0,now+.37);
-      setTimeout(()=>context.close().catch(()=>{}),650);
-    }).catch(error=>{console.warn("FROSS call end tone unavailable:",error?.message||error);context.close().catch(()=>{})});
+      [[480,0],[360,.22]].forEach(([frequency,offset])=>{
+        const oscillator=context.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;
+        oscillator.connect(gain);oscillator.start(now+offset);oscillator.stop(now+offset+.14);
+        oscillator.onended=()=>oscillator.disconnect();
+      });
+      gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(.055,now+.025);
+      gain.gain.setValueAtTime(.055,now+.12);gain.gain.linearRampToValueAtTime(0,now+.18);
+      gain.gain.setValueAtTime(0,now+.22);gain.gain.linearRampToValueAtTime(.05,now+.245);
+      gain.gain.setValueAtTime(.05,now+.34);gain.gain.linearRampToValueAtTime(0,now+.39);
+      setTimeout(()=>{try{gain.disconnect()}catch{}},800);
+    };
+    if(context.state==="running")play();
+    else context.resume().then(()=>{if(context.state==="running")play()}).catch(error=>console.warn("FROSS call end tone unavailable:",error?.message||error));
   }catch(error){console.warn("FROSS call end tone unavailable:",error?.message||error)}
 }
 function startRingbackTone(incoming=false){
   stopRingbackTone();
   try{
-    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-    if(!AudioContextClass)return;
-    ringAudioContext=new AudioContextClass();
-    ringGain=ringAudioContext.createGain();ringGain.gain.value=0;ringGain.connect(ringAudioContext.destination);
-    const frequencies=incoming?[660,880]:[440,480];
-    frequencies.forEach(frequency=>{
-      const oscillator=ringAudioContext.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;oscillator.connect(ringGain);oscillator.start();ringOscillators.push(oscillator);
-    });
-    const pulse=()=>{
-      if(!ringAudioContext||!ringGain)return;
-      const now=ringAudioContext.currentTime,duration=incoming?0.75:1.65;
-      ringGain.gain.cancelScheduledValues(now);ringGain.gain.setValueAtTime(0,now);
-      ringGain.gain.linearRampToValueAtTime(.035,now+.06);
-      ringGain.gain.setValueAtTime(.035,now+duration-.08);
-      ringGain.gain.linearRampToValueAtTime(0,now+duration);
+    const context=getCallAudioContext();if(!context)return;
+    const begin=()=>{
+      if(context!==callAudioContext||context.state!=="running")return;
+      ringGain=context.createGain();ringGain.gain.value=0;ringGain.connect(context.destination);
+      const frequencies=incoming?[660,880]:[440,480];
+      frequencies.forEach(frequency=>{
+        const oscillator=context.createOscillator();oscillator.type="sine";oscillator.frequency.value=frequency;
+        oscillator.connect(ringGain);oscillator.start();ringOscillators.push(oscillator);
+      });
+      const pulse=()=>{
+        if(!ringGain||!callAudioContext)return;
+        const now=context.currentTime,duration=incoming ? 0.75 : 1.65;
+        ringGain.gain.cancelScheduledValues(now);ringGain.gain.setValueAtTime(0,now);
+        ringGain.gain.linearRampToValueAtTime(.035,now+.06);
+        ringGain.gain.setValueAtTime(.035,now+duration-.08);
+        ringGain.gain.linearRampToValueAtTime(0,now+duration);
+      };
+      pulse();ringTimer=setInterval(pulse,incoming?3200:6000);
     };
-    ringAudioContext.resume().catch(()=>{});
-    pulse();ringTimer=setInterval(pulse,incoming?3200:6000);
+    if(context.state==="running")begin();
+    else context.resume().then(begin).catch(error=>console.warn("FROSS ringback tone unavailable:",error?.message||error));
   }catch(error){console.warn("FROSS call tone unavailable:",error?.message||error)}
 }
 
@@ -174,7 +199,6 @@ function showCall(title, status, avatarText, actions, profile, callInfo) {
   if(activeCall?.peer){
     callControls.push({label:!audioElement||audioElement.paused||audioElement.muted?"Включить звук":"Выключить звук",onClick:toggleRemoteAudio});
     callControls.push({label:"Выключить микрофон",onClick:toggleMicrophone});
-    callControls.push({label:"Камера недоступна",disabled:true,video:true});
   }
   const visibleActions=activeCall?.peer?[...callControls,...(actions||[])]:[...(actions||[])];
   for(const action of visibleActions){
@@ -190,6 +214,8 @@ function showCall(title, status, avatarText, actions, profile, callInfo) {
     if(action.onClick)button.onclick=action.onClick;
     $("call-actions").append(button);
   }
+  const incoming=(actions||[]).some(action=>String(action.label||"").includes("Ответить"));
+  $("call-layer").dataset.callPhase=incoming?"incoming":activeCall?.role||"outgoing";
   $("call-layer").classList.add("open");
   refreshCallDevices();
 }
@@ -209,6 +235,7 @@ function stopMedia() {
   if (activeCall?.stream) activeCall.stream.getTracks().forEach(track => track.stop());
   if(screenStream){screenStream.getTracks().forEach(track=>track.stop());screenStream=null}
   if(remoteScreen){remoteScreen.pause();remoteScreen.srcObject=null;remoteScreen.style.display="none"}
+  if($("call-layer"))delete $("call-layer").dataset.callPhase;
   if (audioElement) {
     audioElement.pause();
     audioElement.srcObject = null;
@@ -282,11 +309,17 @@ async function addRemoteCandidate(call,candidate){
   }
 }
 async function flushRemoteCandidates(call){
-  if(!call?.peer?.remoteDescription||!call.pendingRemoteCandidates?.length)return;
-  const pending=call.pendingRemoteCandidates.splice(0);
-  for(const candidate of pending){
-    try{await call.peer.addIceCandidate(new RTCIceCandidate(candidate))}
-    catch(error){console.warn("Queued ICE candidate rejected:",error?.message||error)}
+  if(!call?.peer?.remoteDescription)return;
+  while(call.pendingRemoteCandidates?.length){
+    const pending=call.pendingRemoteCandidates.splice(0);
+    for(const candidate of pending){
+      try{await call.peer.addIceCandidate(new RTCIceCandidate(candidate))}
+      catch(error){
+        console.warn("Queued ICE candidate rejected:",error?.message||error);
+        if(error?.name==="InvalidStateError")call.pendingRemoteCandidates.push(candidate);
+      }
+    }
+    if(call.pendingRemoteCandidates?.length&&call.peer.signalingState==="closed")break;
   }
 }
 function watchRemoteCandidates(callId, remoteSet) {
@@ -344,7 +377,7 @@ function watchCallDocument(callId) {
         $("call-status").textContent = "Не удалось принять ответ: " + e.message;
       }
     }
-    if (data.status === "accepted") {stopRingbackTone();$("call-status").textContent = "Соединение устанавливается…";}
+    if (data.status === "accepted"&&!data.answer) {stopRingbackTone();$("call-status").textContent = "Собеседник ответил. Устанавливаем аудиосвязь…";}
   },error => {
     $("call-status").textContent = "Связь с сервером потеряна: " + error.message;
   });
@@ -383,8 +416,15 @@ async function createPeer(callId, role, stream) {
         createdAt:serverTimestamp()
       });
     } catch (e) {
+      if(activeCall?.id===callId)$("call-status").textContent="Не удалось отправить данные соединения: "+(e.message||"ошибка Firebase");
       console.warn("Could not send ICE candidate:",e);
     }
+  };
+  peer.onicecandidateerror=event=>{
+    if(!activeCall||activeCall.id!==callId)return;
+    const details=event.errorText||("код "+event.errorCode);
+    $("call-status").textContent="Ошибка сетевого ICE-сервера: "+details;
+    console.warn("FROSS ICE candidate error:",event.errorCode,event.errorText,event.url);
   };
   peer.oniceconnectionstatechange=()=>{
     if(!activeCall||activeCall.id!==callId)return;
@@ -398,8 +438,9 @@ async function createPeer(callId, role, stream) {
     if (peer.connectionState === "connected") {
       $("call-status").textContent = "Соединение установлено. Говорите!";
     } else if (peer.connectionState === "failed") {
-      $("call-status").textContent = "Сеть не пропускает прямое соединение. Для таких сетей нужен TURN-сервер.";
-      try { peer.restartIce(); } catch {}
+      $("call-status").textContent = iceTurnConfigured===false
+        ? "Не удалось соединиться: TURN-сервер не настроен. Для мобильных и некоторых Wi-Fi сетей нужны TURN-реквизиты."
+        : "Не удалось установить аудиосвязь. Проверь интернет и настройки TURN-сервера.";
     } else if (peer.connectionState === "disconnected") {
       $("call-status").textContent = "Связь прервалась. Пытаемся восстановить…";
     }
@@ -437,6 +478,7 @@ function callDisplayName(profile){
   return username ? "@"+username : "Собеседник";
 }
 async function startOutgoingCall() {
+  unlockCallAudio();
   if (activeCall) {
     $("call-status").textContent = "Сначала завершите текущий звонок.";
     return;
@@ -481,6 +523,7 @@ async function startOutgoingCall() {
     startRingbackTone(false);
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"calleeCandidates");
+    if(iceTurnConfigured===false)$("call-status").textContent="Вызываем… TURN не подключён: в некоторых мобильных сетях соединение может не установиться.";
   } catch (e) {
     console.error("Call start failed:",e);
     if (activeCall) stopMedia();
@@ -505,15 +548,16 @@ async function showIncomingCall(snapshot) {
   window.FROSS?.notifyIncomingCall?.(caller,callId);
   showCall(callDisplayName(caller),"Входящий звонок",callDisplayName(caller)[0]||"☎",[
     {label:"Отклонить",danger:true,onClick:async()=>{
-      playCallEndTone(callId);
+      unlockCallAudio();playCallEndTone(callId);
       try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch(e) { console.warn(e); }
       stopRingbackTone();hideCall();
     }},
-    {label:"Ответить",primary:true,onClick:()=>{stopRingbackTone();acceptCall(callId,data,caller)}}
+    {label:"Ответить",primary:true,onClick:()=>{unlockCallAudio();stopRingbackTone();acceptCall(callId,data,caller)}}
   ],caller,{id:data.callId||callId,code:data.callCode||""});
   startRingbackTone(true);
 }
 async function acceptCall(callId, data, caller) {
+  unlockCallAudio();
   if (activeCall) return;
   try {
     $("call-status").textContent = "Запрашиваем доступ к микрофону…";
@@ -535,6 +579,7 @@ async function acceptCall(callId, data, caller) {
     stopRingbackTone();
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"callerCandidates");
+    if(iceTurnConfigured===false)$("call-status").textContent="Соединяемся… TURN не подключён: без него мобильная сеть может не пропустить аудио.";
   } catch (e) {
     console.error("Could not answer call:",e);
     try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch {}
