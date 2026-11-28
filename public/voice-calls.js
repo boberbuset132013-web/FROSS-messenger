@@ -523,7 +523,7 @@ async function startOutgoingCall() {
     startRingbackTone(false);
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"calleeCandidates");
-    if(iceTurnConfigured===false)$("call-status").textContent="Вызываем… TURN не подключён: в некоторых мобильных сетях соединение может не установиться.";
+    if(iceTurnConfigured===false)$("call-status").textContent="Вызываем… TURN не подключён. "+(iceTurnError||"Проверь секреты Cloudflare TURN.");
   } catch (e) {
     console.error("Call start failed:",e);
     if (activeCall) stopMedia();
@@ -579,7 +579,7 @@ async function acceptCall(callId, data, caller) {
     stopRingbackTone();
     watchCallDocument(callId);
     watchRemoteCandidates(callId,"callerCandidates");
-    if(iceTurnConfigured===false)$("call-status").textContent="Соединяемся… TURN не подключён: без него мобильная сеть может не пропустить аудио.";
+    if(iceTurnConfigured===false)$("call-status").textContent="Соединяемся… TURN не подключён. "+(iceTurnError||"Проверь секреты Cloudflare TURN.");
   } catch (e) {
     console.error("Could not answer call:",e);
     try { await updateDoc(doc(db,"calls",callId),{status:"declined",endedAt:serverTimestamp()}); } catch {}
