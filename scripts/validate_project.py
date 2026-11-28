@@ -17,7 +17,7 @@ checks = {
     "in-chat photo viewer and download action": "openImageViewer" in js and "media-viewer" in html and "downloadStoredFile" in js,
     "music playback button is available": "createAudioMessagePlayer" in js and "audioMessageIcon" in js and "audio-play-button" in html,
     "music download is available from message context menu, not inside audio card": "downloadMessageAttachment(message)" in js and 'if(!a.type?.startsWith("audio/"))' in js,
-    "messages persist independently from chat preview metadata": "async function publishChatMessage(chatId,message,summary)" in js and "await setDoc(messageRef,message);" in js and "allowed by Firestore rules" in js,
+    "messages persist independently from chat preview metadata": "async function publishChatMessage(chatId,message,summary)" in js and "await setDoc(messageRef,payload);" in js and "allowed by Firestore rules" in js,
     "text messages use the independent message writer": "await publishChatMessage(cur,message,text);" in js,
     "attachment messages use the independent message writer": "await publishChatMessage(chatId,message,summary);" in js,
     "private avatar images refresh stale saved paths": "async function retryAvatarImage" in js and "loadPrivateAvatar(el,nextSource" in js,
