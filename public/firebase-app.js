@@ -1669,7 +1669,7 @@ async function optimizeChatVideo(file) {
   if(!file?.type?.startsWith("video/")||file.size<1400*1024||typeof MediaRecorder==="undefined"||typeof HTMLCanvasElement.prototype.captureStream!=="function")return file;
   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
   if(!AudioContextClass)return file;
-  let sourceUrl="",video=null,audioContext=null,audioSource=null,audioDestination=null,canvasStream=null,combinedStream=null,recorder=null,animationFrame=0,timeoutId=0;
+  let sourceUrl="",video=null,audioContext=null,audioSource=null,audioDestination=null,canvasStream=null,combinedStream=null,recorder=null,animationFrame=0,timeoutId=0,timedOut=false;
   try{
     sourceUrl=URL.createObjectURL(file);
     video=document.createElement("video");
@@ -1709,12 +1709,12 @@ async function optimizeChatVideo(file) {
     };
     video.addEventListener("play",draw,{once:true});
     video.addEventListener("ended",()=>{if(recorder?.state==="recording")recorder.stop()},{once:true});
-    timeoutId=setTimeout(()=>{if(recorder?.state==="recording")recorder.stop()},Math.ceil(video.duration*1000)+12000);
+    timeoutId=setTimeout(()=>{timedOut=true;if(recorder?.state==="recording")recorder.stop()},Math.ceil(video.duration*1000)+12000);
     await audioContext.resume();
     recorder.start(1000);
     await video.play();
     const blob=await recorded;
-    if(!blob.size||blob.size>=file.size*.92)return file;
+    if(timedOut||!blob.size||blob.size>=file.size*.92)return file;
     const isMp4=blob.type.includes("mp4"),extension=isMp4?".mp4":".webm";
     const baseName=file.name.replace(/\.[^.]+$/,"")||"video";
     return new File([blob],baseName+extension,{type:blob.type||"video/webm",lastModified:file.lastModified||Date.now()});
